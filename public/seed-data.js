@@ -1,0 +1,52 @@
+﻿window.EVERLETTER_SEED = {
+    "automationRules":  [
+                            {
+                                "rule":  "Mailing cadence",
+                                "logic":  "Everletter has two batch dates per month: the 1st and the 15th."
+                            },
+                            {
+                                "rule":  "3-day cutoff",
+                                "logic":  "A new subscription can join a batch when the signup/payment is at least roughly 3 days before the 1st or 15th. Otherwise it rolls to the next batch."
+                            },
+                            {
+                                "rule":  "Spreadsheet bridge",
+                                "logic":  "Until Squarespace sync is live, import the updated Everletter Mailing Schedule through the Import Sheet screen."
+                            }
+                        ],
+    "orders":  [
+
+               ],
+    "subscriptions":  [
+
+                      ],
+    "mailings":  [
+
+                 ],
+    "subscribers":  [
+
+                    ],
+    "summary":  {
+                    "sourceFile":  "No spreadsheet imported yet",
+                    "activeSubscriberCount":  0,
+                    "recipientCount":  0,
+                    "openMailingCount":  0,
+                    "archivedMailingCount":  0,
+                    "mailingCount":  0,
+                    "dueNext14Count":  0,
+                    "missingShipDateCount":  0,
+                    "orderCount":  0,
+                    "subscriptionCount":  0,
+                    "exceptionCount":  0,
+                    "asOf":  "2026-07-19",
+                    "subscriberCount":  0,
+                    "archivedSubscriberCount":  0,
+                    "overdueCount":  0
+                },
+    "exceptions":  [
+
+                   ],
+    "recipients":  [
+
+                   ]
+};
+
