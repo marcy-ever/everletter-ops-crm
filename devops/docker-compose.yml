@@ -1,0 +1,31 @@
+# This file lives in devops/, not the repo root. Compose's default project
+# directory (and thus project name / any relative paths) is derived from the
+# directory containing this file unless overridden, so it must always be run
+# with `--project-directory <repo root>` and an explicit project name -
+# see the `docker:up`/`docker:down` scripts in package.json, which set both.
+#
+# No `${VAR}` interpolation is used below, so Compose's own `.env`
+# auto-loading is not in play here. These Postgres credentials are
+# intentionally hardcoded dev-only values that must match DATABASE_URL in
+# the repo root's .env.example / .env.local - the Next.js app reads that
+# file directly (independent of Compose, and of where this file lives).
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: everletter
+      POSTGRES_PASSWORD: everletter
+      POSTGRES_DB: everletter_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U everletter -d everletter_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

@@ -12,7 +12,9 @@
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "docker:up": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . up -d",
+    "docker:down": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . down"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
