@@ -1,5 +1,36 @@
 # Everletter Ops CRM - Developer Handoff
 
+## Decided Direction / Migration Plan
+
+The sections below (1-9) describe the app **as built**, which was shaped by the OpenAI Codex/Sites build path rather than chosen on merit. The following direction has since been decided and should guide future work:
+
+**Keep as-is:**
+
+- Next.js, React, TypeScript, Drizzle ORM — all solid and portable. No replacement planned.
+
+**Drop (forced by the Codex/Sites path, not chosen on merit):**
+
+- OpenAI Sites as the deploy platform (proprietary, not portable).
+- Cloudflare Workers as the runtime.
+- Vinext (`0.0.50`) — too immature/low-version to depend on long-term.
+
+**Replace with:**
+
+- **Hosting:** self-hosted via Docker Compose on the owner's NAS, replacing OpenAI Sites/Cloudflare Workers.
+- **Persistence:** self-hosted Postgres via Docker, replacing Cloudflare D1. Drizzle is already dialect-agnostic, so this is a config/driver change, not a rewrite.
+
+**`public/app.js`:** this is a large, untyped vanilla-JS monolith, but it holds the real product logic (state, views, validation, envelope generation) and has been battle-tested with real operational use. Plan to migrate it into typed React components incrementally over time as workflows are touched, not as an immediate up-front rewrite.
+
+**Known risks to prioritize (in rough order):**
+
+1. **No app-level auth enforcement.** `app/chatgpt-auth.ts` exists but isn't called; access currently relies solely on hosting-platform controls. This is a real customer PII exposure risk once hosting changes, since there's no in-app backstop.
+2. **No backup/versioning of the dataset.** The whole CRM dataset is a single JSON blob (`crmDataset::current`) that is overwritten on every import, with no history or restore path.
+3. **Ashley (co-owner) currently can't log in.** Blocking day-to-day operational use by one of the two owners.
+4. **Test suite is stale/broken.** `pnpm test` runs starter-template tests unrelated to the CRM; it is not a real release gate right now.
+5. **Two committed lockfiles.** Both `pnpm-lock.yaml` and `package-lock.json` are committed; pnpm is authoritative and the npm lockfile should eventually be removed.
+
+**CI/CD:** GitLab is under consideration for later but not decided yet. No CI/CD system should be assumed or built against until this is settled.
+
 ## 1. Project Overview
 
 Everletter is a subscription mail service that sends two physical story letters per month. This private operations CRM is for Marcy and her business partner Ashley. It replaces an error-prone Smartsheet/Excel mailing schedule and coordinates customer lookup, 1st/15th mailing batches, envelope printing, assembly, quality checks, and Ashley's physical storage bins.
@@ -62,7 +93,7 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 ### Major directories
 
 - `app/` - App Router UI shell, global CSS, auth helper, and API routes.
-- `app/api/shared-state/route.ts` - GET/POST API for the current dataset and shared overrides in D1. It creates the `crm_state` table defensively if needed.
+- `app/api/shared-state/route.ts` - GET/POST API for the current dataset and shared overrides. The Cloudflare D1 (`cloudflare:workers`) backing was removed along with the Worker/Sites runtime; this is currently a non-persistent stub (GET returns empty state, POST returns 503) pending the Postgres/Drizzle migration.
 - `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script loading.
 - `app/layout.tsx` - Root HTML layout and metadata.
 - `app/globals.css` - All CRM, responsive, mobile, and print-related styling.
@@ -72,11 +103,8 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 - `public/everletterSeed.json` and `public/seed-data.js` - Sanitized empty fallback dataset. Never replace these with production customer data in Git.
 - `public/assets/` - Everletter logo, wax seal, character art, envelope corner art, and sample-letter images.
 - `db/schema.ts` - Drizzle definition of the current `crm_state` table.
-- `db/index.ts` - Drizzle/D1 binding helper. The shared-state route currently uses raw prepared statements rather than this helper.
-- `drizzle/` - Generated D1 migration and Drizzle metadata.
-- `worker/index.ts` - Cloudflare Worker entry point and Vinext image-optimization bridge.
-- `build/sites-vite-plugin.ts` - Sites-specific Vite build integration. Preserve unless hosting is deliberately migrated.
-- `.openai/hosting.json` - OpenAI Sites project identifier plus logical D1 binding (`DB`).
+- `db/index.ts` - Was the Drizzle/D1 binding helper (`cloudflare:workers` env.DB). Now a stub that throws, pending a real `drizzle-orm/node-postgres` connection.
+- `drizzle/` - Generated D1 (SQLite-dialect) migration and Drizzle metadata. Will be regenerated once the schema/dialect moves to Postgres.
 - `tests/rendered-html.test.mjs` - Starter-template tests. These are stale and do not represent the CRM; see Known Issues.
 - `examples/` - Starter D1 example code, not used by the CRM. It can be removed after confirming no tooling requires it.
 
