@@ -258,20 +258,20 @@ No secret values currently live in this GitHub checkout. `.env*`, PEM files, cus
    pnpm install --frozen-lockfile
    ```
 
-4. No `.env` file is required for the sanitized local app.
-5. Start local development:
+4. Copy `.env.example` to `.env.local` (gitignored) and adjust `DATABASE_URL` if needed; the default matches `devops/docker-compose.yml`.
+5. Start local Postgres and apply migrations:
+
+   ```bash
+   pnpm docker:up
+   pnpm db:migrate
+   ```
+
+   `docker:up`/`docker:down` run `devops/docker-compose.yml` with an explicit `--project-directory .` and `-p everletter-ops-crm`, so the project name (and its data volume) stay stable regardless of where the compose file itself lives.
+
+6. Start local development:
 
    ```bash
    pnpm dev
-   ```
-
-   Use the local URL printed by Vinext/Vite. Local D1 state is stored under `.wrangler/` and is not production data.
-
-   On Windows PowerShell, the committed scripts currently fail because they use Unix-style inline environment assignment. Until the scripts are fixed with `cross-env`, use:
-
-   ```powershell
-   $env:WRANGLER_LOG_PATH = ".wrangler/wrangler.log"
-   pnpm exec vinext dev
    ```
 
 ### Build, lint, and database migration
@@ -280,16 +280,10 @@ No secret values currently live in this GitHub checkout. `.env*`, PEM files, cus
 pnpm build
 pnpm lint
 pnpm db:generate
+pnpm db:migrate
 ```
 
-Windows PowerShell build workaround:
-
-```powershell
-$env:WRANGLER_LOG_PATH = ".wrangler/wrangler.log"
-pnpm exec vinext build
-```
-
-Only run `pnpm db:generate` after intentionally changing `db/schema.ts`, then inspect and commit the generated migration.
+Only run `pnpm db:generate` after intentionally changing `db/schema.ts`, then inspect the generated migration, commit it, and run `pnpm db:migrate` to apply it to your local Postgres (started via `pnpm docker:up`).
 
 ### Tests
 

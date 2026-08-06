@@ -4,10 +4,9 @@ Private operations CRM for Everletter mailing production.
 
 ## Current Architecture
 
-- Vinext/Vite/React shell in `app/`
+- Next.js/React shell in `app/`
 - Main browser CRM logic in `public/app.js`
-- Shared state API in `app/api/shared-state/route.ts`
-- Cloudflare D1 schema in `db/schema.ts`
+- Shared state API in `app/api/shared-state/route.ts`, backed by self-hosted Postgres via Drizzle (`db/schema.ts`)
 - Styling in `app/globals.css`
 - Static brand and character assets in `public/assets/`
 
@@ -26,8 +25,11 @@ Production data is loaded from the hosted database after users import the curren
 
 ```bash
 pnpm install
-pnpm exec vinext dev
-pnpm exec vinext build
+cp .env.example .env.local   # adjust DATABASE_URL if needed
+pnpm docker:up                # starts local Postgres (devops/docker-compose.yml)
+pnpm db:migrate
+pnpm dev
+pnpm build
 ```
 
 ## Notes
