@@ -334,7 +334,7 @@ function getSpreadsheetValue(row, ...names) {
 function spreadsheetDateToIso(value) {
   if (!value) return '';
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    return value.toISOString().slice(0, 10);
   }
   if (typeof value === 'number') {
     const date = new Date(Math.round((value - 25569) * 86400 * 1000));
