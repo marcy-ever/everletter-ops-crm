@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+.wrangler
+devops
+examples
+tests
+*.log
+npm-debug.log*
+.DS_Store
+README.md
+CLAUDE.md
