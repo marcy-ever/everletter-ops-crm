@@ -33,6 +33,11 @@ services:
   # Postgres service, and running both at once on port 3000 would collide.
   app:
     profiles: ["full"]
+    # `image:` names the tag that `build:` produces locally (docker:up:full
+    # passes --build) and is also what `docker compose pull` targets on its
+    # own - the NAS deploy script pulls the CI-built image via this tag
+    # instead of building from source.
+    image: ghcr.io/marcy-ever/everletter-ops-crm:latest
     build:
       context: .
       dockerfile: devops/app.Dockerfile
