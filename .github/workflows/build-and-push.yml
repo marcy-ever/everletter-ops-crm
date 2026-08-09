@@ -2,7 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [main, ci/github-actions-pipeline] # TEMP: verifying on this branch before merge, reverted before merge
+    branches: [main]
   workflow_dispatch:
 
 jobs:
