@@ -34,3 +34,20 @@ jobs:
           tags: |
             ghcr.io/marcy-ever/everletter-ops-crm:latest
             ghcr.io/marcy-ever/everletter-ops-crm:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Gate on the push event specifically (not just the branch) so a manual
+    # workflow_dispatch run - e.g. to test the build step - never triggers a
+    # NAS deploy on its own.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: SSH into NAS and run deploy.sh
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.NAS_SSH_HOST }}
+          username: ${{ secrets.NAS_SSH_USER }}
+          port: ${{ secrets.NAS_SSH_PORT }}
+          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          script: ~/lyra/everletter-ops-crm/devops/deploy.sh
