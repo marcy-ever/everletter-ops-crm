@@ -31,4 +31,4 @@ else
     $COMPOSE up -d app
 fi
 
-success "Everletter deploy completed."
+success "Everletter deploy completed!"
