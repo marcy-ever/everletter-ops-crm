@@ -1,0 +1,53 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: devops/app.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/marcy-ever/everletter-ops-crm:latest
+            ghcr.io/marcy-ever/everletter-ops-crm:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Gate on the push event specifically (not just the branch) so a manual
+    # workflow_dispatch run - e.g. to test the build step - never triggers a
+    # NAS deploy on its own.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: SSH into NAS and run deploy.sh
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.FT_SSH_HOST }}
+          username: ${{ secrets.FT_SSH_USER }}
+          port: ${{ secrets.FT_SSH_PORT }}
+          key: ${{ secrets.FT_SSH_PRIVATE_KEY }}
+          script: ~/lyra/everletter-ops-crm/devops/deploy.sh

@@ -13,9 +13,9 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "docker:up": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . up -d",
-    "docker:up:full": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --profile full up -d --build",
-    "docker:down": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --profile full down"
+    "docker:up": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --env-file .env.local up -d",
+    "docker:up:full": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --env-file .env.local --profile full up -d --build",
+    "docker:down": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --env-file .env.local --profile full down"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
