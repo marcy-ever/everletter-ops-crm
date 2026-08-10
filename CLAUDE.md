@@ -210,9 +210,9 @@ Current D1 record kinds:
 ### Authentication
 
 - Purpose: restrict the real CRM to authorized users.
-- Provider: Auth.js (`next-auth@5`) with Google OAuth. `auth.ts` (repo root) configures the provider and the jwt/session callbacks; `proxy.ts` (repo root - Next 16 renamed `middleware.ts` to `proxy.ts`) protects every route: unauthenticated requests redirect to Google sign-in, authenticated-but-not-allowlisted requests redirect to `/access-denied`.
-- Allowlist/roles: `ALLOWED_USERS` env var, a comma-separated `email:role` list - not a database table. Google sign-in itself succeeds for any valid account; `lib/allowlist.ts` matches the resulting email (case-insensitively) and attaches the role to the session, or `null` if unmatched, which is what actually gates access (in `proxy.ts`). The resolved role is also embedded on the page shell (`data-user-role`/`data-user-email` on `.ops-shell` in `app/page.tsx`) for `public/app.js` to read later - no per-feature restrictions exist yet; that's pending Marcy specifying what Ashley should be restricted from.
-- Status: structurally complete but not live-tested. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are still placeholders in `.env.example` pending Marcy setting up the Google Cloud OAuth project. Verified so far: clean build/typecheck, `proxy.ts` correctly redirects unauthenticated requests in dev, and the allowlist/role-resolution logic is unit-tested (`tests/allowlist.test.mjs`).
+- Provider: Auth.js (`next-auth@5`) with Google OAuth, plus an `ALLOWED_USERS` email/role allowlist enforced in `proxy.ts` (Next 16's rename of `middleware.ts`). No passwords, no user database.
+- Full reference - allowlist format and current entries, how to check the resolved role in server code and in `public/app.js`, how to add a user, and what's explicitly **not** built yet (no per-feature restrictions exist): see **[docs/auth.md](docs/auth.md)**.
+- Status: structurally complete but not live-tested. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are still placeholders in `.env.example` pending Marcy setting up the Google Cloud OAuth project.
 - Superseded: the old OpenAI Sites/ChatGPT-header-based approach (`app/chatgpt-auth.ts`, never actually called by the page) has been removed. The previous known limitation (Ashley unrecognized in the required ChatGPT workspace) no longer applies - Google OAuth plus the allowlist replaces it entirely.
 
 ### DNS and custom domain

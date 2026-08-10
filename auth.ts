@@ -12,7 +12,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     // Google sign-in is allowed to succeed for any valid account here -
     // allowlist enforcement happens below (role stays null if not matched)
-    // and in middleware.ts, which redirects role-less sessions to
+    // and in proxy.ts, which redirects role-less sessions to
     // /access-denied. Keeping the two separate means denial gets our own
     // plain page instead of Auth.js's generic OAuth error page.
     async jwt({ token }) {
