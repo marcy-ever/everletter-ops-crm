@@ -18,7 +18,7 @@ git fetch
 COMPOSE_CHANGED=$(git diff HEAD..origin/main --name-only -- devops/docker-compose.yml | wc -l)
 git reset --hard origin/main
 
-COMPOSE="docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --profile full"
+COMPOSE="docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --env-file .env.local --profile full"
 
 if [ "$COMPOSE_CHANGED" -gt "0" ]; then
     log "docker-compose.yml changed - full down/up..."
