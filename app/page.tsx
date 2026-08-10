@@ -1,11 +1,14 @@
 import Script from "next/script";
+import { auth } from "@/auth";
 
 export const metadata = {
   title: "Everletter Ops CRM",
   description: "Shared mailing operations CRM for Everletter.",
 };
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth();
+
   return (
     <>
       <div className="character-decor" aria-hidden="true">
@@ -18,7 +21,13 @@ export default function Home() {
         <img className="character-peek character-peek-marigold" src="/assets/marigold-adult-clothesline.png" alt="" />
       </div>
 
-      <div className="ops-shell">
+      {/*
+        data-user-role/data-user-email: not read anywhere yet. Future
+        per-feature restrictions (still pending Marcy specifying what Ashley
+        should be restricted from) can read these off the DOM from app.js
+        without another server round trip.
+      */}
+      <div className="ops-shell" data-user-role={session?.role ?? ""} data-user-email={session?.user?.email ?? ""}>
         <aside className="sidebar">
           <div>
             <div className="brand-lockup">
