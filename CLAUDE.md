@@ -23,9 +23,9 @@ The sections below (1-9) describe the app **as built**, which was shaped by the 
 
 **Known risks to prioritize (in rough order):**
 
-1. **No app-level auth enforcement.** `app/chatgpt-auth.ts` exists but isn't called; access currently relies solely on hosting-platform controls. This is a real customer PII exposure risk once hosting changes, since there's no in-app backstop.
+1. **App-level auth enforcement is structurally in place but not yet live.** Google OAuth (Auth.js) plus an email allowlist now gate every route (see the Authentication section under Infrastructure & Services) - but `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are still placeholders pending Marcy's Google Cloud setup, so this hasn't been exercised with a real sign-in yet.
 2. **No backup/versioning of the dataset.** The whole CRM dataset is a single JSON blob (`crmDataset::current`) that is overwritten on every import, with no history or restore path.
-3. **Ashley (co-owner) currently can't log in.** Blocking day-to-day operational use by one of the two owners.
+3. **Ashley (co-owner) can't log in yet.** Blocked on the same pending Google OAuth credentials as #1, not a separate issue anymore.
 4. **Test suite is stale/broken.** `pnpm test` runs starter-template tests unrelated to the CRM; it is not a real release gate right now.
 5. **Two committed lockfiles.** Both `pnpm-lock.yaml` and `package-lock.json` are committed; pnpm is authoritative and the npm lockfile should eventually be removed.
 
@@ -97,8 +97,12 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 - `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script loading.
 - `app/layout.tsx` - Root HTML layout and metadata.
 - `app/globals.css` - All CRM, responsive, mobile, and print-related styling.
-- `app/chatgpt-auth.ts` - Helpers for Sites/ChatGPT identity headers. These helpers are currently **not called by the page**, so app-level auth is not enforced here.
 - `app/_sites-preview/` - Leftover starter preview code. It is not part of the current page and should be removed with its unused dependency.
+- `app/access-denied/page.tsx` - Plain page shown to authenticated users whose email isn't on the `ALLOWED_USERS` allowlist.
+- `app/api/auth/[...nextauth]/route.ts` - Auth.js's catch-all route (sign-in, callback, sign-out, session, etc.), re-exporting `handlers` from `auth.ts`.
+- `auth.ts` (repo root) - Auth.js config: Google provider, jwt/session callbacks that attach the resolved role (or `null`) to the session via `lib/allowlist.ts`.
+- `proxy.ts` (repo root) - Route protection for the whole app (Next 16 renamed `middleware.ts` to `proxy.ts`; see the Authentication section under Infrastructure & Services).
+- `lib/allowlist.ts` - Parses `ALLOWED_USERS` (`email:role` pairs) and resolves a role for a given email. Pure/testable; see `tests/allowlist.test.mjs`.
 - `public/app.js` - Main application. It owns state, views, spreadsheet parsing, validation, mailing calculations, status changes, profiles, envelope HTML generation, QA, packet/bin workflows, simulators, and DOM event binding.
 - `public/everletterSeed.json` and `public/seed-data.js` - Sanitized empty fallback dataset. Never replace these with production customer data in Git.
 - `public/assets/` - Everletter logo, wax seal, character art, envelope corner art, and sample-letter images.
@@ -206,9 +210,10 @@ Current D1 record kinds:
 ### Authentication
 
 - Purpose: restrict the real CRM to authorized users.
-- Provider: currently the hosting platform's private-site/ChatGPT access controls. `app/chatgpt-auth.ts` understands Sites-injected identity headers, but the CRM page does not call it.
-- Account/config: access is managed in the OpenAI Sites/ChatGPT workspace, not in source code.
-- Known limitation: Ashley previously could not be added because `ashley@theeverletter.com` was not recognized as a member of the required workspace. A separate public fake-data demo was created for feedback; do not expose the real CRM or D1 customer data publicly.
+- Provider: Auth.js (`next-auth@5`) with Google OAuth. `auth.ts` (repo root) configures the provider and the jwt/session callbacks; `proxy.ts` (repo root - Next 16 renamed `middleware.ts` to `proxy.ts`) protects every route: unauthenticated requests redirect to Google sign-in, authenticated-but-not-allowlisted requests redirect to `/access-denied`.
+- Allowlist/roles: `ALLOWED_USERS` env var, a comma-separated `email:role` list - not a database table. Google sign-in itself succeeds for any valid account; `lib/allowlist.ts` matches the resulting email (case-insensitively) and attaches the role to the session, or `null` if unmatched, which is what actually gates access (in `proxy.ts`). The resolved role is also embedded on the page shell (`data-user-role`/`data-user-email` on `.ops-shell` in `app/page.tsx`) for `public/app.js` to read later - no per-feature restrictions exist yet; that's pending Marcy specifying what Ashley should be restricted from.
+- Status: structurally complete but not live-tested. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are still placeholders in `.env.example` pending Marcy setting up the Google Cloud OAuth project. Verified so far: clean build/typecheck, `proxy.ts` correctly redirects unauthenticated requests in dev, and the allowlist/role-resolution logic is unit-tested (`tests/allowlist.test.mjs`).
+- Superseded: the old OpenAI Sites/ChatGPT-header-based approach (`app/chatgpt-auth.ts`, never actually called by the page) has been removed. The previous known limitation (Ashley unrecognized in the required ChatGPT workspace) no longer applies - Google OAuth plus the allowlist replaces it entirely.
 
 ### DNS and custom domain
 
@@ -338,8 +343,8 @@ Highest priority:
 - Imports overwrite `crmDataset::current`; there is no import history, rollback UI, versioned backup, or user-facing export/restore flow.
 - Status saves are asynchronous and optimistic. Failures are logged/alerted inconsistently, and there is no visible retry queue or conflict handling.
 - Stable keys are derived in browser code. A key-generation change can orphan existing overrides.
-- Authentication helpers exist but are not enforced by `app/page.tsx`. Production privacy currently depends on Sites access configuration.
-- Ashley's access to the private app was unresolved. Do not solve this by making real customer data public.
+- Google OAuth (Auth.js) plus an email allowlist now enforce access on every route (`auth.ts`, `proxy.ts`, `lib/allowlist.ts`) - but real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` haven't been set yet, so this hasn't been exercised with a live sign-in. Marcy and Ashley are both in `ALLOWED_USERS`; Ashley's access is unblocked as soon as real credentials land.
+- No per-feature/per-role restrictions exist yet, even though the resolved role is available (`session.role`, and `data-user-role` on the page shell for `public/app.js`). Pending Marcy specifying what Ashley should be restricted from.
 - Private Google Drive folder IDs were removed from GitHub; Drive buttons are therefore incomplete in this source.
 
 Integrations not built:
@@ -389,7 +394,7 @@ Logical next steps, in order:
 1. **Secure ownership and access:** confirm repository collaborators, enable branch protection, document Sites ownership, and decide whether to retain Sites-managed infrastructure or migrate to an Everletter-owned Cloudflare account.
 2. **Back up live data before structural work:** add authenticated export of the current D1 dataset and overrides; capture timestamped/versioned import snapshots; document restore steps.
 3. **Fix the engineering baseline:** replace stale tests, remove starter artifacts, choose pnpm only, fix encoding, add API validation, and add a small synthetic fixture suite.
-4. **Resolve authentication for Marcy and Ashley:** implement/enforce private access that works on desktop and phone before broadening use.
+4. **Finish authentication for Marcy and Ashley:** structurally done (Google OAuth via Auth.js + `ALLOWED_USERS` allowlist, enforced by `proxy.ts` on every route) - remaining work is Marcy setting up real Google Cloud OAuth credentials, then a live sign-in check on desktop and phone before broadening use.
 5. **Design normalized D1 schema:** customers, recipients, subscriptions, external orders/payments, mailings, component statuses, notes, exceptions, audit events, imports, and integration cursors. Preserve migration/rollback strategy.
 6. **Build native manual entry/editing:** allow adding and correcting customers/subscriptions/orders directly in CRM so spreadsheet uploads can be retired safely.
 7. **Migrate existing D1 JSON:** write and test a one-time, reversible migration from `crmDataset::current` and override rows into normalized tables.
