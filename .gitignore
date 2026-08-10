@@ -44,3 +44,5 @@ next-env.d.ts
 
 # NAS deploy log (written by devops/deploy.sh on the deploy host)
 /devops/deploy.txt
+
+.secrets

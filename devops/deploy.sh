@@ -11,7 +11,7 @@ success() { local msg="[${DATE}] SUCCESS: $*"; echo "$msg"; echo "$msg" >> "$LOG
 failure() { local msg="[${DATE}] FAILURE: $*"; echo "$msg" >&2; echo "$msg" >> "$LOGFILE"; }
 
 cd "$REPO_DIR"
-trap 'failure "Everletter deploy failed at line ${LINENO}."' ERR
+trap 'failure "Everletter deploy failed at line: ${LINENO}."' ERR
 
 log "=== Everletter deploy started ==="
 git fetch
