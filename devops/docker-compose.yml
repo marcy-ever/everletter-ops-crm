@@ -30,7 +30,8 @@ services:
   # Containerized app, for full-stack verification and eventual NAS deployment.
   # Not part of the default `up` (see `docker:up` vs `docker:up:full` in
   # package.json) - local iteration normally uses `pnpm dev` against this same
-  # Postgres service, and running both at once on port 3000 would collide.
+  # Postgres service, and there's no reason to also run a redundant
+  # containerized instance alongside it.
   app:
     profiles: ["full"]
     # `image:` names the tag that `build:` produces locally (docker:up:full
@@ -48,7 +49,7 @@ services:
     environment:
       DATABASE_URL: postgres://everletter:everletter@postgres:5432/everletter_dev
     ports:
-      - "3000:3000"
+      - "3100:3000"
 
 volumes:
   postgres-data:
