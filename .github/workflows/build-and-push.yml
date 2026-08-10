@@ -46,8 +46,8 @@ jobs:
       - name: SSH into NAS and run deploy.sh
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.NAS_SSH_HOST }}
-          username: ${{ secrets.NAS_SSH_USER }}
-          port: ${{ secrets.NAS_SSH_PORT }}
-          key: ${{ secrets.NAS_SSH_PRIVATE_KEY }}
+          host: ${{ secrets.FT_SSH_HOST }}
+          username: ${{ secrets.FT_SSH_USER }}
+          port: ${{ secrets.FT_SSH_PORT }}
+          key: ${{ secrets.FT_SSH_PRIVATE_KEY }}
           script: ~/lyra/everletter-ops-crm/devops/deploy.sh
