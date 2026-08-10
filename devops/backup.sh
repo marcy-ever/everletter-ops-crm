@@ -7,4 +7,5 @@ RETENTION_DAYS=14
 
 mkdir -p "$BACKUP_DIR"
 docker exec everletter-ops-crm_postgres_1 pg_dump -U everletter everletter_dev | gzip > "$BACKUP_DIR/everletter_${DATE}.sql.gz"
+rclone copy "$BACKUP_DIR/everletter_${DATE}.sql.gz" b2backup:everletter-backups/
 find "$BACKUP_DIR" -name "everletter_*.sql.gz" -mtime +$RETENTION_DAYS -delete
