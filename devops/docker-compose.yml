@@ -60,6 +60,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-everletter}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-everletter_dev}
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-false}
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET must be set}
+      AUTH_URL: ${AUTH_URL:?AUTH_URL must be set}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET must be set}
       ALLOWED_USERS: ${ALLOWED_USERS:?ALLOWED_USERS must be set}
