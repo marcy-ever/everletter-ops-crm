@@ -10,11 +10,35 @@ import { stagingLocations } from "./staging_locations";
 // same pattern e-commerce systems use for order shipping addresses vs. a
 // customer's current saved address). See docs/schema-design.md.
 export const mailings = pgTable("mailings", {
+  // `${orderId}::${character}::${letterNumber}` (letterNumber empty-string
+  // if absent) - derived server-side in lib/dual-write.ts, NOT app.js's own
+  // generated mailingId. app.js's mailingId truncates to 34 chars and
+  // routinely collides for the most common case (a Month-to-month
+  // subscriber's 2 letters under one order) - see docs/schema-design.md.
+  // This derivation uses real, stable business fields instead, so it
+  // survives re-imports even if row order in the spreadsheet changes.
   id: text("id").primaryKey(),
   subscriptionId: text("subscription_id")
     .notNull()
     .references(() => subscriptions.id),
-  letterNumber: integer("letter_number").notNull(),
+  // app.js's own generated mailingId (public/app.js) - NOT unique, can
+  // collide (see the `id` comment above). Stored only as a matching aid:
+  // an incoming mailingStatus/componentStatus override carries this value
+  // (not our stable `id`), so it's needed to look the row back up. Never
+  // used as identity - see docs/schema-design.md.
+  appMailingId: text("app_mailing_id").notNull(),
+  // The spreadsheet row position (app.js's `sourceRow`) this mailing had as
+  // of the most recently processed import. This is NOT a stable identifier
+  // - it's a position within whichever file was most recently uploaded, and
+  // shifts if rows are added/removed/reordered between imports. Refreshed
+  // on every import; used only alongside appMailingId to disambiguate which
+  // of several same-appMailingId rows an incoming override refers to.
+  // Never part of this row's identity. See docs/schema-design.md.
+  lastSourceRow: text("last_source_row"),
+  // Nullable: some real spreadsheet rows arrive without a letter number.
+  // There's no honest fallback value (0/1 would misrepresent real data), and
+  // nothing downstream requires it to be present - it's descriptive only.
+  letterNumber: integer("letter_number"),
   scheduledDate: date("scheduled_date", { mode: "string" }).notNull(),
   status: text("status").notNull(),
   recipientName: text("recipient_name").notNull(),

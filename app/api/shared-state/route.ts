@@ -1,6 +1,12 @@
 import { desc, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { crmState } from "@/db/schema";
+import {
+  dualWriteComponentStatus,
+  dualWriteImport,
+  dualWriteMailingStatus,
+  dualWriteReviewedException,
+} from "@/lib/dual-write";
 
 type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "crmDataset";
 
@@ -85,6 +91,26 @@ export async function POST(request: Request) {
         target: crmState.id,
         set: { value, updatedAt: sql`now()` },
       });
+
+    // Option B Phase 1: shadow-write into the normalized tables alongside
+    // the real blob write above. Validation only - nothing reads from these
+    // tables yet, so a failure here must never affect this response. Each
+    // dualWrite* function already swallows its own errors; this try/catch
+    // is defense in depth against a mistake in the dispatch itself.
+    try {
+      if (kind === "crmDataset" && key === "current") {
+        const parsed = JSON.parse(value) as { seed?: unknown };
+        if (parsed.seed) await dualWriteImport(parsed.seed as Parameters<typeof dualWriteImport>[0]);
+      } else if (kind === "mailingStatus") {
+        await dualWriteMailingStatus(key, value);
+      } else if (kind === "componentStatus") {
+        await dualWriteComponentStatus(key, value);
+      } else if (kind === "reviewedException") {
+        await dualWriteReviewedException(key);
+      }
+    } catch (error) {
+      console.error("[dual-write] dispatch failed, primary write unaffected:", error);
+    }
 
     return Response.json({ ok: true });
   } catch (error) {
