@@ -27,7 +27,6 @@ The sections below (1-9) describe the app **as built**, which was shaped by the 
 2. **No backup/versioning of the dataset.** The whole CRM dataset is a single JSON blob (`crmDataset::current`) that is overwritten on every import, with no history or restore path.
 3. **Ashley (co-owner) can't log in yet.** Blocked on the same pending Google OAuth credentials as #1, not a separate issue anymore.
 4. **Test suite is stale/broken.** `pnpm test` runs starter-template tests unrelated to the CRM; it is not a real release gate right now.
-5. **Two committed lockfiles.** Both `pnpm-lock.yaml` and `package-lock.json` are committed; pnpm is authoritative and the npm lockfile should eventually be removed.
 
 **CI/CD:** GitLab is under consideration for later but not decided yet. No CI/CD system should be assumed or built against until this is settled.
 
@@ -84,7 +83,7 @@ Styling/tooling:
 - ESLint `9.39.4` with Next configuration
 - Node's built-in test runner
 
-Package manager: **pnpm** is authoritative (`pnpm-lock.yaml` and `pnpm-workspace.yaml`). A historical `package-lock.json` also exists; do not update both. Prefer removing the npm lockfile after confirming no external workflow relies on it.
+Package manager: **pnpm** is the sole authority (`pnpm-lock.yaml` and `pnpm-workspace.yaml`). The historical `package-lock.json` has been removed.
 
 The non-obvious architectural choice is deliberate but transitional: the React/TSX layer provides the server-rendered shell, while most product behavior and rendering live in one large browser script. This made rapid prototyping and print-window generation easy, but new substantial work should gradually move into typed modules/components without rewriting working workflows all at once.
 
@@ -362,7 +361,6 @@ Code quality/maintenance:
 - `app/globals.css` is similarly large and should be decomposed carefully.
 - Starter files remain: `app/_sites-preview/`, `react-loading-skeleton`, and `examples/`.
 - `tests/rendered-html.test.mjs` asserts starter content that no longer exists.
-- Both `pnpm-lock.yaml` and `package-lock.json` are committed, creating package-manager ambiguity.
 - The `dev`, `build`, and `start` package scripts use Unix-style `VAR=value command` syntax and fail in Windows PowerShell/cmd. Add `cross-env` or move the default entirely into `vite.config.ts`.
 - Some source strings show mojibake such as `Â·`; normalize encoding while preserving intended display.
 - Google Fonts load over the network in generated print windows. Printing before fonts finish loading may use fallback fonts.
