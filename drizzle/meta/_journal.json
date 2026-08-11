@@ -15,6 +15,20 @@
       "when": 1786415108617,
       "tag": "0001_misty_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786420162885,
+      "tag": "0002_last_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786423077103,
+      "tag": "0003_red_wallow",
+      "breakpoints": true
     }
   ]
 }

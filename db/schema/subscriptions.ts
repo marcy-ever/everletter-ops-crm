@@ -18,7 +18,9 @@ export const subscriptions = pgTable("subscriptions", {
   character: text("character").notNull(),
   termType: text("term_type").notNull(),
   status: text("status").notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  // Nullable: same reasoning as orders.orderedAt - a missing order date
+  // isn't flagged as bad data by app.js, so there's no honest fallback.
+  startedAt: timestamp("started_at", { withTimezone: true }),
   totalLettersExpected: integer("total_letters_expected").notNull(),
   recipientName: text("recipient_name").notNull(),
   addressLine1: text("address_line1"),

@@ -11,5 +11,8 @@ export const orders = pgTable("orders", {
     .references(() => subscriptions.id),
   externalOrderNumber: text("external_order_number").notNull(),
   amount: numeric("amount", { precision: 10, scale: 2 }),
-  orderedAt: timestamp("ordered_at", { withTimezone: true }).notNull(),
+  // Nullable: not every imported row has an original order date, and
+  // app.js doesn't flag that as bad data the way it does a missing ship
+  // date - so there's no principled fallback timestamp to invent here.
+  orderedAt: timestamp("ordered_at", { withTimezone: true }),
 });
