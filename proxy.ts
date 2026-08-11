@@ -2,12 +2,6 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 
 export default auth((req) => {
-  const { pathname } = req.nextUrl;
-
-  if (pathname === "/access-denied") {
-    return NextResponse.next();
-  }
-
   if (!req.auth) {
     const signInUrl = new URL("/api/auth/signin", req.nextUrl.origin);
     signInUrl.searchParams.set("callbackUrl", req.nextUrl.href);

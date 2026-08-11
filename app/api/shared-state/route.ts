@@ -11,6 +11,12 @@ const allowedKinds = new Set<StateKind>([
   "crmDataset",
 ]);
 
+function toErrorPayload(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined;
+  return cause ? { error: message, cause } : { error: message };
+}
+
 function toStatePayload(rows: Array<{ kind: string; itemKey: string; value: string }>) {
   const statusOverrides: Record<string, string> = {};
   const componentOverrides: Record<string, string> = {};
@@ -43,8 +49,8 @@ export async function GET() {
 
     return Response.json(toStatePayload(rows));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not load shared CRM state.";
-    return Response.json({ error: message }, { status: 500 });
+    console.error(error);
+    return Response.json(toErrorPayload(error, "Could not load shared CRM state."), { status: 500 });
   }
 }
 
@@ -82,8 +88,8 @@ export async function POST(request: Request) {
 
     return Response.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not save shared CRM state.";
-    return Response.json({ error: message }, { status: 500 });
+    console.error(error);
+    return Response.json(toErrorPayload(error, "Could not save shared CRM state."), { status: 500 });
   }
 }
 
