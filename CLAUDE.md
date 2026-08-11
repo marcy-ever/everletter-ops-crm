@@ -23,9 +23,9 @@ The sections below (1-9) describe the app **as built**, which was shaped by the 
 
 **Known risks to prioritize (in rough order):**
 
-1. **App-level auth enforcement is structurally in place but not yet live.** Google OAuth (Auth.js) plus an email allowlist now gate every route (see the Authentication section under Infrastructure & Services) - but `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are still placeholders pending Marcy's Google Cloud setup, so this hasn't been exercised with a real sign-in yet.
+1. **App-level auth enforcement is live and verified.** Google OAuth (Auth.js) plus an email allowlist gate every route (see the Authentication section under Infrastructure & Services). Real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are wired up, and a live sign-in has been verified working end-to-end.
 2. **No backup/versioning of the dataset.** The whole CRM dataset is a single JSON blob (`crmDataset::current`) that is overwritten on every import, with no history or restore path.
-3. **Ashley (co-owner) can't log in yet.** Blocked on the same pending Google OAuth credentials as #1, not a separate issue anymore.
+3. **Ashley (co-owner) should now be able to log in.** The credential blocker described in #1 is resolved (live sign-in verified for at least one allowlisted account); Ashley's own sign-in specifically hasn't been tested yet.
 4. **Test suite is stale/broken.** `pnpm test` runs starter-template tests unrelated to the CRM; it is not a real release gate right now.
 
 **CI/CD:** GitLab is under consideration for later but not decided yet. No CI/CD system should be assumed or built against until this is settled.
@@ -361,7 +361,6 @@ Code quality/maintenance:
 - `app/globals.css` is similarly large and should be decomposed carefully.
 - Starter files remain: `app/_sites-preview/`, `react-loading-skeleton`, and `examples/`.
 - `tests/rendered-html.test.mjs` asserts starter content that no longer exists.
-- The `dev`, `build`, and `start` package scripts use Unix-style `VAR=value command` syntax and fail in Windows PowerShell/cmd. Add `cross-env` or move the default entirely into `vite.config.ts`.
 - Some source strings show mojibake such as `Â·`; normalize encoding while preserving intended display.
 - Google Fonts load over the network in generated print windows. Printing before fonts finish loading may use fallback fonts.
 - Envelope output needs physical-printer QA for feed orientation, scaling at 100%, A7 paper size, margins, and each character's colored stock.
