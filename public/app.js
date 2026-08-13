@@ -381,7 +381,7 @@ function normalizePlan(value) {
   if (lower.includes('12')) return '12-month';
   if (lower.includes('6')) return '6-month';
   if (lower.includes('month') || lower.includes('renewal')) return 'Month-to-month';
-  if (lower.includes('one') || lower.includes('sample')) return 'One-time';
+  if (lower.includes('one') || lower.includes('sample') || lower.includes('1')) return 'One-time';
   return raw;
 }
 
