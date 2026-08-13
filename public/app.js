@@ -205,9 +205,8 @@ async function loadSharedState() {
   if (!response.ok) return;
 
   const shared = await response.json();
-  if (shared.dataset?.seed?.summary) {
-    state.seed = shared.dataset.seed;
-    state.importInfo = shared.dataset;
+  if (shared.dataset?.summary) {
+    state.seed = shared.dataset;
   }
   if (shared.statusOverrides && typeof shared.statusOverrides === 'object') {
     state.statusOverrides = { ...state.statusOverrides, ...shared.statusOverrides };
