@@ -46,6 +46,10 @@ function loadAppJsSandbox() {
     console,
     localStorage: { getItem: () => null, setItem() {} },
     fetch: async () => ({ ok: false, json: async () => ({}) }),
+    // Real browsers provide TextEncoder as a global (used by sha256Hex to
+    // get UTF-8 bytes); vm.createContext doesn't inherit it from the
+    // outer Node process the way it doesn't inherit fetch either.
+    TextEncoder,
   };
   vm.createContext(sandbox);
   new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
@@ -106,20 +110,34 @@ test("buildMailingId matches app.js's real buildMailingId for sample data", () =
   }
 });
 
-test("ids have no length cap (regression guard for the truncation-collision bug)", () => {
+test("ids stay short and bounded regardless of input length (hashed, not embedded raw)", () => {
+  // Regression guard for the id-length bug: these ids used to embed their
+  // raw slugged input text (and each layer re-embedded the layer below),
+  // so length grew unboundedly with input length. Hashing means length is
+  // now constant - PREFIX- (varies) + a fixed 24-char hex digest - no
+  // matter how long the underlying name/address/character/plan text is.
   const longName = "A Very Long Recipient Name That Keeps Going And Going And Going";
   const longAddress = "1234 An Extremely Long Street Name Boulevard Avenue, Some City, ST 99999";
 
   const subscriberId = buildSubscriberId({ email: "", recipientName: longName, address: longAddress });
-  assert.ok(subscriberId.length > 40, `expected an uncapped id, got ${subscriberId.length} chars: ${subscriberId}`);
+  assert.equal(subscriberId.length, "SUB-".length + 24, `expected a fixed-length id, got ${subscriberId.length} chars: ${subscriberId}`);
   assert.equal(subscriberId, appJs.buildSubscriberId({ email: "", recipientName: longName, address: longAddress }));
 
   const recipientId = buildRecipientId({ subscriberId, recipientName: longName, address: longAddress });
-  assert.ok(recipientId.length > 60, `expected an uncapped id, got ${recipientId.length} chars: ${recipientId}`);
+  assert.equal(recipientId.length, "REC-".length + 24, `expected a fixed-length id, got ${recipientId.length} chars: ${recipientId}`);
   assert.equal(
     recipientId,
     appJs.buildRecipientId({ subscriberId, recipientName: longName, address: longAddress }),
   );
+});
+
+test("ids are deterministic - same input always produces the same id (load-bearing for re-import upserts)", () => {
+  const input = { email: "repeat@example.com", recipientName: "Repeat Person", address: "1 Repeat St" };
+  const first = buildSubscriberId(input);
+  for (let i = 0; i < 5; i++) {
+    assert.equal(buildSubscriberId({ ...input }), first);
+    assert.equal(appJs.buildSubscriberId({ ...input }), first);
+  }
 });
 
 test("buildRecipientId no longer collides two different real recipients sharing a long subscriberId prefix", () => {
