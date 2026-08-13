@@ -25,8 +25,8 @@ const state = {
   seed: null,
 };
 
-const openStatuses = new Set(['To Prepare', 'Assembling', 'Ready to Mail']);
-const statusOrder = ['To Prepare', 'Assembling', 'Ready to Mail', 'Mailed'];
+const openStatuses = new Set(['To Prepare', 'Printing', 'Assembling', 'Ready to Mail']);
+const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
 const qaFields = [
   { key: 'payment', label: 'Payment', options: ['Active', 'Needs Check', 'CC Failed', 'Paused'] },
   { key: 'envelope', label: 'Envelope', options: ['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'] },
@@ -426,6 +426,7 @@ function normalizeStatus(value) {
   const raw = String(value || '').trim();
   if (!raw) return 'To Prepare';
   const lower = raw.toLowerCase();
+  if (lower.includes('print')) return 'Printing';
   if (lower.includes('assem')) return 'Assembling';
   if (lower.includes('ready')) return 'Ready to Mail';
   if (lower.includes('mail')) return 'Mailed';
@@ -836,6 +837,7 @@ function renderQueue() {
       <div class="batch-actions" aria-label="Batch status actions">
         <span>Update shown rows:</span>
         <button type="button" data-bulk-status="To Prepare">To Prepare</button>
+        <button type="button" data-bulk-status="Printing">Printing</button>
         <button type="button" data-bulk-status="Assembling">Assembling</button>
         <button type="button" data-bulk-status="Ready to Mail">Ready to Mail</button>
         <button type="button" data-bulk-status="Mailed">Mailed</button>

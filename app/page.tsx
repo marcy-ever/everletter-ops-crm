@@ -84,6 +84,7 @@ export default async function Home() {
               <select id="statusFilter">
                 <option>Open</option>
                 <option>To Prepare</option>
+                <option>Printing</option>
                 <option>Assembling</option>
                 <option>Ready to Mail</option>
                 <option>Mailed</option>
