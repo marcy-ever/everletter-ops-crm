@@ -202,7 +202,7 @@ test("buildDatasetFromTables reconstructs the real spreadsheet identically to ap
   const clientSeed = appJs.buildSeedFromSpreadsheet(rows, sourceFile);
 
   await db.execute(sql`TRUNCATE TABLE ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
-  await dualWriteImport(clientSeed);
+  await dualWriteImport(clientSeed, db);
 
   const reconstructed = await buildDatasetFromTables(fixedNow, sourceFile);
 
