@@ -5,11 +5,17 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "config": {
+    "nodeTestFlags": "--experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "pnpm test:unit && pnpm test:e2e",
+    "test:unit": "node $npm_package_config_nodeTestFlags --test tests/allowlist.test.mjs tests/ids.test.mjs tests/keys.test.mjs tests/mailing-rules.test.mjs tests/build-dataset-from-tables.test.mjs tests/build-overrides-from-tables.test.mjs",
+    "test:e2e": "node $npm_package_config_nodeTestFlags --test --test-concurrency=1 tests/build-dataset-from-tables.e2e.test.mjs tests/dual-write-transactional.e2e.test.mjs tests/shared-state-get.e2e.test.mjs",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -24,7 +30,6 @@
     "pg": "^8.22.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "react-loading-skeleton": "3.5.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
