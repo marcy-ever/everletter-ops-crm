@@ -6,6 +6,12 @@
 // supposed to provide - this test exercises the actual dualWriteImport()
 // function and a real Postgres transaction, not a mock.
 //
+// This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
+// the real shared local Postgres tables - when running more than one of
+// these together, pass `node --test --test-concurrency=1 ...` or they'll
+// race each other (node:test runs separate files in parallel by default,
+// and there's only one physical database, not one per file).
+//
 // Requires a real local Postgres reachable via DATABASE_URL - skipped, not
 // failed, if it isn't available.
 import test from "node:test";

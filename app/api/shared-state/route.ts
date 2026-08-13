@@ -1,4 +1,4 @@
-import { desc, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { crmState } from "@/db/schema";
 import {
@@ -7,6 +7,8 @@ import {
   dualWriteMailingStatus,
   dualWriteReviewedException,
 } from "@/lib/dual-write";
+import { buildDatasetFromTables } from "@/lib/build-dataset-from-tables";
+import { fetchComponentOverrides, fetchReviewedExceptionKeys } from "@/lib/build-overrides-from-tables";
 
 type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "crmDataset";
 
@@ -23,37 +25,29 @@ function toErrorPayload(error: unknown, fallback: string) {
   return cause ? { error: message, cause } : { error: message };
 }
 
-function toStatePayload(rows: Array<{ kind: string; itemKey: string; value: string }>) {
-  const statusOverrides: Record<string, string> = {};
-  const componentOverrides: Record<string, string> = {};
-  const reviewed: string[] = [];
-  let dataset: unknown = null;
-
-  for (const row of rows) {
-    if (row.kind === "mailingStatus") statusOverrides[row.itemKey] = row.value;
-    if (row.kind === "componentStatus") componentOverrides[row.itemKey] = row.value;
-    if (row.kind === "reviewedException" && row.value === "1") reviewed.push(row.itemKey);
-    if (row.kind === "crmDataset" && row.itemKey === "current") {
-      try {
-        dataset = JSON.parse(row.value);
-      } catch {
-        dataset = null;
-      }
-    }
-  }
-
-  return { statusOverrides, componentOverrides, reviewed, dataset };
-}
-
 export async function GET() {
   try {
+    // Option B Phase 2, next step: dataset now comes from the normalized
+    // tables (lib/build-dataset-from-tables.ts), not the crm_state blob -
+    // crm_state itself is untouched (still written by POST below) and not
+    // dropped; this is only GET switching readers. componentOverrides and
+    // reviewed have no equivalent in the Dataset shape (by design - see
+    // lib/build-overrides-from-tables.ts's module comment) and are fetched
+    // separately. statusOverrides is always {} now: buildMailings() already
+    // reads each mailing's live, current status directly from the mailings
+    // table (dualWriteMailingStatus writes there directly and is
+    // load-bearing as of the transactional-write-path change), so there's
+    // nothing left for a separate override map to contribute -
+    // public/app.js's effectiveMailing() falls through to mailing.status
+    // when there's no override, which is exactly the already-current value.
     const db = getDb();
-    const rows = await db
-      .select({ kind: crmState.kind, itemKey: crmState.itemKey, value: crmState.value })
-      .from(crmState)
-      .orderBy(desc(crmState.updatedAt));
+    const [dataset, componentOverrides, reviewed] = await Promise.all([
+      buildDatasetFromTables(),
+      fetchComponentOverrides(db),
+      fetchReviewedExceptionKeys(db),
+    ]);
 
-    return Response.json(toStatePayload(rows));
+    return Response.json({ statusOverrides: {}, componentOverrides, reviewed, dataset });
   } catch (error) {
     console.error(error);
     return Response.json(toErrorPayload(error, "Could not load shared CRM state."), { status: 500 });
