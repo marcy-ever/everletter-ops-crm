@@ -27,6 +27,25 @@ const state = {
 
 const openStatuses = new Set(['To Prepare', 'Printing', 'Assembling', 'Ready to Mail']);
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
+
+// Shared with lib/mailing-rules.ts (tests/mailing-rules.test.mjs verifies
+// that copy matches these real functions exactly - see the comment there
+// for why app.js can't import it directly). Extracted so this logic has one
+// definition instead of being reimplemented ad hoc anywhere else that needs
+// it - the same reasoning behind extracting buildSubscriberId/mailingKey/etc.
+function isOpenStatus(status) {
+  return openStatuses.has(status);
+}
+
+function isOverdueMailing(mailing, today) {
+  return mailing.activeState === 'Active' && isOpenStatus(mailing.status) && !!mailing.shipDate && mailing.shipDate < today;
+}
+
+function isDueNext14Days(mailing, today) {
+  if (mailing.activeState !== 'Active' || !isOpenStatus(mailing.status) || !mailing.shipDate) return false;
+  const delta = daysBetween(today, mailing.shipDate);
+  return delta >= 0 && delta <= 14;
+}
 const qaFields = [
   { key: 'payment', label: 'Payment', options: ['Active', 'Needs Check', 'CC Failed', 'Paused'] },
   { key: 'envelope', label: 'Envelope', options: ['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'] },
@@ -678,8 +697,8 @@ function buildSeedFromSpreadsheet(rows, sourceName) {
       status: row.status,
       activeState,
       notes: row.notes,
-      overdue: activeState === 'Active' && openStatuses.has(row.status) && row.shipDate && row.shipDate < today,
-      dueNext14Days: activeState === 'Active' && openStatuses.has(row.status) && row.shipDate && daysBetween(today, row.shipDate) >= 0 && daysBetween(today, row.shipDate) <= 14,
+      overdue: isOverdueMailing({ activeState, status: row.status, shipDate: row.shipDate }, today),
+      dueNext14Days: isDueNext14Days({ activeState, status: row.status, shipDate: row.shipDate }, today),
       sourceRow: row.sourceRow,
     };
     mailings.push(mailing);
@@ -692,7 +711,7 @@ function buildSeedFromSpreadsheet(rows, sourceName) {
     subscription.generatedMailings += 1;
     recipient.characters.add(mailing.character);
 
-    if (activeState === 'Active' && openStatuses.has(mailing.status)) {
+    if (activeState === 'Active' && isOpenStatus(mailing.status)) {
       subscriber.openMailings += 1;
       if (mailing.shipDate && (!subscriber.nextShipDate || mailing.shipDate < subscriber.nextShipDate)) subscriber.nextShipDate = mailing.shipDate;
       if (mailing.shipDate && (!recipient.nextShipDate || mailing.shipDate < recipient.nextShipDate)) recipient.nextShipDate = mailing.shipDate;
@@ -732,7 +751,7 @@ function buildSeedFromSpreadsheet(rows, sourceName) {
     orderCount: orders.size,
     subscriptionCount: subscriptions.size,
     mailingCount: mailings.length,
-    openMailingCount: mailings.filter((mailing) => mailing.activeState === 'Active' && openStatuses.has(mailing.status)).length,
+    openMailingCount: mailings.filter((mailing) => mailing.activeState === 'Active' && isOpenStatus(mailing.status)).length,
     archivedMailingCount: mailings.filter((mailing) => mailing.activeState !== 'Active').length,
     overdueCount: mailings.filter((mailing) => mailing.activeState === 'Active' && mailing.overdue).length,
     dueNext14Count: mailings.filter((mailing) => mailing.activeState === 'Active' && mailing.dueNext14Days).length,
@@ -797,7 +816,7 @@ function availableBatchDates() {
   const today = todayIso();
   const dates = Array.from(new Set(
     effectiveMailings()
-      .filter((mailing) => mailing.activeState === 'Active' && openStatuses.has(mailing.status) && mailing.shipDate && mailing.shipDate >= today)
+      .filter((mailing) => mailing.activeState === 'Active' && isOpenStatus(mailing.status) && mailing.shipDate && mailing.shipDate >= today)
       .map((mailing) => mailing.shipDate),
   )).sort();
   return dates;
@@ -847,7 +866,7 @@ function renderShell() {
   const { seed } = state;
   const openExceptionCount = activeExceptions().length;
   const activeMailings = effectiveMailings().filter((mailing) => mailing.activeState === 'Active');
-  const openMailingCount = activeMailings.filter((mailing) => openStatuses.has(mailing.status)).length;
+  const openMailingCount = activeMailings.filter((mailing) => isOpenStatus(mailing.status)).length;
   topbarMeta.innerHTML = `
     <span>Imported ${formatDate(seed.summary.asOf)}</span>
     <span>${number(seed.summary.mailingCount)} mailings</span>
@@ -896,7 +915,7 @@ function renderQueue() {
     .filter((mailing) => mailing.activeState === 'Active')
     .filter((mailing) => !highExceptionMailingIds.has(mailing.mailingId))
     .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => (state.statusFilter === 'Open' ? openStatuses.has(mailing.status) : state.statusFilter === 'All' ? true : mailing.status === state.statusFilter))
+    .filter((mailing) => (state.statusFilter === 'Open' ? isOpenStatus(mailing.status) : state.statusFilter === 'All' ? true : mailing.status === state.statusFilter))
     .filter((mailing) =>
       includesText(
         [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
