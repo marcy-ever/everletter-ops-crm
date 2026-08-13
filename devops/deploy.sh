@@ -15,10 +15,10 @@ trap 'failure "Everletter deploy failed at line: ${LINENO}."' ERR
 
 log "=== Everletter deploy started ==="
 git fetch
-COMPOSE_CHANGED=$(git diff HEAD..origin/main --name-only -- devops/docker-compose.yml | wc -l)
+COMPOSE_CHANGED=$(git diff HEAD..origin/main --name-only -- devops/docker-compose.yml devops/docker-compose.app.yml | wc -l)
 git reset --hard origin/main
 
-COMPOSE="docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --env-file .env.local --profile full"
+COMPOSE="docker-compose -f devops/docker-compose.yml -f devops/docker-compose.app.yml -p everletter-ops-crm --project-directory . --env-file .env.local"
 
 if [ "$COMPOSE_CHANGED" -gt "0" ]; then
     log "docker-compose.yml changed - full down/up..."
