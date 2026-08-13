@@ -676,7 +676,11 @@ async function readWorkbookFile(file) {
   const workbook = window.XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
   const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes('mailing')) || workbook.SheetNames[0];
   if (!sheetName) throw new Error('No worksheet found in that file.');
-  const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: true });
+  // blankrows:true keeps fully-blank sheet rows in the array so sourceRow
+  // (index+2 in buildSeedFromSpreadsheet) always lines up with the real
+  // physical spreadsheet row; the content-based filter in
+  // buildSeedFromSpreadsheet drops these blank rows afterward on its own.
+  const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: true, blankrows: true });
   if (!rows.length) throw new Error('That worksheet looks empty.');
   const seed = buildSeedFromSpreadsheet(rows, file.name);
   if (!seed.mailings.length) throw new Error('I could not find any mailing rows in that sheet.');
