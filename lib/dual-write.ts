@@ -68,6 +68,7 @@ interface SeedSubscription {
   plan: string;
   character: string;
   startDate: string;
+  endDate: string;
   activeState: string;
 }
 
@@ -81,6 +82,8 @@ interface SeedMailing {
   letterNumber: string | number | null | undefined;
   shipDate: string;
   status: string;
+  activeState: string;
+  notes: string;
   sourceRow: number | string;
 }
 
@@ -202,6 +205,7 @@ async function runImport(seed: Seed) {
       termType: s.plan,
       status: s.activeState,
       startedAt: toDateOrNull(s.startDate),
+      endedAt: toDateOrNull(s.endDate),
       totalLettersExpected,
       recipientName: recipient.name || "Unknown recipient",
       addressLine1: recipient.address || null,
@@ -303,6 +307,8 @@ async function runImport(seed: Seed) {
       letterNumber: normalizeLetterNumber(m.letterNumber),
       scheduledDate: m.shipDate,
       status: m.status || "",
+      active: m.activeState === "Active",
+      notes: m.notes || null,
       recipientName: m.recipientName || recipient?.name || "Unknown recipient",
       addressLine1: recipient?.address || null,
     };

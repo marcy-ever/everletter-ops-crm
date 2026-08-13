@@ -1,4 +1,4 @@
-import { date, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { boolean, date, integer, pgTable, text } from "drizzle-orm/pg-core";
 import { subscriptions } from "./subscriptions";
 import { stagingLocations } from "./staging_locations";
 
@@ -41,6 +41,18 @@ export const mailings = pgTable("mailings", {
   letterNumber: integer("letter_number"),
   scheduledDate: date("scheduled_date", { mode: "string" }).notNull(),
   status: text("status").notNull(),
+  // Per-row Active/Archived, straight from that row's own "Active?" cell -
+  // NOT inherited from the subscription's status. app.js computes this per
+  // mailing row, and rows under the same subscription can genuinely
+  // disagree (observed in real data: a subscription's Active/Archived flag
+  // changed mid-sequence). Named "active" rather than reusing "status" to
+  // avoid colliding with the unrelated production-status `status` column
+  // above. See lib/build-dataset-from-tables.ts's module comment for the
+  // gap this closes.
+  active: boolean("active").notNull(),
+  // Free-text operational note from the spreadsheet's Notes column (e.g.
+  // "Ashley has them"). Nullable: most rows don't have one.
+  notes: text("notes"),
   recipientName: text("recipient_name").notNull(),
   addressLine1: text("address_line1"),
   addressLine2: text("address_line2"),

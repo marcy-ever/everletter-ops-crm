@@ -31,12 +31,15 @@
  * normalized schema doesn't currently persist, or can only partially
  * recover. None of these are bugs in this module; each would need a
  * lib/dual-write.ts (write-path) change to close, which is explicitly out
- * of scope for this pass:
+ * of scope for this pass.
  *
- *  - subscriptions[].endDate: always "". No end_date column exists on
- *    db/schema/subscriptions.ts, and lib/dual-write.ts never captures it.
- *  - mailings[].notes: always "". No notes column exists on
- *    db/schema/mailings.ts, and lib/dual-write.ts never captures it.
+ * (Previously this list also included subscriptions[].endDate,
+ * mailings[].notes, and mailings[].activeState - all three were closed by
+ * adding subscriptions.ended_at / mailings.active / mailings.notes columns
+ * and having lib/dual-write.ts populate them, once this module's e2e
+ * parity test flagged mailings[].activeState as a real, if narrow,
+ * correctness gap - see git history for that change.)
+ *
  *  - summary.sourceFile: always "" unless the caller supplies one
  *    explicitly (see buildDatasetFromTables's `sourceFile` param). Nothing
  *    in the normalized tables records which spreadsheet file produced the
@@ -68,16 +71,6 @@
  *    rather than original. reason/subscriberId/recipientName ARE fully
  *    recoverable for this case (via subscriptionId) and are populated
  *    normally.
- *  - mailings[].activeState: sourced from the mailing's subscription's
- *    single `status` column, not stored per mailing. app.js computes
- *    `activeState` per ROW, straight from that row's own "Active?" cell -
- *    if a subscription's rows disagree on Active/Archived across an
- *    import (observed in the real test file: 7 of 1,218 mailings), this
- *    module reports every one of that subscription's mailings with the
- *    SAME (subscription-level) activeState, which can disagree with a few
- *    individual rows' original per-row value. Same root limitation as the
- *    subscribers[].status gap above (one column, many source rows) -
- *    would need lib/dual-write.ts to add a per-mailing active column.
  *  - recipients[] omits any recipient whose EVERY subscription has an
  *    unrecognized plan (see LETTERS_BY_PLAN in lib/dual-write.ts) - since
  *    recipients are derived by grouping the `subscriptions` table (there's
@@ -260,7 +253,7 @@ export function buildMailings(
       address: subscription.addressLine1 ?? "",
     });
     const shipDate = row.scheduledDate;
-    const activeState = subscription.status;
+    const activeState = row.active ? "Active" : "Archived"; // per-row, not the subscription's - see db/schema/mailings.ts
     const status = row.status;
 
     out.push({
@@ -279,7 +272,7 @@ export function buildMailings(
       suggestedShipDate: nearestBatchDate(shipDate),
       status,
       activeState,
-      notes: "", // gap: not persisted, see module comment
+      notes: row.notes ?? "",
       overdue: isOverdueMailing({ activeState, status, shipDate }, today),
       dueNext14Days: isDueNext14Days({ activeState, status, shipDate }, today),
       sourceRow: Number(row.lastSourceRow),
@@ -393,7 +386,7 @@ export function buildSubscriptions(subscriptionRows: SubscriptionRow[], mailings
         plan: s.termType,
         character: s.character,
         startDate: toIsoDateOrEmpty(s.startedAt),
-        endDate: "", // gap: not persisted, see module comment
+        endDate: toIsoDateOrEmpty(s.endedAt),
         activeState: s.status,
         generatedMailings: mailings.filter((m) => m.subscriptionId === s.id).length,
       };

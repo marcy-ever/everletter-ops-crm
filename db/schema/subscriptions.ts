@@ -21,6 +21,10 @@ export const subscriptions = pgTable("subscriptions", {
   // Nullable: same reasoning as orders.orderedAt - a missing order date
   // isn't flagged as bad data by app.js, so there's no honest fallback.
   startedAt: timestamp("started_at", { withTimezone: true }),
+  // Nullable: most subscriptions are open-ended (no end date in the
+  // spreadsheet). See lib/build-dataset-from-tables.ts's module comment
+  // for the gap this closes.
+  endedAt: timestamp("ended_at", { withTimezone: true }),
   totalLettersExpected: integer("total_letters_expected").notNull(),
   recipientName: text("recipient_name").notNull(),
   addressLine1: text("address_line1"),

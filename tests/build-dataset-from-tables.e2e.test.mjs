@@ -148,11 +148,14 @@ function compareSummary(expected, actual, discrepancies) {
 //  (b) order ORD-2858 has letter number 4 entered on three separate rows
 //      - a genuine spreadsheet duplicate, not a bug - lib/dual-write.ts
 //      correctly refuses to guess which one is real and skips all three.
-// Everything else (notes, endDate, mailings.activeState, subscribers'
-// status/firstOrderDate, tie-break ordering) is a documented, individually
-// verified schema gap - see lib/build-dataset-from-tables.ts.
-// Any discrepancy NOT matching one of these rules fails this test - that's
-// the actual regression guard this file provides.
+// notes, endDate, and mailings.activeState were closed (see
+// db/schema/mailings.ts's active/notes columns and
+// db/schema/subscriptions.ts's ended_at column) - no longer allowed here.
+// Everything remaining (subscribers' status/firstOrderDate, tie-break
+// ordering) is a documented, individually verified schema gap - see
+// lib/build-dataset-from-tables.ts. Any discrepancy NOT matching one of
+// these rules fails this test - that's the actual regression guard this
+// file provides.
 const ALLOWED_DISCREPANCIES = [
   (d) => d.entity === "summary" && d.type === "FIELD_MISMATCH" && ["activeSubscriberCount", "archivedSubscriberCount", "recipientCount", "orderCount", "subscriptionCount", "mailingCount", "openMailingCount", "archivedMailingCount", "dueNext14Count"].includes(d.field),
   (d) => d.entity === "subscribers" && d.type === "FIELD_MISMATCH" && ["openMailings", "totalMailings", "nextShipDate", "status", "firstOrderDate"].includes(d.field),
@@ -162,9 +165,8 @@ const ALLOWED_DISCREPANCIES = [
   (d) => d.entity === "recipients" && d.type === "ORDER_MISMATCH",
   (d) => d.entity === "orders" && d.type === "MISSING_IN_RECONSTRUCTION" && d.key.startsWith("ORD-MISSING-"),
   (d) => d.entity === "subscriptions" && d.type === "MISSING_IN_RECONSTRUCTION",
-  (d) => d.entity === "subscriptions" && d.type === "FIELD_MISMATCH" && ["endDate", "generatedMailings"].includes(d.field),
+  (d) => d.entity === "subscriptions" && d.type === "FIELD_MISMATCH" && ["generatedMailings"].includes(d.field),
   (d) => d.entity === "mailings" && d.type === "MISSING_IN_RECONSTRUCTION",
-  (d) => d.entity === "mailings" && d.type === "FIELD_MISMATCH" && ["notes", "activeState", "dueNext14Days"].includes(d.field),
   (d) => d.entity === "mailings" && d.type === "ORDER_MISMATCH",
   // exceptions: no allowance - a discrepancy here is always unexpected.
 ];
