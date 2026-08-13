@@ -17,6 +17,12 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import XLSX from "xlsx";
 import { sql } from "drizzle-orm";
+import { subscribers } from "../db/schema/subscribers";
+import { subscriptions } from "../db/schema/subscriptions";
+import { orders } from "../db/schema/orders";
+import { mailings } from "../db/schema/mailings";
+import { mailingComponents } from "../db/schema/mailing_components";
+import { exceptions } from "../db/schema/exceptions";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, "..");
@@ -57,9 +63,12 @@ export function e2eSkipReason({ requiresFixture = true } = {}) {
 // definition specifically because this list has to be kept in sync with
 // db/schema/ by hand - a table added later and missed in one copy used to
 // be able to degrade test isolation silently in whichever file didn't get
-// the memo.
+// the memo. Imports the real Drizzle table objects (rather than a raw SQL
+// identifier string) deliberately: a table rename in db/schema/ then fails
+// this module's own import at load time instead of silently truncating
+// nothing for a name that no longer exists.
 export async function truncateAllTables(db) {
-  await db.execute(sql`TRUNCATE TABLE exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
 }
 
 // Parses the real test spreadsheet the same way for every file that needs

@@ -24,11 +24,14 @@ all of them and fails the way a release gate should.
   (`build-dataset-from-tables.e2e`, `dual-write-transactional.e2e`,
   `shared-state-get.e2e`). Needs real local Postgres and, for two of the
   three, the real local test spreadsheet (see below). **Serialized**
-  (`node --test --test-concurrency=1`) - all three truncate and reimport the
-  same shared local database, so running them in parallel (node:test's
-  default for separate files) makes them race each other and corrupts
-  results. This isn't a style choice; running them unserialized was tried
-  and produced intermittently wrong discrepancy counts.
+  (`node --test --test-concurrency=1`) deliberately, not as a style choice:
+  node:test runs separate files in parallel by default, but all three files
+  truncate and reimport the same shared local Postgres tables, and there's
+  only one physical database, not one per file - two of these files
+  truncating/writing concurrently would corrupt each other's results (e.g.
+  a discrepancy count computed mid-truncate by another file). Don't invoke
+  these files directly with `node --test` without `--test-concurrency=1` if
+  running more than one together.
 - **`pnpm test`** - `test:unit` then `test:e2e`. This is the actual release
   gate.
 - **`pnpm typecheck`** - `tsc --noEmit`. Deliberately separate from `test`:
@@ -38,10 +41,15 @@ all of them and fails the way a release gate should.
 The flags every script needs (`--experimental-strip-types` for native TS
 support, plus `--experimental-loader=./tests/ts-extensionless-loader.mjs` so
 extensionless/`@/`-aliased imports resolve the same way they do in
-application code - see that file's own comment) are written into the
-scripts via `package.json`'s `config.nodeTestFlags`, not assumed to be set
-in a developer's shell. Every script is runnable from a clean checkout with
-no remembered flags.
+application code - see that file's own comment) are written directly into
+`test:unit`/`test:e2e` in `package.json`, not assumed to be set in a
+developer's shell. Every script is runnable from a clean checkout with no
+remembered flags. The flag string is repeated between the two scripts
+rather than factored out via `package.json`'s `config` object: that
+indirection expands through `$VAR`, which only works in POSIX shells and
+silently breaks under `cmd.exe` - repeating a stable, one-line flag string
+is the more portable choice for a project without a documented
+Windows-only-runs-via-WSL policy.
 
 ## Bringing up what `test:e2e` needs
 

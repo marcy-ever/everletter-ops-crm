@@ -19,10 +19,11 @@
 // if either is missing.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
-// the real shared local Postgres tables - when running more than one of
-// these together, pass `node --test --test-concurrency=1 ...` or they'll
-// race each other (node:test runs separate files in parallel by default,
-// and there's only one physical database, not one per file).
+// the real shared local Postgres tables - run these through `pnpm test:e2e`
+// (not `node --test` directly), which passes `--test-concurrency=1`.
+// Without it they race each other (node:test runs separate files in
+// parallel by default, and there's only one physical database, not one per
+// file) - see docs/testing.md.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { exceptionReviewKey, componentKey } from "../lib/keys.ts";
