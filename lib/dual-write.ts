@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import { getDb } from "@/db";
+import type { getDb } from "@/db";
 import { subscribers } from "@/db/schema/subscribers";
 import { subscriptions } from "@/db/schema/subscriptions";
 import { orders } from "@/db/schema/orders";
@@ -10,13 +10,26 @@ import { mailingKey as appMailingKey, parseComponentKey, parseExceptionReviewKey
 import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
 
 /**
- * Shadow-writes app.js's crmDataset/mailingStatus/componentStatus/
+ * Writes app.js's crmDataset/mailingStatus/componentStatus/
  * reviewedException payloads into the normalized Option A tables (see
  * db/schema/, docs/schema-design.md), alongside the real crm_state blob
- * write in app/api/shared-state/route.ts. This is Phase 1 of Option B:
- * validation only. Nothing reads from these tables yet, and nothing here
- * may ever cause the primary blob write to fail - every exported function
- * swallows its own errors and just logs.
+ * write in app/api/shared-state/route.ts.
+ *
+ * Phase 2 of Option B: load-bearing and transactional, not shadow/
+ * validation-only anymore (see docs/schema-design.md's dual-write notes
+ * for the Phase 1 -> Phase 2 history). Every exported function here takes
+ * the SAME db/transaction handle the caller used for the crm_state write
+ * (see the `Db` type below) and no longer swallows its own errors - a real
+ * failure here (a bad connection, a constraint violation, a bug) now
+ * propagates up and rolls back the whole transaction, including the
+ * crm_state write, via app/api/shared-state/route.ts's `db.transaction()`.
+ * Both writes now succeed or fail together.
+ *
+ * This is deliberately different from the per-record skip-and-log calls
+ * throughout this file (e.g. "skipping subscription, unrecognized plan") -
+ * those are expected, legitimate business outcomes (app.js's own
+ * exceptions mechanism already flags the same rows as broken), not errors,
+ * and still don't throw. Only genuinely unexpected failures propagate now.
  *
  * Known, deliberate simplifications (see docs/schema-design.md for the
  * full reasoning behind each):
@@ -39,6 +52,18 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
  *    comment in db/schema/mailings.ts for why (it collides routinely for
  *    the most common subscription pattern) and what's used instead.
  */
+
+// The db handle every exported function here takes - either the real
+// getDb() result, or (in normal operation, via
+// app/api/shared-state/route.ts) the `tx` inside a db.transaction()
+// callback. Both have the same query-building surface (.select/.insert/
+// .update/.delete) but aren't structurally identical types (a transaction
+// lacks getDb()'s $client), so this is a real union, not just one of them -
+// this file never opens its own connection or transaction, it just uses
+// whichever one the caller is already inside.
+type RealDb = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<RealDb["transaction"]>[0]>[0];
+export type Db = RealDb | Tx;
 
 interface SeedRecipient {
   recipientId: string;
@@ -144,16 +169,11 @@ function stableMailingId(orderId: string, character: string, letterNumber: numbe
   return `${orderId}::${character}::${letterNumber ?? ""}`;
 }
 
-export async function dualWriteImport(seed: Seed): Promise<void> {
-  try {
-    await runImport(seed);
-  } catch (error) {
-    log("crmDataset import failed, primary blob write unaffected:", error);
-  }
+export async function dualWriteImport(seed: Seed, db: Db): Promise<void> {
+  await runImport(seed, db);
 }
 
-async function runImport(seed: Seed) {
-  const db = getDb();
+async function runImport(seed: Seed, db: Db) {
   const recipientsById = new Map(seed.recipients.map((r) => [r.recipientId, r]));
 
   // Defense in depth against a future regression of the id-collision bug
@@ -417,8 +437,7 @@ async function runImport(seed: Seed) {
 // browser last loaded its data, zero or multiple rows can match - that's a
 // real "can't confidently match" case, not a bug, so it's skip-and-log like
 // everywhere else.
-async function findMailingByAppKey(mailingId: string, sourceRow: string): Promise<{ id: string } | null> {
-  const db = getDb();
+async function findMailingByAppKey(mailingId: string, sourceRow: string, db: Db): Promise<{ id: string } | null> {
   const rows = await db
     .select({ id: mailings.id })
     .from(mailings)
@@ -430,77 +449,62 @@ async function findMailingByAppKey(mailingId: string, sourceRow: string): Promis
   return rows[0];
 }
 
-export async function dualWriteMailingStatus(key: string, status: string): Promise<void> {
-  try {
-    const parsed = parseMailingKey(key);
-    if (!parsed) {
-      log("mailingStatus: could not parse key, skipping:", key);
-      return;
-    }
-    const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow);
-    if (!match) return;
-    const db = getDb();
-    await db.update(mailings).set({ status }).where(eq(mailings.id, match.id));
-  } catch (error) {
-    log("mailingStatus dual-write failed, primary write unaffected:", error);
+export async function dualWriteMailingStatus(key: string, status: string, db: Db): Promise<void> {
+  const parsed = parseMailingKey(key);
+  if (!parsed) {
+    log("mailingStatus: could not parse key, skipping:", key);
+    return;
+  }
+  const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow, db);
+  if (!match) return;
+  await db.update(mailings).set({ status }).where(eq(mailings.id, match.id));
+}
+
+export async function dualWriteComponentStatus(key: string, status: string, db: Db): Promise<void> {
+  const parsed = parseComponentKey(key);
+  if (!parsed) {
+    log("componentStatus: could not parse key, skipping:", key);
+    return;
+  }
+  const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow, db);
+  if (!match) return;
+  const existing = await db
+    .select({ id: mailingComponents.id })
+    .from(mailingComponents)
+    .where(and(eq(mailingComponents.mailingId, match.id), eq(mailingComponents.componentType, parsed.field)));
+  if (existing.length === 0) {
+    await db.insert(mailingComponents).values({ mailingId: match.id, componentType: parsed.field, status });
+  } else if (existing.length === 1) {
+    await db
+      .update(mailingComponents)
+      .set({ status, updatedAt: sql`now()` })
+      .where(eq(mailingComponents.id, existing[0].id));
+  } else {
+    log("componentStatus: multiple existing rows for mailing+field (unexpected), skipping:", parsed);
   }
 }
 
-export async function dualWriteComponentStatus(key: string, status: string): Promise<void> {
-  try {
-    const parsed = parseComponentKey(key);
-    if (!parsed) {
-      log("componentStatus: could not parse key, skipping:", key);
-      return;
-    }
-    const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow);
-    if (!match) return;
-    const db = getDb();
-    const existing = await db
-      .select({ id: mailingComponents.id })
-      .from(mailingComponents)
-      .where(and(eq(mailingComponents.mailingId, match.id), eq(mailingComponents.componentType, parsed.field)));
-    if (existing.length === 0) {
-      await db.insert(mailingComponents).values({ mailingId: match.id, componentType: parsed.field, status });
-    } else if (existing.length === 1) {
-      await db
-        .update(mailingComponents)
-        .set({ status, updatedAt: sql`now()` })
-        .where(eq(mailingComponents.id, existing[0].id));
-    } else {
-      log("componentStatus: multiple existing rows for mailing+field (unexpected), skipping:", parsed);
-    }
-  } catch (error) {
-    log("componentStatus dual-write failed, primary write unaffected:", error);
+export async function dualWriteReviewedException(key: string, db: Db): Promise<void> {
+  const parsed = parseExceptionReviewKey(key);
+  if (!parsed) {
+    log("reviewedException: could not parse key, skipping:", key);
+    return;
   }
-}
-
-export async function dualWriteReviewedException(key: string): Promise<void> {
-  try {
-    const parsed = parseExceptionReviewKey(key);
-    if (!parsed) {
-      log("reviewedException: could not parse key, skipping:", key);
-      return;
-    }
-    // exceptionReviewKey carries no sourceRow, so exceptions can't be
-    // disambiguated the same way mailings are - matched instead by joining
-    // through to mailings.appMailingId plus exceptions.type (which this
-    // module always writes as the exact reason string, so it doubles as a
-    // real second signal here - see the module docstring). Subscription-only
-    // fallback exceptions (mailing_id null) are never reachable this way;
-    // that's an accepted, documented limitation.
-    const db = getDb();
-    const rows = await db
-      .select({ id: exceptions.id })
-      .from(exceptions)
-      .innerJoin(mailings, eq(exceptions.mailingId, mailings.id))
-      .where(and(eq(mailings.appMailingId, parsed.mailingId), eq(exceptions.type, parsed.reason)));
-    if (rows.length !== 1) {
-      log(`reviewedException: expected exactly one matching exception, found ${rows.length}, skipping:`, parsed);
-      return;
-    }
-    await db.update(exceptions).set({ reviewed: true, reviewedAt: sql`now()` }).where(eq(exceptions.id, rows[0].id));
-  } catch (error) {
-    log("reviewedException dual-write failed, primary write unaffected:", error);
+  // exceptionReviewKey carries no sourceRow, so exceptions can't be
+  // disambiguated the same way mailings are - matched instead by joining
+  // through to mailings.appMailingId plus exceptions.type (which this
+  // module always writes as the exact reason string, so it doubles as a
+  // real second signal here - see the module docstring). Subscription-only
+  // fallback exceptions (mailing_id null) are never reachable this way;
+  // that's an accepted, documented limitation.
+  const rows = await db
+    .select({ id: exceptions.id })
+    .from(exceptions)
+    .innerJoin(mailings, eq(exceptions.mailingId, mailings.id))
+    .where(and(eq(mailings.appMailingId, parsed.mailingId), eq(exceptions.type, parsed.reason)));
+  if (rows.length !== 1) {
+    log(`reviewedException: expected exactly one matching exception, found ${rows.length}, skipping:`, parsed);
+    return;
   }
+  await db.update(exceptions).set({ reviewed: true, reviewedAt: sql`now()` }).where(eq(exceptions.id, rows[0].id));
 }

@@ -83,34 +83,33 @@ export async function POST(request: Request) {
     }
 
     const id = `${kind}::${key}`;
+    // Option B Phase 2: the crm_state blob write and the normalized-table
+    // dual-write are now one transaction - both succeed or both roll back.
+    // No inner try/catch around the dual-write dispatch anymore: a real
+    // failure there (as opposed to the dualWrite* functions' own expected
+    // skip-and-log cases) is supposed to fail this request now, and the
+    // outer try/catch below already turns a thrown error into a real 500.
     const db = getDb();
-    await db
-      .insert(crmState)
-      .values({ id, kind, itemKey: key, value })
-      .onConflictDoUpdate({
-        target: crmState.id,
-        set: { value, updatedAt: sql`now()` },
-      });
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(crmState)
+        .values({ id, kind, itemKey: key, value })
+        .onConflictDoUpdate({
+          target: crmState.id,
+          set: { value, updatedAt: sql`now()` },
+        });
 
-    // Option B Phase 1: shadow-write into the normalized tables alongside
-    // the real blob write above. Validation only - nothing reads from these
-    // tables yet, so a failure here must never affect this response. Each
-    // dualWrite* function already swallows its own errors; this try/catch
-    // is defense in depth against a mistake in the dispatch itself.
-    try {
       if (kind === "crmDataset" && key === "current") {
         const parsed = JSON.parse(value) as { seed?: unknown };
-        if (parsed.seed) await dualWriteImport(parsed.seed as Parameters<typeof dualWriteImport>[0]);
+        if (parsed.seed) await dualWriteImport(parsed.seed as Parameters<typeof dualWriteImport>[0], tx);
       } else if (kind === "mailingStatus") {
-        await dualWriteMailingStatus(key, value);
+        await dualWriteMailingStatus(key, value, tx);
       } else if (kind === "componentStatus") {
-        await dualWriteComponentStatus(key, value);
+        await dualWriteComponentStatus(key, value, tx);
       } else if (kind === "reviewedException") {
-        await dualWriteReviewedException(key);
+        await dualWriteReviewedException(key, tx);
       }
-    } catch (error) {
-      console.error("[dual-write] dispatch failed, primary write unaffected:", error);
-    }
+    });
 
     return Response.json({ ok: true });
   } catch (error) {
