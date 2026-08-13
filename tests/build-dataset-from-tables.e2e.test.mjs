@@ -6,6 +6,12 @@
 // developer-local - this test is skipped if either is missing, not
 // failed, so it doesn't break `pnpm test` in an environment without them).
 //
+// This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
+// the real shared local Postgres tables - when running more than one of
+// these together, pass `node --test --test-concurrency=1 ...` or they'll
+// race each other (node:test runs separate files in parallel by default,
+// and there's only one physical database, not one per file).
+//
 // Flow: parse the real spreadsheet through the REAL public/app.js
 // (sandboxed vm, same technique as tests/ids.test.mjs) to get the
 // client-computed seed -> write it through the REAL lib/dual-write.ts
