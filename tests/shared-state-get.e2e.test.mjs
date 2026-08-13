@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import XLSX from "xlsx";
 import { sql } from "drizzle-orm";
 import { exceptionReviewKey, componentKey } from "../lib/keys.ts";
+import { countRows } from "./db-test-helpers.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -146,4 +147,59 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   const reconstructedMailing = body.dataset.mailings.find((m) => m.mailingId === statusMailing.mailingId && String(m.sourceRow) === String(statusMailing.sourceRow));
   assert.ok(reconstructedMailing, "the status-updated mailing should still be present in dataset.mailings");
   assert.equal(reconstructedMailing.status, newStatus);
+});
+
+test("GET works correctly with crm_state NEVER populated (not just truncated-after) through a full import -> reviewedException -> componentStatus -> mailingStatus -> GET round trip", { skip: !hasFixture || !hasDbUrl }, async () => {
+  // This is the literal risk the crm_state-write-removal step introduces:
+  // POST no longer writes crm_state at all, so nothing before this test
+  // proved GET has zero hidden dependency on a crm_state row existing
+  // (every other test truncates crm_state, which leaves it empty too, but
+  // "empty because truncated" and "never written to in the first place"
+  // aren't the same guarantee - a stale row from a previous run could mask
+  // a real hidden read dependency that TRUNCATE-then-never-write wouldn't).
+  const { POST, GET } = await import("../app/api/shared-state/route");
+  const { dualWriteImport } = await import("../lib/dual-write");
+  const { getDb } = await import("../db");
+  const { crmState } = await import("../db/schema");
+
+  const db = getDb();
+  await db.execute(sql`TRUNCATE TABLE crm_state, exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  assert.equal(await countRows(db, crmState), 0);
+
+  const workbook = XLSX.read(fs.readFileSync(XLSX_PATH), { type: "buffer", cellDates: true });
+  const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes("mailing")) || workbook.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: true });
+  const appJs = loadAppJsSandbox();
+  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx");
+
+  await dualWriteImport(clientSeed, db);
+  assert.equal(await countRows(db, crmState), 0, "crm_state should still be empty after the import - dualWriteImport never touches it");
+
+  const survivingMailings = clientSeed.mailings.filter((m) => m.plan !== "Needs Review" && m.orderId !== "ORD-2858");
+  const survivingMailingIds = new Set(survivingMailings.map((m) => m.mailingId));
+  const targetException = clientSeed.exceptions.find((e) => survivingMailingIds.has(e.mailingId));
+  const targetMailing = survivingMailings[0];
+  const targetMailingKey = `${targetMailing.mailingId}::${targetMailing.sourceRow}`;
+
+  async function post(body) {
+    const response = await POST(new Request("http://localhost/api/shared-state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+    assert.equal(response.status, 200, `POST ${body.kind} failed: ${JSON.stringify(await response.json().catch(() => null))}`);
+  }
+
+  await post({ kind: "reviewedException", key: exceptionReviewKey(targetException), value: "1" });
+  assert.equal(await countRows(db, crmState), 0, "crm_state should still be empty after a reviewedException POST");
+
+  await post({ kind: "componentStatus", key: `${targetMailingKey}::envelope`, value: "Printed" });
+  assert.equal(await countRows(db, crmState), 0, "crm_state should still be empty after a componentStatus POST");
+
+  await post({ kind: "mailingStatus", key: targetMailingKey, value: "Mailed" });
+  assert.equal(await countRows(db, crmState), 0, "crm_state should still be empty after a mailingStatus POST");
+
+  const response = await GET();
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.ok(body.dataset.mailings.length > 0, "GET should still return a real dataset with crm_state having never been written to");
+  assert.equal(body.componentOverrides[componentKey({ mailingId: targetMailing.mailingId, sourceRow: targetMailing.sourceRow }, "envelope")], "Printed");
+
+  assert.equal(await countRows(db, crmState), 0, "crm_state should still be empty after GET too - GET doesn't write to it either");
 });

@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { crmState } from "@/db/schema";
 import {
   dualWriteComponentStatus,
   dualWriteImport,
@@ -27,10 +25,11 @@ function toErrorPayload(error: unknown, fallback: string) {
 
 export async function GET() {
   try {
-    // Option B Phase 2, next step: dataset now comes from the normalized
-    // tables (lib/build-dataset-from-tables.ts), not the crm_state blob -
-    // crm_state itself is untouched (still written by POST below) and not
-    // dropped; this is only GET switching readers. componentOverrides and
+    // Option B Phase 2: dataset comes from the normalized tables
+    // (lib/build-dataset-from-tables.ts), not the crm_state blob - and as
+    // of this step, POST below no longer writes crm_state at all (the
+    // table itself still exists, untouched, as a rollback path - see
+    // docs/schema-design.md's Phase 2 notes). componentOverrides and
     // reviewed have no equivalent in the Dataset shape (by design - see
     // lib/build-overrides-from-tables.ts's module comment) and are fetched
     // separately. statusOverrides is always {} now: buildMailings() already
@@ -76,23 +75,18 @@ export async function POST(request: Request) {
       return Response.json({ error: "CRM dataset key must be current." }, { status: 400 });
     }
 
-    const id = `${kind}::${key}`;
-    // Option B Phase 2: the crm_state blob write and the normalized-table
-    // dual-write are now one transaction - both succeed or both roll back.
-    // No inner try/catch around the dual-write dispatch anymore: a real
-    // failure there (as opposed to the dualWrite* functions' own expected
-    // skip-and-log cases) is supposed to fail this request now, and the
-    // outer try/catch below already turns a thrown error into a real 500.
+    // Option B Phase 2: crm_state is no longer written here (GET stopped
+    // reading it as of the previous step - see docs/schema-design.md's
+    // Phase 2 notes). The table itself is untouched and not dropped - this
+    // is only the write going away, kept as its own step so the table
+    // remains a free rollback path if this surfaces a problem live. The
+    // dual-write dispatch still runs inside a transaction (still using
+    // `tx`, not `db`, even though it's now the only thing in it) so a real
+    // failure (as opposed to the dualWrite* functions' own expected
+    // skip-and-log cases) still rolls back cleanly and propagates to the
+    // outer try/catch below, which turns it into a real 500.
     const db = getDb();
     await db.transaction(async (tx) => {
-      await tx
-        .insert(crmState)
-        .values({ id, kind, itemKey: key, value })
-        .onConflictDoUpdate({
-          target: crmState.id,
-          set: { value, updatedAt: sql`now()` },
-        });
-
       if (kind === "crmDataset" && key === "current") {
         const parsed = JSON.parse(value) as { seed?: unknown };
         if (parsed.seed) await dualWriteImport(parsed.seed as Parameters<typeof dualWriteImport>[0], tx);
