@@ -7,6 +7,7 @@ import { mailings } from "@/db/schema/mailings";
 import { mailingComponents } from "@/db/schema/mailing_components";
 import { exceptions } from "@/db/schema/exceptions";
 import { mailingKey as appMailingKey, parseComponentKey, parseExceptionReviewKey, parseMailingKey } from "@/lib/keys";
+import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
 
 /**
  * Shadow-writes app.js's crmDataset/mailingStatus/componentStatus/
@@ -151,6 +152,24 @@ export async function dualWriteImport(seed: Seed): Promise<void> {
 async function runImport(seed: Seed) {
   const db = getDb();
   const recipientsById = new Map(seed.recipients.map((r) => [r.recipientId, r]));
+
+  // Defense in depth against a future regression of the id-collision bug
+  // this module's SeedRecipient/SeedSubscription ids depend on (see the
+  // history note in lib/ids.ts): recompute each recipientId/subscriptionId
+  // from the same raw fields app.js used and log (never block) if app.js's
+  // inline copy has drifted from lib/ids.ts's spec.
+  for (const r of seed.recipients) {
+    const expected = buildRecipientId({ subscriberId: r.subscriberId, recipientName: r.name, address: r.address });
+    if (expected !== r.recipientId) {
+      log("recipientId does not match lib/ids.ts's spec for its own name+address - app.js may have drifted:", r.recipientId, "expected:", expected);
+    }
+  }
+  for (const s of seed.subscriptions) {
+    const expected = buildSubscriptionId({ recipientId: s.recipientId, character: s.character, plan: s.plan });
+    if (expected !== s.subscriptionId) {
+      log("subscriptionId does not match lib/ids.ts's spec for its own recipientId+character+plan - app.js may have drifted:", s.subscriptionId, "expected:", expected);
+    }
+  }
 
   // --- subscribers (always writable) ---
   const keepSubscriberIds = new Set<string>();

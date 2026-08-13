@@ -293,8 +293,34 @@ function slug(value) {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 56) || 'unknown';
+    .replace(/^-|-$/g, '') || 'unknown';
+}
+
+// Identity for subscribers/recipients/subscriptions/mailings, shared with
+// lib/ids.ts (tests/ids.test.mjs verifies that copy matches these real
+// functions exactly - see the comment there for why app.js can't import it
+// directly). No length cap on the slug: an earlier version truncated each
+// of these to a fixed character count, which routinely collided two
+// genuinely different subscribers/recipients/subscriptions/mailings onto
+// the same id whenever they happened to share a long enough prefix (see
+// docs/schema-design.md's mailingId note, and CLAUDE.md). Nothing anywhere
+// depends on these ids having a specific length or format.
+function buildSubscriberId({ email, recipientName, address }) {
+  const subscriberKey = email || `${slug(recipientName)}-${slug(address)}`;
+  return `SUB-${slug(subscriberKey).toUpperCase()}`;
+}
+
+function buildRecipientId({ subscriberId, recipientName, address }) {
+  const recipientKey = `${subscriberId}-${slug(recipientName)}-${slug(address)}`;
+  return `REC-${slug(recipientKey).toUpperCase()}`;
+}
+
+function buildSubscriptionId({ recipientId, character, plan }) {
+  return `PLAN-${slug(`${recipientId}-${character}-${plan}`).toUpperCase()}`;
+}
+
+function buildMailingId({ orderId, recipientId, character, letterNumber, sourceRow }) {
+  return `MAIL-${slug(`${orderId}-${recipientId}-${character}-${letterNumber || sourceRow}`).toUpperCase()}`;
 }
 
 function compactOrderNumber(value) {
@@ -494,14 +520,12 @@ function buildSeedFromSpreadsheet(rows, sourceName) {
   const today = todayIso();
 
   normalizedRows.forEach((row) => {
-    const subscriberKey = row.email || `${slug(row.recipientName)}-${slug(row.address)}`;
-    const subscriberId = `SUB-${slug(subscriberKey).toUpperCase().slice(0, 18)}`;
-    const recipientKey = `${subscriberId}-${slug(row.recipientName)}-${slug(row.address)}`;
-    const recipientId = `REC-${slug(recipientKey).toUpperCase().slice(0, 22)}`;
+    const subscriberId = buildSubscriberId({ email: row.email, recipientName: row.recipientName, address: row.address });
+    const recipientId = buildRecipientId({ subscriberId, recipientName: row.recipientName, address: row.address });
     const orderId = row.orderNumber ? `ORD-${row.orderNumber}` : `ORD-MISSING-${row.sourceRow}`;
-    const subscriptionId = `PLAN-${slug(`${recipientId}-${row.character}-${row.plan}`).toUpperCase().slice(0, 28)}`;
+    const subscriptionId = buildSubscriptionId({ recipientId, character: row.character, plan: row.plan });
     const activeState = row.active ? 'Active' : 'Archived';
-    const mailingId = `MAIL-${slug(`${orderId}-${recipientId}-${row.character}-${row.letterNumber || row.sourceRow}`).toUpperCase().slice(0, 34)}`;
+    const mailingId = buildMailingId({ orderId, recipientId, character: row.character, letterNumber: row.letterNumber, sourceRow: row.sourceRow });
 
     if (!subscribers.has(subscriberId)) {
       subscribers.set(subscriberId, {
