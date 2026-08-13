@@ -1,10 +1,16 @@
 // Verifies the actual behavior change from Option B Phase 2's transactional
 // write path (see docs/schema-design.md's Phase 2 notes): a genuine,
-// unexpected failure inside lib/dual-write.ts must now roll back the
-// crm_state write too, not just fail silently while crm_state keeps the
-// change. This is the real guarantee route.ts's db.transaction() is
-// supposed to provide - this test exercises the actual dualWriteImport()
+// unexpected failure inside lib/dual-write.ts must roll back every write
+// that happened earlier in the same transaction, not just fail silently
+// partway through. This is the real guarantee route.ts's db.transaction()
+// is supposed to provide - this test exercises the actual dualWriteImport()
 // function and a real Postgres transaction, not a mock.
+//
+// As of the crm_state-write-removal step, POST no longer writes crm_state
+// at all (the table still exists, untouched, as a rollback path - see
+// docs/schema-design.md's Phase 2 notes), so these tests assert on the
+// normalized tables directly rather than on a crm_state row - see each
+// test's own comment for why the two tests differ in what they can prove.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
 // the real shared local Postgres tables - when running more than one of
@@ -20,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { sql } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
+import { countRows } from "./db-test-helpers.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -31,11 +38,11 @@ for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split(
 
 const hasDbUrl = !!process.env.DATABASE_URL;
 
-test("a real failure inside dualWriteImport rolls back the crm_state write in the same transaction", { skip: !hasDbUrl }, async () => {
+test("a real failure inside dualWriteImport rolls back every normalized-table write from the same transaction", { skip: !hasDbUrl }, async () => {
   const { dualWriteImport } = await import("../lib/dual-write");
   const { getDb } = await import("../db");
-  const { crmState } = await import("../db/schema");
   const { subscribers } = await import("../db/schema/subscribers");
+  const { subscriptions } = await import("../db/schema/subscriptions");
 
   const db = getDb();
   await db.execute(sql`TRUNCATE TABLE crm_state, exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
@@ -57,38 +64,34 @@ test("a real failure inside dualWriteImport rolls back the crm_state write in th
     exceptions: [],
   };
 
+  // Mirrors route.ts's POST exactly: dualWriteImport is the only thing
+  // inside the transaction now that crm_state isn't written here.
   await assert.rejects(
     db.transaction(async (tx) => {
-      await tx
-        .insert(crmState)
-        .values({ id: "crmDataset::current", kind: "crmDataset", itemKey: "current", value: JSON.stringify({ seed: brokenSeed }) })
-        .onConflictDoUpdate({ target: crmState.id, set: { value: "should not persist", updatedAt: sql`now()` } });
       await dualWriteImport(brokenSeed, tx);
     }),
     /mailings|iterable|undefined/i,
   );
 
-  const crmStateRows = await db.select().from(crmState);
-  const subscriberRows = await db.select().from(subscribers);
-
-  assert.equal(crmStateRows.length, 0, "crm_state write should have rolled back along with the failed dual-write, not persisted independently");
-  assert.equal(subscriberRows.length, 0, "the subscriber write that happened earlier in the SAME transaction should also have rolled back");
+  assert.equal(await countRows(db, subscribers), 0, "the subscriber write that happened earlier in the SAME transaction should have rolled back");
+  assert.equal(await countRows(db, subscriptions), 0, "the subscription write that happened earlier in the SAME transaction should have rolled back too");
 });
 
-test("the real POST /api/shared-state handler commits normally when dual-write soft-skips (not an error) instead of rolling back", { skip: !hasDbUrl }, async () => {
+test("the real POST /api/shared-state handler commits (200/{ok:true}) when dual-write soft-skips (not an error) instead of rolling back", { skip: !hasDbUrl }, async () => {
   const { POST } = await import("../app/api/shared-state/route");
   const { getDb } = await import("../db");
-  const { crmState } = await import("../db/schema");
-  const { sql: sqlTag } = await import("drizzle-orm");
 
   const db = getDb();
-  await db.execute(sqlTag`TRUNCATE TABLE crm_state RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE crm_state, exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
 
   // A well-formed mailingStatus key that won't match any real mailing row -
   // dualWriteMailingStatus soft-skips this (findMailingByAppKey logs "no
-  // confident match" and returns null) without throwing. The crm_state
-  // write must still commit - a soft skip is not the failure case the
-  // transaction is meant to guard against.
+  // confident match" and returns null) without throwing and without
+  // writing anything to any table. That's exactly why this test can't
+  // point at a row as proof the transaction committed cleanly - a
+  // deliberate no-op writes nothing whether the transaction commits or
+  // rolls back, so a row check here would be checking nothing meaningful.
+  // The actual proof that this request succeeded is its own response.
   const request = new Request("http://localhost/api/shared-state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -99,7 +102,4 @@ test("the real POST /api/shared-state handler commits normally when dual-write s
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body, { ok: true });
-
-  const rows = await db.select().from(crmState).where(sqlTag`${crmState.id} = 'mailingStatus::MAIL-DOES-NOT-EXIST::999'`);
-  assert.equal(rows.length, 1, "crm_state write should have committed even though the dual-write soft-skipped");
 });
