@@ -12,18 +12,20 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
 /**
  * Writes app.js's crmDataset/mailingStatus/componentStatus/
  * reviewedException payloads into the normalized Option A tables (see
- * db/schema/, docs/schema-design.md), alongside the real crm_state blob
- * write in app/api/shared-state/route.ts.
+ * db/schema/, docs/schema-design.md). Originally a shadow write alongside
+ * the real crm_state blob write in app/api/shared-state/route.ts - as of
+ * Option B Phase 2's final step, crm_state (table and write) is gone
+ * entirely, and this is the only write app/api/shared-state/route.ts's
+ * POST does.
  *
  * Phase 2 of Option B: load-bearing and transactional, not shadow/
  * validation-only anymore (see docs/schema-design.md's dual-write notes
- * for the Phase 1 -> Phase 2 history). Every exported function here takes
- * the SAME db/transaction handle the caller used for the crm_state write
- * (see the `Db` type below) and no longer swallows its own errors - a real
- * failure here (a bad connection, a constraint violation, a bug) now
- * propagates up and rolls back the whole transaction, including the
- * crm_state write, via app/api/shared-state/route.ts's `db.transaction()`.
- * Both writes now succeed or fail together.
+ * for the full Phase 1 -> Phase 2 history). Every exported function here
+ * takes the caller's db/transaction handle (see the `Db` type below) and
+ * no longer swallows its own errors - a real failure here (a bad
+ * connection, a constraint violation, a bug) now propagates up and rolls
+ * back the whole transaction via app/api/shared-state/route.ts's
+ * `db.transaction()`.
  *
  * This is deliberately different from the per-record skip-and-log calls
  * throughout this file (e.g. "skipping subscription, unrecognized plan") -
