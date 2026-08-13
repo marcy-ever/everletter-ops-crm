@@ -26,10 +26,9 @@ function toErrorPayload(error: unknown, fallback: string) {
 export async function GET() {
   try {
     // Option B Phase 2: dataset comes from the normalized tables
-    // (lib/build-dataset-from-tables.ts), not the crm_state blob - and as
-    // of this step, POST below no longer writes crm_state at all (the
-    // table itself still exists, untouched, as a rollback path - see
-    // docs/schema-design.md's Phase 2 notes). componentOverrides and
+    // (lib/build-dataset-from-tables.ts). The crm_state blob this used to
+    // read, and the table itself, are both gone - see docs/schema-design.md's
+    // Phase 2 notes. componentOverrides and
     // reviewed have no equivalent in the Dataset shape (by design - see
     // lib/build-overrides-from-tables.ts's module comment) and are fetched
     // separately. statusOverrides is always {} now: buildMailings() already
@@ -75,16 +74,14 @@ export async function POST(request: Request) {
       return Response.json({ error: "CRM dataset key must be current." }, { status: 400 });
     }
 
-    // Option B Phase 2: crm_state is no longer written here (GET stopped
-    // reading it as of the previous step - see docs/schema-design.md's
-    // Phase 2 notes). The table itself is untouched and not dropped - this
-    // is only the write going away, kept as its own step so the table
-    // remains a free rollback path if this surfaces a problem live. The
-    // dual-write dispatch still runs inside a transaction (still using
-    // `tx`, not `db`, even though it's now the only thing in it) so a real
-    // failure (as opposed to the dualWrite* functions' own expected
-    // skip-and-log cases) still rolls back cleanly and propagates to the
-    // outer try/catch below, which turns it into a real 500.
+    // Option B Phase 2: crm_state is gone - table and write both, GET and
+    // POST no longer reference it at all (see docs/schema-design.md's
+    // Phase 2 notes for the full history). The dual-write dispatch still
+    // runs inside a transaction (still using `tx`, not `db`, even though
+    // it's now the only thing in it) so a real failure (as opposed to the
+    // dualWrite* functions' own expected skip-and-log cases) still rolls
+    // back cleanly and propagates to the outer try/catch below, which
+    // turns it into a real 500.
     const db = getDb();
     await db.transaction(async (tx) => {
       if (kind === "crmDataset" && key === "current") {

@@ -1,15 +1,15 @@
 /**
  * Reconstructs app.js's full crmDataset shape (public/app.js's
  * buildSeedFromSpreadsheet output) by querying the normalized Option A
- * tables (db/schema/) instead of reading the crm_state JSON blob. This is
- * Step 1 of Option B's real cutover (docs/schema-design.md's
- * "Implementation Path" section): a correctness foundation, proven with
- * tests before anything reads from it. NOT wired into
- * app/api/shared-state/route.ts's GET handler yet - callers construct and
- * call buildDatasetFromTables()/buildDatasetFromRows() explicitly.
+ * tables (db/schema/). Originally built as a correctness foundation, proven
+ * with tests before anything read from it live; as of Option B Phase 2,
+ * app/api/shared-state/route.ts's GET handler calls buildDatasetFromTables()
+ * directly, and the crm_state blob this used to read (and the table itself)
+ * are gone entirely - see docs/schema-design.md's Phase 2 notes for the
+ * full history.
  *
- * lib/dual-write.ts already shadow-writes every import into these tables;
- * this module is the first thing that reads them back. Composed from one
+ * lib/dual-write.ts writes every import into these tables; this module is
+ * what reads them back. Composed from one
  * small, independently-testable builder function per output entity
  * (buildSubscribers/buildRecipients/buildOrders/buildSubscriptions/
  * buildMailings/buildExceptions/buildSummary), mirroring the real shape of
@@ -43,9 +43,10 @@
  *  - summary.sourceFile: always "" unless the caller supplies one
  *    explicitly (see buildDatasetFromTables's `sourceFile` param). Nothing
  *    in the normalized tables records which spreadsheet file produced the
- *    current data - crm_state's crmDataset::current blob has a sourceName
- *    field, but reading that would defeat the point of this module (it
- *    exists specifically to avoid reading the blob).
+ *    current data - the old crm_state blob had a sourceName field for this,
+ *    but that table is gone now regardless (see the module comment above).
+ *    Would need a real column (e.g. on ingestion_events, which exists in
+ *    the schema but nothing writes to yet) to close.
  *  - mailings[].orderDate: "" for a mailing whose order was skipped by
  *    lib/dual-write.ts (no resolvable/kept subscription at import time -
  *    see runImport's orders loop). Doesn't manifest for orders backed by a

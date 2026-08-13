@@ -6,11 +6,11 @@
 // is supposed to provide - this test exercises the actual dualWriteImport()
 // function and a real Postgres transaction, not a mock.
 //
-// As of the crm_state-write-removal step, POST no longer writes crm_state
-// at all (the table still exists, untouched, as a rollback path - see
-// docs/schema-design.md's Phase 2 notes), so these tests assert on the
-// normalized tables directly rather than on a crm_state row - see each
-// test's own comment for why the two tests differ in what they can prove.
+// crm_state (table and write both) is gone as of Option B Phase 2's final
+// step - see docs/schema-design.md's Phase 2 notes - so these tests assert
+// on the normalized tables directly rather than on a crm_state row - see
+// each test's own comment for why the two tests differ in what they can
+// prove.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
 // the real shared local Postgres tables - when running more than one of
@@ -45,7 +45,7 @@ test("a real failure inside dualWriteImport rolls back every normalized-table wr
   const { subscriptions } = await import("../db/schema/subscriptions");
 
   const db = getDb();
-  await db.execute(sql`TRUNCATE TABLE crm_state, exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
 
   // A structurally valid seed for subscribers/subscriptions/recipients/
   // orders (so those writes genuinely happen inside the transaction first),
@@ -82,7 +82,7 @@ test("the real POST /api/shared-state handler commits (200/{ok:true}) when dual-
   const { getDb } = await import("../db");
 
   const db = getDb();
-  await db.execute(sql`TRUNCATE TABLE crm_state, exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
 
   // A well-formed mailingStatus key that won't match any real mailing row -
   // dualWriteMailingStatus soft-skips this (findMailingByAppKey logs "no

@@ -1,6 +1,6 @@
-// Barrel for the normalized Option A schema (docs/schema-design.md). Deliberately
-// separate from db/schema.ts, which still holds the crm_state table the running
-// app actually reads/writes today - nothing here is wired into the app yet.
+// Barrel for the normalized Option A schema (docs/schema-design.md) - the
+// app's live schema. The original crm_state table (once defined in a
+// separate db/schema.ts) is gone as of Option B Phase 2's final step.
 export * from "./subscribers";
 export * from "./subscriptions";
 export * from "./orders";
