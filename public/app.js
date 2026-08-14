@@ -1253,7 +1253,7 @@ function batchDatesForOrder(orderDate, count) {
       batch.setDate(day);
       const diffDays = Math.ceil((batch - start) / 86400000);
       if (diffDays >= 3) {
-        dates.push(batch.toISOString().slice(0, 10));
+        dates.push(new Date(batch.getTime() - batch.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
         if (dates.length === count) break;
       }
     }
