@@ -13,39 +13,27 @@
 // prove.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
-// the real shared local Postgres tables - when running more than one of
-// these together, pass `node --test --test-concurrency=1 ...` or they'll
-// race each other (node:test runs separate files in parallel by default,
-// and there's only one physical database, not one per file).
+// the real shared local Postgres tables - run these through `pnpm test:e2e`
+// (not `node --test` directly), which passes `--test-concurrency=1`.
+// Without it they race each other (node:test runs separate files in
+// parallel by default, and there's only one physical database, not one per
+// file) - see docs/testing.md.
 //
 // Requires a real local Postgres reachable via DATABASE_URL - skipped, not
 // failed, if it isn't available.
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { sql } from "drizzle-orm";
-import { fileURLToPath } from "node:url";
 import { countRows } from "./db-test-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, "..");
-
-for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split("\n")) {
-  const m = line.match(/^([A-Z_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-}
-
-const hasDbUrl = !!process.env.DATABASE_URL;
-
-test("a real failure inside dualWriteImport rolls back every normalized-table write from the same transaction", { skip: !hasDbUrl }, async () => {
+test("a real failure inside dualWriteImport rolls back every normalized-table write from the same transaction", { skip: e2eSkipReason({ requiresFixture: false }) }, async () => {
   const { dualWriteImport } = await import("../lib/dual-write");
   const { getDb } = await import("../db");
   const { subscribers } = await import("../db/schema/subscribers");
   const { subscriptions } = await import("../db/schema/subscriptions");
 
   const db = getDb();
-  await db.execute(sql`TRUNCATE TABLE exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  await truncateAllTables(db);
 
   // A structurally valid seed for subscribers/subscriptions/recipients/
   // orders (so those writes genuinely happen inside the transaction first),
@@ -77,12 +65,12 @@ test("a real failure inside dualWriteImport rolls back every normalized-table wr
   assert.equal(await countRows(db, subscriptions), 0, "the subscription write that happened earlier in the SAME transaction should have rolled back too");
 });
 
-test("the real POST /api/shared-state handler commits (200/{ok:true}) when dual-write soft-skips (not an error) instead of rolling back", { skip: !hasDbUrl }, async () => {
+test("the real POST /api/shared-state handler commits (200/{ok:true}) when dual-write soft-skips (not an error) instead of rolling back", { skip: e2eSkipReason({ requiresFixture: false }) }, async () => {
   const { POST } = await import("../app/api/shared-state/route");
   const { getDb } = await import("../db");
 
   const db = getDb();
-  await db.execute(sql`TRUNCATE TABLE exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  await truncateAllTables(db);
 
   // A well-formed mailingStatus key that won't match any real mailing row -
   // dualWriteMailingStatus soft-skips this (findMailingByAppKey logs "no

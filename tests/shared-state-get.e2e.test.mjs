@@ -19,64 +19,25 @@
 // if either is missing.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
-// the real shared local Postgres tables - when running more than one of
-// these together, pass `node --test --test-concurrency=1 ...` or they'll
-// race each other (node:test runs separate files in parallel by default,
-// and there's only one physical database, not one per file).
+// the real shared local Postgres tables - run these through `pnpm test:e2e`
+// (not `node --test` directly), which passes `--test-concurrency=1`.
+// Without it they race each other (node:test runs separate files in
+// parallel by default, and there's only one physical database, not one per
+// file) - see docs/testing.md.
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
-import XLSX from "xlsx";
-import { sql } from "drizzle-orm";
 import { exceptionReviewKey, componentKey } from "../lib/keys.ts";
+import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, "..");
-const XLSX_PATH = path.join(ROOT, "testing/Import_20260812_181828.xlsx");
-
-for (const line of fs.readFileSync(path.join(ROOT, ".env.local"), "utf8").split("\n")) {
-  const m = line.match(/^([A-Z_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-}
-
-const hasFixture = fs.existsSync(XLSX_PATH);
-const hasDbUrl = !!process.env.DATABASE_URL;
-
-function loadAppJsSandbox() {
-  const source = fs.readFileSync(path.join(ROOT, "public/app.js"), "utf8");
-  function stubElement() {
-    return {
-      addEventListener() {}, querySelector: () => stubElement(), querySelectorAll: () => [],
-      classList: { add() {}, remove() {}, toggle() {}, contains: () => false }, style: {}, dataset: {},
-      getAttribute: () => null, setAttribute() {}, set innerHTML(_v) {}, get innerHTML() { return ""; },
-    };
-  }
-  const sandbox = {
-    document: { querySelector: () => stubElement(), querySelectorAll: () => [] },
-    window: { EVERLETTER_SEED: undefined, location: { hash: "" } },
-    console, localStorage: { getItem: () => null, setItem() {} },
-    fetch: async () => ({ ok: false, json: async () => ({}) }),
-    TextEncoder,
-  };
-  vm.createContext(sandbox);
-  new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
-  return sandbox;
-}
-
-test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status all round-trip correctly through the real POST/GET handlers", { skip: !hasFixture || !hasDbUrl }, async () => {
+test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status all round-trip correctly through the real POST/GET handlers", { skip: e2eSkipReason() }, async () => {
   const { POST, GET } = await import("../app/api/shared-state/route");
   const { dualWriteImport } = await import("../lib/dual-write");
   const { getDb } = await import("../db");
 
   const db = getDb();
-  await db.execute(sql`TRUNCATE TABLE exceptions, mailing_components, mailings, orders, subscriptions, subscribers RESTART IDENTITY CASCADE`);
+  await truncateAllTables(db);
 
-  const workbook = XLSX.read(fs.readFileSync(XLSX_PATH), { type: "buffer", cellDates: true });
-  const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes("mailing")) || workbook.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: true });
+  const rows = loadSpreadsheetRows();
   const appJs = loadAppJsSandbox();
   const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx");
 
