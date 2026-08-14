@@ -31,8 +31,8 @@
 //    default changing later should not silently change what a snapshot
 //    proves.
 //
-// Two documented cases where pinning genuinely can't reach further (neither
-// is scrubbed - both are named plainly here and left as real, open findings):
+// One documented case where pinning genuinely can't reach further (not
+// scrubbed - named plainly here and left as a real, open finding):
 //  - number(value) in public/app.js calls `.toLocaleString()` with no
 //    explicit locale, which resolves against the process's default ICU
 //    locale (a different axis than TZ, and not something loadAppJsSandbox
@@ -44,10 +44,18 @@
 //    fixture large enough to cross that threshold would need either a
 //    locale-pinned reimplementation or an explicit normalization step this
 //    one doesn't need.
-//  - The "sync" case is not actually timezone-stable, independent of
-//    FIXED_NOW - see the detailed comment at that case in CASES below for
-//    the real, pre-existing app.js bug responsible (confirmed directly
-//    with TZ=Asia/Tokyo) and why no fixture/state choice avoids it.
+//
+// The "sync" case USED TO be a second, worse case here - not a pinning gap
+// but a real app.js bug (batchDatesForOrder() serialized via
+// `.toISOString()` with no getTimezoneOffset() correction, unlike every
+// sibling date function, so it shifted dates under any positive-UTC-offset
+// TZ). Fixed directly in app.js (see that commit) once this harness
+// surfaced it via TZ=Asia/Tokyo - the fix mirrors nearestBatchDate()'s
+// existing correction exactly. All 17 cases, sync included, are now
+// verified stable under TZ=Asia/Tokyo (re-run after the fix, see PR #27's
+// follow-up report). Left un-scrubbed here as a worked example: this
+// harness didn't just document a timezone limitation, it found and enabled
+// fixing a real one.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -222,27 +230,16 @@ const CASES = [
   ["bins", "bins", {}],
   ["launch", "launch", {}],
   ["samples", "samples", {}],
-  // KNOWN GAP, not fixed here (no production code changes): this is the one
-  // case in this suite that is not actually timezone-stable, and the reason
-  // is independent of FIXED_NOW/todayIso() (both verified stable under
-  // TZ=Asia/Tokyo). renderSync() calls batchDatesForOrder() (public/app.js),
-  // which builds each generated date with local-time Date methods
-  // (`new Date(cursor); batch.setDate(day)`) but serializes it with
-  // `batch.toISOString().slice(0, 10)` - unlike every other date
-  // serialization in this file (todayIso(), formatDate(), nearestBatchDate()),
-  // which all round-trip through `date.getTime() -
-  // date.getTimezoneOffset() * 60000` first specifically so the calendar
-  // date is stable regardless of runtime timezone. toISOString() always
-  // reports UTC, so under any positive-UTC-offset timezone (confirmed with
-  // TZ=Asia/Tokyo, UTC+9), local midnight serializes as the PREVIOUS UTC
-  // calendar day - every generated mailing date in this view's table
-  // shifts back one day. This is a real, pre-existing app.js bug, not a
-  // pinning gap: no choice of syncOrderDate avoids it, since
-  // plannedLetterCount() never returns 0 and batchDatesForOrder() always
-  // reaches the same toISOString() call. Committed as generated under a
-  // negative-UTC-offset timezone (this environment's default); worth
-  // fixing in app.js the same way nearestBatchDate() already does, as its
-  // own scoped follow-up - not attempted here.
+  // Previously the one case in this suite that wasn't timezone-stable:
+  // renderSync() calls batchDatesForOrder() (public/app.js), which used to
+  // serialize each generated date with `batch.toISOString().slice(0, 10)`
+  // - unlike every other date serialization in this file (todayIso(),
+  // formatDate(), nearestBatchDate()), which round-trip through
+  // `date.getTime() - date.getTimezoneOffset() * 60000` first specifically
+  // so the calendar date is stable regardless of runtime timezone. Fixed
+  // directly in app.js to use the same correction (see that commit); this
+  // snapshot was regenerated against the fixed output and is now verified
+  // stable under TZ=Asia/Tokyo along with every other case in CASES.
   [
     "sync",
     "sync",
