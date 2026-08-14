@@ -1,0 +1,47 @@
+# The containerized app service, split out of devops/docker-compose.yml so a
+# Postgres-only local dev startup doesn't have to satisfy these vars - see
+# that file's header comment for the full rationale. This file is never
+# passed to Compose on its own: `depends_on: postgres` below resolves only
+# when Compose merges this file with devops/docker-compose.yml, which is the
+# one that actually defines the `postgres` service and the `postgres-data`
+# volume. Always invoke both together
+# (`-f devops/docker-compose.yml -f devops/docker-compose.app.yml`), with the
+# same `-p everletter-ops-crm --project-directory .` as the base file - see
+# `docker:up:full`/`docker:down` in package.json and devops/deploy.sh.
+#
+# For full-stack verification and eventual NAS deployment. Not part of local
+# iteration day to day - that normally uses `pnpm dev` against the same
+# Postgres service started by `pnpm docker:up`, and there's no reason to also
+# run a redundant containerized instance alongside it.
+#
+# AUTH_SECRET/AUTH_URL/GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/ALLOWED_USERS are
+# required and fail loudly if unset (or empty - Compose's `:?` guard rejects
+# both) rather than silently booting with broken auth; AUTH_TRUST_HOST has a
+# dev-safe fallback. `--env-file .env.local` only handles Compose's own
+# ${VAR} interpolation here - it does not pass those values through to the
+# app container automatically, which is why `environment:` below lists them
+# explicitly. .env.example documents the expected keys.
+services:
+  app:
+    # `image:` names the tag that `build:` produces locally (docker:up:full
+    # passes --build) and is also what `docker compose pull` targets on its
+    # own - the NAS deploy script pulls the CI-built image via this tag
+    # instead of building from source.
+    image: ghcr.io/marcy-ever/everletter-ops-crm:latest
+    build:
+      context: .
+      dockerfile: devops/app.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-everletter}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-everletter_dev}
+      AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-false}
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET must be set}
+      AUTH_URL: ${AUTH_URL:?AUTH_URL must be set}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET must be set}
+      ALLOWED_USERS: ${ALLOWED_USERS:?ALLOWED_USERS must be set}
+    ports:
+      - "3100:3000"

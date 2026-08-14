@@ -2,23 +2,40 @@
 # directory (and thus project name / any relative paths) is derived from the
 # directory containing this file unless overridden, so it must always be run
 # with `--project-directory <repo root>` and an explicit project name -
-# see the `docker:up`/`docker:down` scripts in package.json, which set both.
+# see the `docker:up`/`docker:up:full`/`docker:down` scripts in package.json,
+# which set both.
 #
-# Postgres and auth credentials below are read via ${VAR} interpolation from
-# the repo root's .env.local (each environment - dev VM, NAS - has its own,
+# Split into two files - this one (Postgres only) and
+# devops/docker-compose.app.yml (the containerized app) - specifically so a
+# Postgres-only local dev startup (`pnpm docker:up`) never has to satisfy the
+# app service's required auth vars. Compose interpolates every ${VAR} in
+# whichever file(s) are passed to it at parse time, regardless of which
+# service you actually start - profiles (the mechanism this used to use,
+# `profiles: ["full"]` on the app service) don't change that: profiles only
+# gate which services *start*, not which services get *parsed*. So as long as
+# the app service lived in this same file, a bare `pnpm docker:up` on a fresh
+# clone (no AUTH_SECRET/AUTH_URL/etc. yet) failed before Postgres ever
+# started, even though nothing about starting Postgres needs those vars. File
+# separation replaces the profile gate entirely - there is no `profiles:` key
+# anywhere anymore, and none is needed.
+#
+# `docker:up` (package.json) passes only this file. `docker:up:full` and
+# `docker:down` pass this file *and* devops/docker-compose.app.yml together
+# (`-f devops/docker-compose.yml -f devops/docker-compose.app.yml`) - both
+# `-f` flags are required any time the app service is involved, because the
+# app service's `depends_on: postgres` (in the other file) only resolves once
+# Compose merges both files into one project; passing just the app file alone
+# would reference a `postgres` service Compose has no definition for.
+#
+# Postgres credentials below are read via ${VAR} interpolation from the repo
+# root's .env.local (each environment - dev VM, NAS - has its own,
 # gitignored, supplying its own real value). Compose only auto-loads a file
 # literally named `.env`, not `.env.local`, so every invocation here passes
 # `--env-file .env.local` explicitly (see docker:up/docker:up:full/docker:down
-# in package.json, and devops/deploy.sh). This --env-file only handles
-# Compose's own ${VAR} interpolation in this file - it does not pass those
-# values through to the app container automatically, which is why the app
-# service's `environment:` block below lists AUTH_SECRET/GOOGLE_CLIENT_ID/
-# GOOGLE_CLIENT_SECRET/ALLOWED_USERS explicitly rather than relying on
-# --env-file alone. POSTGRES_PASSWORD/AUTH_SECRET/GOOGLE_CLIENT_ID/
-# GOOGLE_CLIENT_SECRET/ALLOWED_USERS are required and fail loudly if unset
-# rather than silently booting with a weak password or broken auth;
-# POSTGRES_USER/POSTGRES_DB/AUTH_TRUST_HOST have dev-safe fallbacks.
-# .env.example documents the expected keys.
+# in package.json, and devops/deploy.sh). POSTGRES_PASSWORD is required and
+# fails loudly if unset rather than silently booting with a weak password;
+# POSTGRES_USER/POSTGRES_DB have dev-safe fallbacks. .env.example documents
+# the expected keys.
 services:
   postgres:
     image: postgres:17-alpine
@@ -36,36 +53,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-
-  # Containerized app, for full-stack verification and eventual NAS deployment.
-  # Not part of the default `up` (see `docker:up` vs `docker:up:full` in
-  # package.json) - local iteration normally uses `pnpm dev` against this same
-  # Postgres service, and there's no reason to also run a redundant
-  # containerized instance alongside it.
-  app:
-    profiles: ["full"]
-    # `image:` names the tag that `build:` produces locally (docker:up:full
-    # passes --build) and is also what `docker compose pull` targets on its
-    # own - the NAS deploy script pulls the CI-built image via this tag
-    # instead of building from source.
-    image: ghcr.io/marcy-ever/everletter-ops-crm:latest
-    build:
-      context: .
-      dockerfile: devops/app.Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-everletter}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-everletter_dev}
-      AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-false}
-      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET must be set}
-      AUTH_URL: ${AUTH_URL:?AUTH_URL must be set}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET must be set}
-      ALLOWED_USERS: ${ALLOWED_USERS:?ALLOWED_USERS must be set}
-    ports:
-      - "3100:3000"
 
 volumes:
   postgres-data:
