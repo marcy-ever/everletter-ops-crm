@@ -1,7 +1,7 @@
-// End-to-end parity test for lib/build-dataset-from-tables.ts (Step 1 of
-// Option B's real cutover - see docs/schema-design.md's "Implementation
-// Path" section). Requires a real local Postgres reachable via
-// DATABASE_URL (see .env.local / devops/docker-compose.yml) and the real
+// End-to-end parity test for lib/build-dataset-from-tables.ts - see
+// docs/schema-design.md for the full schema design. Requires a real local
+// Postgres reachable via DATABASE_URL (see .env.local /
+// devops/docker-compose.yml) and the real
 // test spreadsheet at testing/Import_20260812_181828.xlsx (gitignored,
 // developer-local - this test is skipped if either is missing, not
 // failed, so it doesn't break `pnpm test` in an environment without them).
@@ -90,14 +90,15 @@ function compareSummary(expected, actual, discrepancies) {
 //  (a) 2 subscriptions have a blank/unrecognized Plan cell ("Needs
 //      Review"), which lib/write-to-tables.ts deliberately skips writing (it's
 //      already flagged by app.js's own exceptions) - cascades to 18
-//      ORD-MISSING-* orders, 18 mailings, and (newly found) 2 recipients
-//      whose only subscription was one of these two.
+//      ORD-MISSING-* orders, 18 mailings, and 2 recipients whose only
+//      subscription was one of these two.
 //  (b) order ORD-2858 has letter number 4 entered on three separate rows
 //      - a genuine spreadsheet duplicate, not a bug - lib/write-to-tables.ts
 //      correctly refuses to guess which one is real and skips all three.
-// notes, endDate, and mailings.activeState were closed (see
-// db/schema/mailings.ts's active/notes columns and
-// db/schema/subscriptions.ts's ended_at column) - no longer allowed here.
+// mailings.notes/activeState and subscriptions.endDate are real, populated
+// columns (db/schema/mailings.ts's active/notes, db/schema/subscriptions.ts's
+// ended_at) - a discrepancy in any of them is not allowed here; it's a real
+// regression, not a known gap.
 // Everything remaining (subscribers' status/firstOrderDate, tie-break
 // ordering) is a documented, individually verified schema gap - see
 // lib/build-dataset-from-tables.ts. Any discrepancy NOT matching one of

@@ -1,16 +1,11 @@
-// Verifies the actual behavior change from Option B Phase 2's transactional
-// write path (see docs/schema-design.md's Phase 2 notes): a genuine,
-// unexpected failure inside lib/write-to-tables.ts must roll back every write
-// that happened earlier in the same transaction, not just fail silently
-// partway through. This is the real guarantee route.ts's db.transaction()
-// is supposed to provide - this test exercises the actual writeImport()
-// function and a real Postgres transaction, not a mock.
-//
-// crm_state (table and write both) is gone as of Option B Phase 2's final
-// step - see docs/schema-design.md's Phase 2 notes - so these tests assert
-// on the normalized tables directly rather than on a crm_state row - see
-// each test's own comment for why the two tests differ in what they can
-// prove.
+// Verifies lib/write-to-tables.ts's transactional guarantee: a genuine,
+// unexpected failure must roll back every write that happened earlier in
+// the same transaction, not just fail silently partway through. This is
+// the real guarantee route.ts's db.transaction() is supposed to provide -
+// this test exercises the actual writeImport() function and a real
+// Postgres transaction, not a mock. These tests assert on the normalized
+// tables directly - see each test's own comment for why the two tests
+// differ in what they can prove.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
 // the real shared local Postgres tables - run these through `pnpm test:e2e`
@@ -53,7 +48,7 @@ test("a real failure inside writeImport rolls back every normalized-table write 
   };
 
   // Mirrors route.ts's POST exactly: writeImport is the only thing
-  // inside the transaction now that crm_state isn't written here.
+  // inside the transaction.
   await assert.rejects(
     db.transaction(async (tx) => {
       await writeImport(brokenSeed, tx);

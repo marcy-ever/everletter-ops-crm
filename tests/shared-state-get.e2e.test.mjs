@@ -1,9 +1,8 @@
 // Verifies GET /api/shared-state's table-backed behavior end to end,
 // against real Postgres and the real POST/GET route handlers - not mocks.
-// Covers exactly the three things flagged as real regression risk when GET
-// moved off the (now entirely removed - see docs/schema-design.md's Phase 2
-// notes) crm_state blob (see the task this was written for and
-// lib/build-overrides-from-tables.ts's module comment):
+// Covers three things (see lib/build-overrides-from-tables.ts's module
+// comment for why componentOverrides/reviewed each need their own fetch,
+// separate from the rest of the dataset):
 //  1. componentOverrides is populated correctly after a real componentStatus
 //     POST, using the real componentKey() format.
 //  2. marking an exception reviewed (POST) makes GET's `reviewed` list
@@ -109,10 +108,3 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   assert.ok(reconstructedMailing, "the status-updated mailing should still be present in dataset.mailings");
   assert.equal(reconstructedMailing.status, newStatus);
 });
-
-// A dedicated "GET works with crm_state never populated" test lived here
-// while crm_state still existed as an unwritten table (proving GET had no
-// hidden dependency on a stale row). Removed now that the table itself is
-// dropped (see docs/schema-design.md's Phase 2 notes) - there's no table
-// left to be "populated" or not, so the thing that test proved is now true
-// structurally, not something a test needs to keep demonstrating.

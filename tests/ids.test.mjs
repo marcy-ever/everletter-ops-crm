@@ -111,11 +111,12 @@ test("buildMailingId matches app.js's real buildMailingId for sample data", () =
 });
 
 test("ids stay short and bounded regardless of input length (hashed, not embedded raw)", () => {
-  // Regression guard for the id-length bug: these ids used to embed their
-  // raw slugged input text (and each layer re-embedded the layer below),
-  // so length grew unboundedly with input length. Hashing means length is
-  // now constant - PREFIX- (varies) + a fixed 24-char hex digest - no
-  // matter how long the underlying name/address/character/plan text is.
+  // Regression guard: without hashing (see lib/ids.ts's module comment),
+  // these ids would embed their raw slugged input text, with each layer
+  // re-embedding the layer below, so length would grow unboundedly with
+  // input length. Hashing keeps length constant - PREFIX- (varies) + a
+  // fixed 24-char hex digest - no matter how long the underlying
+  // name/address/character/plan text is.
   const longName = "A Very Long Recipient Name That Keeps Going And Going And Going";
   const longAddress = "1234 An Extremely Long Street Name Boulevard Avenue, Some City, ST 99999";
 
@@ -141,10 +142,11 @@ test("ids are deterministic - same input always produces the same id (load-beari
 });
 
 test("buildRecipientId no longer collides two different real recipients sharing a long subscriberId prefix", () => {
-  // Regression case for the actual bug found in the real spreadsheet: two
-  // different people under the same subscriber account, whose old 22-char
-  // truncation landed inside the shared subscriberId prefix before either
-  // recipient's own name/address could differentiate them.
+  // Regression case from the real spreadsheet: two different people under
+  // the same subscriber account, real names/addresses drawn from a pair
+  // that a fixed-length truncation would land inside the shared
+  // subscriberId prefix, before either recipient's own name/address could
+  // differentiate them (see lib/ids.ts's module comment).
   const subscriberId = buildSubscriberId({
     email: "bridgette.duquaine@aah.org",
     recipientName: "unused",
@@ -158,9 +160,10 @@ test("buildRecipientId no longer collides two different real recipients sharing 
 });
 
 test("buildSubscriptionId no longer collides two different characters/plans for the same recipient", () => {
-  // Regression case for the Bridgette Duquaine bug reported earlier: two
-  // orders for the same recipient, different character and plan, whose old
-  // 28-char truncation collided onto one subscriptionId.
+  // Same real subscriber account as the recipientId case above: two orders
+  // for the same recipient, different character and plan, that a
+  // fixed-length truncation would collide onto one subscriptionId (see
+  // lib/ids.ts's module comment).
   const recipientId = "REC-SUB-BRIDGETTE-DUQUAINE";
   const a = buildSubscriptionId({ recipientId, character: "Mothers Day", plan: "One-time" });
   const b = buildSubscriptionId({ recipientId, character: "Marley", plan: "Month-to-month" });

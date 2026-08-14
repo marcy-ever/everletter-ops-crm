@@ -4,49 +4,53 @@
  * buildSubscriptionId/buildMailingId in public/app.js). app.js is a
  * non-bundled browser script and can't import this module - its own inline
  * copies of these functions remain the actual source of truth for what the
- * browser sends. This module exists so server-side write-to-tables code has a
- * tested, parseable spec to match against, instead of re-deriving the
- * format ad hoc. tests/ids.test.mjs verifies this module's output is
+ * browser sends. This module exists so server-side write-to-tables code
+ * has a tested, parseable spec to match against, instead of re-deriving
+ * the format ad hoc. tests/ids.test.mjs verifies this module's output is
  * identical to app.js's real functions for the same input.
  *
- * History, part 1 (truncation collided distinct records): these four ids
- * used to truncate to a fixed character count each (18/22/28/34, plus a
- * 56-char cap inside slug() itself) - a leftover from the original
- * Codex-generated build with no documented reason and nothing downstream
- * depending on it (subscribers.id/subscriptions.id are Postgres `text`,
- * unbounded - see db/schema/). Against the real spreadsheet, that
- * truncation collided distinct people onto the same id: most severely
- * recipientId, where 15 pairs of genuinely different recipients (different
- * names, sometimes different mailing addresses entirely) landed on the same
- * 22-character id because the cutoff fell inside the shared subscriberId
- * prefix, before the recipient-specific name/address ever got a chance to
- * differentiate. subscriptionId inherited the same problem one layer up
- * (built from recipientId + character + plan) - see docs/schema-design.md's
- * mailingId note for the same pattern found there first.
- *
- * History, part 2 (removing the cap fixed collisions but produced absurd
- * ids): the first fix removed every length cap, verified against the real
- * 1,218-row file to produce zero spurious collisions - but each id layer
- * re-embeds the full raw text of every layer below it (recipientId embeds
- * subscriberId's raw text and re-embeds name+address again; subscriptionId
- * and mailingId inherit that bloat), so ids grew to 150-180+ characters -
- * multi-line "PLAN-REC-SUB-..." strings in every log line. Fixed by hashing
- * the same combined, slugged string that used to be embedded raw, instead
- * of embedding it: `PREFIX-${sha256Hex(slug(sameCombinedString)).slice(0,
- * ID_HASH_LENGTH)}`. slug() still runs first, so grouping/dedup behavior
+ * Each id is a hash of its input, not the raw input text, and each layer's
+ * id is built from a hash of the layer below rather than re-embedding that
+ * layer's raw text:
+ * `PREFIX-${sha256Hex(slug(combinedString)).slice(0, ID_HASH_LENGTH)}`.
+ * Two things this depends on:
+ *  - Hashing instead of truncating raw text avoids collisions. A
+ *    fixed-length truncation of raw text puts distinct records on the same
+ *    id whenever the cutoff falls before whatever makes them different -
+ *    concretely, 15 pairs of genuinely different recipients in the real
+ *    spreadsheet (different names, sometimes different addresses entirely)
+ *    would land on the same recipientId under a 22-character truncation,
+ *    because the cutoff falls inside the shared subscriberId prefix before
+ *    the recipient-specific name/address ever gets a chance to
+ *    differentiate. subscriptionId carries the same risk one layer up
+ *    (built from recipientId + character + plan) - see
+ *    docs/schema-design.md's mailingId note for the same pattern found
+ *    there independently. subscribers.id/subscriptions.id (and the
+ *    equivalent columns for the other two entities) are Postgres `text`,
+ *    unbounded - nothing downstream requires a particular id length, so
+ *    there's no constraint pushing back toward truncation.
+ *  - Hashing instead of embedding raw text keeps ids a fixed length.
+ *    Embedding each layer's raw text would make ids grow with every layer
+ *    - recipientId would carry subscriberId's raw text plus its own
+ *    name/address, and subscriptionId/mailingId would inherit that bloat
+ *    on top of their own. Hashing keeps every id `PREFIX-` plus a fixed
+ *    24-character hex digest, regardless of how long the underlying
+ *    name/address/character/plan text is.
+ * slug() still runs first in both cases, so grouping/dedup behavior
  * (case-insensitive, diacritic-insensitive, same input fields) is
- * unchanged from before this pass - only the final encoding changed, from
- * raw slugged text to a truncated hex digest of that same text. SHA-256
- * truncated to 24 hex characters (96 bits) keeps collision probability
- * astronomically below anything this dataset's size could produce, at a
- * fraction of the previous length. sha256Hex is a pure-JS, synchronous,
- * dependency-free implementation (FIPS 180-4) - app.js is a non-bundled
- * <script> with no crypto module, and Web Crypto's subtle.digest is
- * async-only, which doesn't fit these functions' inline call sites during
- * array-building. The literal same implementation is vendored in both
- * files (see the comment in public/app.js's copy) so they stay in sync;
- * tests/ids.test.mjs checks output parity between the two, not source-text
- * parity, since TS needs type annotations JS doesn't have.
+ * unaffected by hashing - only the final encoding differs, from slugged
+ * text to a hex digest of that text. SHA-256 truncated to 24 hex
+ * characters (96 bits) keeps collision probability astronomically below
+ * anything this dataset's size could produce.
+ *
+ * sha256Hex is a pure-JS, synchronous, dependency-free implementation
+ * (FIPS 180-4): app.js is a non-bundled <script> with no crypto module,
+ * and Web Crypto's subtle.digest is async-only, which doesn't fit these
+ * functions' inline call sites during array-building. The literal same
+ * implementation is vendored in both files (see the comment in
+ * public/app.js's copy) so they stay in sync; tests/ids.test.mjs checks
+ * output parity between the two, not source-text parity, since TS needs
+ * type annotations JS doesn't have.
  */
 
 function slug(value: string | null | undefined): string {
@@ -62,7 +66,7 @@ function slug(value: string | null | undefined): string {
 
 // Verified against Node's crypto.createHash('sha256') for empty/short/
 // block-boundary (55-65 byte)/long/unicode inputs before being embedded
-// here - see the history comment above.
+// here - see the module comment above.
 function sha256Hex(message: string): string {
   const bytes = new TextEncoder().encode(message);
 

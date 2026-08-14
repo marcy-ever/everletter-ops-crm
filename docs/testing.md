@@ -21,7 +21,7 @@ all of them and fails the way a release gate should.
   `build-overrides-from-tables`). Pure functions and hand-built fixtures, no
   external services. Safe to run anytime, runs in parallel.
 - **`pnpm test:e2e`** - the three end-to-end files
-  (`build-dataset-from-tables.e2e`, `dual-write-transactional.e2e`,
+  (`build-dataset-from-tables.e2e`, `write-to-tables-transactional.e2e`,
   `shared-state-get.e2e`). Needs real local Postgres and, for two of the
   three, the real local test spreadsheet (see below). **Serialized**
   (`node --test --test-concurrency=1`) deliberately, not as a style choice:
@@ -67,7 +67,7 @@ running `drizzle-kit` commands directly, which don't read `.env.local` on
 their own.
 
 The real test spreadsheet (`build-dataset-from-tables.e2e` and
-`shared-state-get.e2e` need it; `dual-write-transactional.e2e` doesn't) is
+`shared-state-get.e2e` need it; `write-to-tables-transactional.e2e` doesn't) is
 gitignored and developer-local: `testing/Import_20260812_181828.xlsx`. Ask
 Marcy/Brad for a copy if you don't have one - never commit a real customer
 export (see CLAUDE.md's data-boundary notes).
@@ -87,7 +87,7 @@ it.
 
 **A green `pnpm test` where every e2e test silently skipped is not a real
 pass.** If you're relying on `test:e2e` actually exercising the normalized
-tables (e.g. before merging a change to `lib/dual-write.ts` or
+tables (e.g. before merging a change to `lib/write-to-tables.ts` or
 `lib/build-dataset-from-tables.ts`), check the output for `# pass` vs. `#
 skipped` counts, not just the exit code.
 
@@ -131,5 +131,5 @@ and a real bug (the ENOENT crash above). One definition now provides:
   omit it to get the real clock.
 
 `tests/db-test-helpers.mjs` is a separate, smaller module (`countRows()`)
-used only by `dual-write-transactional.e2e` - see its own comment for why it
+used only by `write-to-tables-transactional.e2e` - see its own comment for why it
 stayed separate from `e2e-helpers.mjs` rather than being folded in.

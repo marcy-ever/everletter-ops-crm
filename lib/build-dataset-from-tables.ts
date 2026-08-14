@@ -1,52 +1,39 @@
 /**
  * Reconstructs app.js's full crmDataset shape (public/app.js's
- * buildSeedFromSpreadsheet output) by querying the normalized Option A
- * tables (db/schema/). Originally built as a correctness foundation, proven
- * with tests before anything read from it live; as of Option B Phase 2,
- * app/api/shared-state/route.ts's GET handler calls buildDatasetFromTables()
- * directly, and the crm_state blob this used to read (and the table itself)
- * are gone entirely - see docs/schema-design.md's Phase 2 notes for the
- * full history.
+ * buildSeedFromSpreadsheet output) by querying the normalized tables
+ * (db/schema/) directly. app/api/shared-state/route.ts's GET handler calls
+ * buildDatasetFromTables() for this; there is no other read path and
+ * nothing is cached in between.
  *
- * lib/write-to-tables.ts writes every import into these tables; this module is
- * what reads them back. Composed from one
- * small, independently-testable builder function per output entity
+ * lib/write-to-tables.ts writes every import into these tables; this
+ * module is what reads them back. Composed from one small,
+ * independently-testable builder function per output entity
  * (buildSubscribers/buildRecipients/buildOrders/buildSubscriptions/
  * buildMailings/buildExceptions/buildSummary), mirroring the real shape of
- * the problem - each output has its own aggregation logic, and tests
- * for one shouldn't need to construct fixtures for the other six.
- * buildMailings runs first; every other builder reuses its output for
- * per-record fields (overdue, dueNext14Days, activeState, etc.) instead of
- * recomputing the same business rules independently - see
- * lib/mailing-rules.ts, the same canonical-shared-logic pattern lib/ids.ts
- * and lib/keys.ts already established.
+ * the problem - each output has its own aggregation logic, and tests for
+ * one shouldn't need to construct fixtures for the other six. buildMailings
+ * runs first; every other builder reuses its output for per-record fields
+ * (overdue, dueNext14Days, activeState, etc.) instead of recomputing the
+ * same business rules independently - see lib/mailing-rules.ts, the same
+ * canonical-shared-logic pattern lib/ids.ts and lib/keys.ts already
+ * establish.
  *
  * `overdue`/`dueNext14Days`/`summary.asOf` are computed LIVE here (using
  * the `now` passed to buildDatasetFromRows/buildDatasetFromTables, default
  * "right now"), not frozen at import time the way app.js's client-side
- * computation is - a deliberate, decided behavior improvement, not a bug;
- * see lib/mailing-rules.ts's module comment.
+ * computation is - a deliberate behavior improvement, not a bug; see
+ * lib/mailing-rules.ts's module comment.
  *
  * Known, documented gaps - fields app.js's original seed has that the
  * normalized schema doesn't currently persist, or can only partially
  * recover. None of these are bugs in this module; each would need a
- * lib/write-to-tables.ts (write-path) change to close, which is explicitly out
- * of scope for this pass.
- *
- * (Previously this list also included subscriptions[].endDate,
- * mailings[].notes, and mailings[].activeState - all three were closed by
- * adding subscriptions.ended_at / mailings.active / mailings.notes columns
- * and having lib/write-to-tables.ts populate them, once this module's e2e
- * parity test flagged mailings[].activeState as a real, if narrow,
- * correctness gap - see git history for that change.)
+ * lib/write-to-tables.ts (write-path) change to close.
  *
  *  - summary.sourceFile: always "" unless the caller supplies one
  *    explicitly (see buildDatasetFromTables's `sourceFile` param). Nothing
  *    in the normalized tables records which spreadsheet file produced the
- *    current data - the old crm_state blob had a sourceName field for this,
- *    but that table is gone now regardless (see the module comment above).
- *    Would need a real column (e.g. on ingestion_events, which exists in
- *    the schema but nothing writes to yet) to close.
+ *    current data. Would need a real column (e.g. on ingestion_events,
+ *    which exists in the schema but nothing writes to yet) to close.
  *  - mailings[].orderDate: "" for a mailing whose order was skipped by
  *    lib/write-to-tables.ts (no resolvable/kept subscription at import time -
  *    see runImport's orders loop). Doesn't manifest for orders backed by a
