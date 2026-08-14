@@ -13,8 +13,8 @@
 // parallel by default, and there's only one physical database, not one per
 // file) - see docs/testing.md.
 //
-// Flow: parse the real spreadsheet through the REAL public/app.js
-// (sandboxed vm, same technique as tests/ids.test.mjs) to get the
+// Flow: parse the real spreadsheet through the REAL app/crm/legacy-app.js
+// (loadAppJsSandbox(), same helper tests/ids.test.mjs uses) to get the
 // client-computed seed -> write it through the REAL lib/write-to-tables.ts
 // writeImport() into the real normalized tables -> call the REAL
 // buildDatasetFromTables() to reconstruct a seed from those tables ->
@@ -138,7 +138,7 @@ test("buildDatasetFromTables reconstructs the real spreadsheet identically to ap
 
   const rows = loadSpreadsheetRows();
 
-  const appJs = loadAppJsSandbox(fixedNow);
+  const appJs = await loadAppJsSandbox(fixedNow);
   const clientSeed = appJs.buildSeedFromSpreadsheet(rows, sourceFile);
 
   await truncateAllTables(db);

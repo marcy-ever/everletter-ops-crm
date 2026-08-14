@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import vm from "node:vm";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   OPEN_STATUSES,
   isOpenStatus,
@@ -14,73 +10,17 @@ import {
   monthKey,
   nearestBatchDate,
 } from "../lib/mailing-rules.ts";
+import { loadAppJsSandbox } from "./e2e-helpers.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Runs the real public/app.js in a sandboxed vm context so its actual
+// Runs the real app/crm/legacy-app.js so its actual
 // isOpenStatus/isOverdueMailing/isDueNext14Days/nearestBatchDate/
-// daysBetween/todayIso/monthKey functions can be called directly - app.js
-// can't be imported (non-bundled browser script), and lib/mailing-rules.ts
-// is only trustworthy as a spec if it's verified against the real thing.
-// Same technique as tests/ids.test.mjs and tests/keys.test.mjs.
-//
-// `fixedNow`, when provided, replaces the sandbox's Date constructor so
-// `new Date()` (no args) resolves to that instant - app.js's todayIso()
-// hardcodes `new Date()` with no way to inject "now" directly, so this is
-// the only way to get a deterministic today out of it for testing.
-function loadAppJsSandbox(fixedNow) {
-  const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
-
-  function stubElement() {
-    return {
-      addEventListener() {},
-      querySelector: () => stubElement(),
-      querySelectorAll: () => [],
-      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-      style: {},
-      dataset: {},
-      getAttribute: () => null,
-      setAttribute() {},
-      set innerHTML(_value) {},
-      get innerHTML() {
-        return "";
-      },
-    };
-  }
-
-  const RealDate = Date;
-  const sandbox = {
-    document: {
-      querySelector: () => stubElement(),
-      querySelectorAll: () => [],
-    },
-    window: {
-      EVERLETTER_SEED: undefined,
-      location: { hash: "" },
-    },
-    console,
-    localStorage: { getItem: () => null, setItem() {} },
-    fetch: async () => ({ ok: false, json: async () => ({}) }),
-    TextEncoder,
-  };
-  if (fixedNow) {
-    class FixedDate extends RealDate {
-      constructor(...args) {
-        if (args.length === 0) super(fixedNow.getTime());
-        else super(...args);
-      }
-      static now() {
-        return fixedNow.getTime();
-      }
-    }
-    sandbox.Date = FixedDate;
-  }
-  vm.createContext(sandbox);
-  new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
-  return sandbox;
-}
-
-const appJs = loadAppJsSandbox();
+// daysBetween/todayIso/monthKey functions can be called directly -
+// lib/mailing-rules.ts is only trustworthy as a spec if it's verified
+// against the real thing. Same loadAppJsSandbox() as tests/ids.test.mjs and
+// tests/keys.test.mjs - see its own comment in tests/e2e-helpers.mjs,
+// including what passing fixedNow does (needed below since app.js's
+// todayIso() hardcodes `new Date()` with no way to inject "now" directly).
+const appJs = await loadAppJsSandbox();
 
 test("app.js sandbox actually exposes the real mailing-rules functions (sanity check)", () => {
   assert.equal(typeof appJs.isOpenStatus, "function");
@@ -157,8 +97,8 @@ test("monthKey matches app.js's real monthKey for sample data", () => {
   }
 });
 
-test("todayIso matches app.js's real todayIso() when app.js's Date is frozen to the same instant", () => {
+test("todayIso matches app.js's real todayIso() when app.js's Date is frozen to the same instant", async () => {
   const fixedNow = new Date("2026-08-12T15:30:00.000Z");
-  const frozenAppJs = loadAppJsSandbox(fixedNow);
+  const frozenAppJs = await loadAppJsSandbox(fixedNow);
   assert.equal(todayIso(fixedNow), frozenAppJs.todayIso());
 });

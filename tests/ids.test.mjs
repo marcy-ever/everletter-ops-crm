@@ -1,62 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import vm from "node:vm";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from "../lib/ids.ts";
+import { loadAppJsSandbox } from "./e2e-helpers.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Runs the real public/app.js in a sandboxed vm context so its actual
+// Runs the real app/crm/legacy-app.js so its actual
 // buildSubscriberId/buildRecipientId/buildSubscriptionId/buildMailingId
-// functions can be called directly - app.js can't be imported (non-bundled
-// browser script), and lib/ids.ts is only trustworthy as a spec if it's
-// verified against the real thing, not just eyeballed for a match. Same
-// technique as tests/keys.test.mjs.
-function loadAppJsSandbox() {
-  const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
-
-  function stubElement() {
-    return {
-      addEventListener() {},
-      querySelector: () => stubElement(),
-      querySelectorAll: () => [],
-      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-      style: {},
-      dataset: {},
-      getAttribute: () => null,
-      setAttribute() {},
-      set innerHTML(_value) {},
-      get innerHTML() {
-        return "";
-      },
-    };
-  }
-
-  const sandbox = {
-    document: {
-      querySelector: () => stubElement(),
-      querySelectorAll: () => [],
-    },
-    window: {
-      EVERLETTER_SEED: undefined,
-      location: { hash: "" },
-    },
-    console,
-    localStorage: { getItem: () => null, setItem() {} },
-    fetch: async () => ({ ok: false, json: async () => ({}) }),
-    // Real browsers provide TextEncoder as a global (used by sha256Hex to
-    // get UTF-8 bytes); vm.createContext doesn't inherit it from the
-    // outer Node process the way it doesn't inherit fetch either.
-    TextEncoder,
-  };
-  vm.createContext(sandbox);
-  new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
-  return sandbox;
-}
-
-const appJs = loadAppJsSandbox();
+// functions can be called directly - lib/ids.ts is only trustworthy as a
+// spec if it's verified against the real thing, not just eyeballed for a
+// match. Same loadAppJsSandbox() as tests/keys.test.mjs and every other
+// file that needs the real app code - see its own comment in
+// tests/e2e-helpers.mjs (this file used to keep its own near-duplicate
+// vm-based copy; folded into the shared one once the app.js -> ESM move
+// meant every copy needed the same rewrite anyway).
+const appJs = await loadAppJsSandbox();
 
 test("app.js sandbox actually exposes the real id functions (sanity check)", () => {
   assert.equal(typeof appJs.buildSubscriberId, "function");

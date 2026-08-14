@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import vm from "node:vm";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   mailingKey,
   componentKey,
@@ -12,53 +8,15 @@ import {
   parseComponentKey,
   parseExceptionReviewKey,
 } from "../lib/keys.ts";
+import { loadAppJsSandbox } from "./e2e-helpers.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Runs the real public/app.js in a sandboxed vm context so its actual
+// Runs the real app/crm/legacy-app.js so its actual
 // mailingKey/componentKey/exceptionReviewKey functions can be called
-// directly - app.js can't be imported (non-bundled browser script), and
-// lib/keys.ts is only trustworthy as a spec if it's verified against the
-// real thing, not just eyeballed for a match.
-function loadAppJsSandbox() {
-  const source = fs.readFileSync(path.join(__dirname, "../public/app.js"), "utf8");
-
-  function stubElement() {
-    return {
-      addEventListener() {},
-      querySelector: () => stubElement(),
-      querySelectorAll: () => [],
-      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-      style: {},
-      dataset: {},
-      getAttribute: () => null,
-      setAttribute() {},
-      set innerHTML(_value) {},
-      get innerHTML() {
-        return "";
-      },
-    };
-  }
-
-  const sandbox = {
-    document: {
-      querySelector: () => stubElement(),
-      querySelectorAll: () => [],
-    },
-    window: {
-      EVERLETTER_SEED: undefined,
-      location: { hash: "" },
-    },
-    console,
-    localStorage: { getItem: () => null, setItem() {} },
-    fetch: async () => ({ ok: false, json: async () => ({}) }),
-  };
-  vm.createContext(sandbox);
-  new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
-  return sandbox;
-}
-
-const appJs = loadAppJsSandbox();
+// directly - lib/keys.ts is only trustworthy as a spec if it's verified
+// against the real thing, not just eyeballed for a match. Same
+// loadAppJsSandbox() as tests/ids.test.mjs - see its own comment in
+// tests/e2e-helpers.mjs.
+const appJs = await loadAppJsSandbox();
 
 test("app.js sandbox actually exposes the real key functions (sanity check)", () => {
   assert.equal(typeof appJs.mailingKey, "function");

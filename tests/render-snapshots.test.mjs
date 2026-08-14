@@ -1,4 +1,4 @@
-// Golden-HTML snapshot harness for public/app.js's twelve views - step 1 of
+// Golden-HTML snapshot harness for app/crm/legacy-app.js's twelve views - step 1 of
 // the app.js decomposition plan (see CLAUDE.md). Every later step of that
 // plan is a refactor of the rendering this file snapshots; this suite is
 // the safety net all of them assert against, so it needs no Postgres and no
@@ -27,13 +27,13 @@
 //    unregenerable by anyone without that gitignored file. See CLAUDE.md.
 //  - Every case assigns activeView/query/statusFilter/batchFilter/every
 //    relevant selection explicitly (see caseState() below) rather than
-//    relying on public/app.js's own module-level state defaults - a
+//    relying on app/crm/legacy-app.js's own module-level state defaults - a
 //    default changing later should not silently change what a snapshot
 //    proves.
 //
 // One documented case where pinning genuinely can't reach further (not
 // scrubbed - named plainly here and left as a real, open finding):
-//  - number(value) in public/app.js calls `.toLocaleString()` with no
+//  - number(value) in app/crm/legacy-app.js calls `.toLocaleString()` with no
 //    explicit locale, which resolves against the process's default ICU
 //    locale (a different axis than TZ, and not something loadAppJsSandbox
 //    pins - see its own comment for why TZ specifically is safe). This
@@ -74,7 +74,7 @@ const FIXED_NOW = new Date("2026-08-12T12:00:00.000Z");
 // own authored business-rule text, already public in this sanitized repo).
 // Real app.js gets this from window.EVERLETTER_SEED, which the real page
 // sets from that committed file before any spreadsheet is ever imported -
-// defaultAutomationRules() in public/app.js falls back to it because
+// defaultAutomationRules() in app/crm/legacy-app.js falls back to it because
 // automationRules isn't part of the spreadsheet shape at all. Needed here
 // only so the Automation view's snapshot has real content instead of an
 // empty list; irrelevant to every other view.
@@ -153,7 +153,7 @@ const rows = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
 // Built once, on a throwaway sandbox, through the real buildSeedFromSpreadsheet
 // - not reimplemented. The resulting seed is a plain object, reused as-is
 // across every case's own fresh sandbox below.
-const seedBuilderSandbox = loadAppJsSandbox(FIXED_NOW);
+const seedBuilderSandbox = await loadAppJsSandbox(FIXED_NOW);
 seedBuilderSandbox.window.EVERLETTER_SEED = { automationRules: AUTOMATION_RULES };
 const seed = seedBuilderSandbox.buildSeedFromSpreadsheet(rows, "synthetic-rows.json (tests/fixtures)");
 
@@ -166,7 +166,7 @@ assert.ok(avaMarleySubscription, "fixture invariant: Ava's Marley subscription s
 
 // Common baseline every case starts from, then overrides only what that
 // case is actually about - see the module comment above for why nothing is
-// left to public/app.js's own defaults.
+// left to app/crm/legacy-app.js's own defaults.
 function caseState(overrides) {
   return {
     query: "",
@@ -193,8 +193,8 @@ function caseState(overrides) {
 // Renders one case in its own fresh sandbox (never reused across cases, so
 // there is no risk of one case's state leaking into another) and returns
 // the real, captured #viewMount HTML.
-function renderCase(activeView, overrides) {
-  const appJs = loadAppJsSandbox(FIXED_NOW, { captureRenders: true });
+async function renderCase(activeView, overrides) {
+  const appJs = await loadAppJsSandbox(FIXED_NOW, { captureRenders: true });
   Object.assign(appJs.state, caseState(overrides), { activeView });
   appJs.renderView();
   return appJs.getCapturedHtml("#viewMount");
@@ -231,7 +231,7 @@ const CASES = [
   ["launch", "launch", {}],
   ["samples", "samples", {}],
   // Previously the one case in this suite that wasn't timezone-stable:
-  // renderSync() calls batchDatesForOrder() (public/app.js), which used to
+  // renderSync() calls batchDatesForOrder() (app/crm/legacy-app.js), which used to
   // serialize each generated date with `batch.toISOString().slice(0, 10)`
   // - unlike every other date serialization in this file (todayIso(),
   // formatDate(), nearestBatchDate()), which round-trip through
@@ -258,8 +258,8 @@ const CASES = [
 ];
 
 for (const [snapshotName, activeView, overrides] of CASES) {
-  test(`renders ${snapshotName} deterministically, matching its committed snapshot`, () => {
-    const html = renderCase(activeView, overrides);
+  test(`renders ${snapshotName} deterministically, matching its committed snapshot`, async () => {
+    const html = await renderCase(activeView, overrides);
     assert.ok(html.trim().length > 0, `${snapshotName} rendered empty HTML - a view that silently renders nothing would otherwise "pass" forever`);
     compareOrUpdateSnapshot(snapshotName, html);
   });
@@ -268,7 +268,7 @@ for (const [snapshotName, activeView, overrides] of CASES) {
 // The task this harness was built for assumed Ashley Bins renders both
 // desktop rows and mobile cards into the same HTML, with an explicit
 // instruction to confirm rather than assume it. Checking found the
-// opposite: renderBins() (public/app.js) has no mobile-card markup at all -
+// opposite: renderBins() (app/crm/legacy-app.js) has no mobile-card markup at all -
 // only two desktop sections, the summary bin-group cards and the detailed
 // checklist table. The mobile card list (and the binMobileCard() function
 // that renders it) lives in renderPacket() instead, under the confusingly
@@ -277,15 +277,15 @@ for (const [snapshotName, activeView, overrides] of CASES) {
 // not a snapshotting gap, and not something this task fixes (no production
 // code changes). Both assertions below check what's actually true, in the
 // views that actually do it.
-test("Ashley Bins renders its two desktop sections (summary cards and the detailed checklist table) - no mobile cards, verified rather than assumed", () => {
-  const html = renderCase("bins", {});
+test("Ashley Bins renders its two desktop sections (summary cards and the detailed checklist table) - no mobile cards, verified rather than assumed", async () => {
+  const html = await renderCase("bins", {});
   assert.match(html, /class="packet-grid bin-group-grid"/, "expected the summary bin-group cards");
   assert.match(html, /<table class="packet-table">/, "expected the desktop bin-row checklist table");
   assert.doesNotMatch(html, /mobile-card-list|binMobileCard/, "renderBins() has no mobile-card markup - if this starts matching, the finding above is stale and this test (and its comment) need updating");
 });
 
-test("Batch Packet renders both the desktop table and the mobile card list (the markup the Bins task description expected to find in Bins)", () => {
-  const html = renderCase("packet", {});
+test("Batch Packet renders both the desktop table and the mobile card list (the markup the Bins task description expected to find in Bins)", async () => {
+  const html = await renderCase("packet", {});
   assert.match(html, /<table class="packet-table packet-final-table">/, "expected the desktop final-mailing-rows table");
   assert.match(html, /class="mobile-card-list bins-mobile-cards"/, "expected the mobile card list container");
 });
