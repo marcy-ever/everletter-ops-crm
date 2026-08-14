@@ -1,0 +1,151 @@
+
+    <section class="data-panel samples-panel" aria-label="Sample requests">
+      <div class="panel-head">
+        <div>
+          <h3>Sample Requests</h3>
+          <p>Future intake flow for website sample requests. Mailchimp can send these; the CRM should track them.</p>
+        </div>
+        <span class="panel-count">Mailchimp setup pending</span>
+      </div>
+      <div class="samples-layout">
+        <div class="sample-card sample-primary">
+          <span class="sample-badge">Recommendation</span>
+          <h4>Set up Mailchimp, but do not delay CRM launch for it.</h4>
+          <p>For today, use the CRM for mailings. Next, we connect the website form to Mailchimp and the CRM so sample requests stop arriving as manual Gmail-only work.</p>
+          <div class="sample-toggle" role="group" aria-label="Sample type">
+            <button type="button" class="active" data-sample-type="Kid">Kid</button><button type="button" class="" data-sample-type="Adult">Adult</button>
+          </div>
+        </div>
+        <div class="sample-card">
+          <h4>Mailchimp fields to create</h4>
+          <dl class="sample-fields">
+            <div><dt>Tag</dt><dd>sample-kid</dd></div>
+            <div><dt>Merge field</dt><dd>SAMPLETYPE</dd></div>
+            <div><dt>Journey</dt><dd>Everletter Sample Request</dd></div>
+            <div><dt>Status</dt><dd>Requested / Sent / Converted</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div class="sample-library">
+        <div class="sample-library-head">
+          <div>
+            <h4>Sample Letter Library</h4>
+            <p>These should be saved in Drive and attached or linked from Mailchimp so the sample still feels like real mail.</p>
+          </div>
+          <span class="sample-badge">4 ready</span>
+        </div>
+        <div class="sample-preview-grid">
+          
+            <article class="sample-preview-card">
+              <button type="button" data-open-sample="/assets/sample-letter-marley.png" aria-label="Open Marley Meadow Charm">
+                <img src="/assets/sample-letter-marley.png" alt="Marley Meadow Charm sample letter preview" />
+              </button>
+              <div>
+                <span class="sample-badge">Kid</span>
+                <h5>Marley Meadow Charm</h5>
+                <p>Soft, whimsical kid sample with envelope and wax-seal context.</p>
+              </div>
+            </article>
+          
+            <article class="sample-preview-card">
+              <button type="button" data-open-sample="/assets/sample-letter-ringo.png" aria-label="Open Ringo Collector&#039;s Path">
+                <img src="/assets/sample-letter-ringo.png" alt="Ringo Collector&#039;s Path sample letter preview" />
+              </button>
+              <div>
+                <span class="sample-badge">Kid</span>
+                <h5>Ringo Collector&#039;s Path</h5>
+                <p>Adventure kid sample with map, envelope, seal, and artifact feel.</p>
+              </div>
+            </article>
+          
+            <article class="sample-preview-card">
+              <button type="button" data-open-sample="/assets/sample-letter-penelope.png" aria-label="Open Penelope Folded Note">
+                <img src="/assets/sample-letter-penelope.png" alt="Penelope Folded Note sample letter preview" />
+              </button>
+              <div>
+                <span class="sample-badge">Adult</span>
+                <h5>Penelope Folded Note</h5>
+                <p>Romantic mystery sample with envelope, paper texture, and wax-seal mood.</p>
+              </div>
+            </article>
+          
+            <article class="sample-preview-card">
+              <button type="button" data-open-sample="/assets/sample-letter-seraphine.png" aria-label="Open Seraphine Loft Letter">
+                <img src="/assets/sample-letter-seraphine.png" alt="Seraphine Loft Letter sample letter preview" />
+              </button>
+              <div>
+                <span class="sample-badge">Adult</span>
+                <h5>Seraphine Loft Letter</h5>
+                <p>Soft literary adult sample with handmade paper, seal, and keepsake feel.</p>
+              </div>
+            </article>
+          
+        </div>
+      </div>
+
+      <div class="sample-flow">
+        
+          <article>
+            <span>1</span>
+            <strong>Request captured</strong>
+            <p>Squarespace form submits email, sample type, source page, and timestamp into the CRM.</p>
+          </article>
+        
+          <article>
+            <span>2</span>
+            <strong>Lead created</strong>
+            <p>CRM creates or updates a Sample Request record and keeps Gmail out of the manual entry loop.</p>
+          </article>
+        
+          <article>
+            <span>3</span>
+            <strong>Mailchimp tagged</strong>
+            <p>CRM adds the email to Mailchimp with sample-kid or sample-adult plus the source.</p>
+          </article>
+        
+          <article>
+            <span>4</span>
+            <strong>Sample sent</strong>
+            <p>Mailchimp Customer Journey sends the correct sample letter automatically.</p>
+          </article>
+        
+          <article>
+            <span>5</span>
+            <strong>Conversion matched</strong>
+            <p>If the same email later buys, CRM links the sample request to the subscriber profile.</p>
+          </article>
+        
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Sample Type</th>
+              <th>Mailchimp Tag</th>
+              <th>Email Template</th>
+              <th>CRM Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td><strong>Kid</strong></td>
+                <td class="mono">sample-kid</td>
+                <td>Kid sample letter</td>
+                <td><span class="pill status-selected">Selected</span></td>
+              </tr>
+            
+              <tr>
+                <td><strong>Adult</strong></td>
+                <td class="mono">sample-adult</td>
+                <td>Adult sample letter</td>
+                <td><span class="pill status-ready">Ready</span></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      </div>
+    </section>
+  

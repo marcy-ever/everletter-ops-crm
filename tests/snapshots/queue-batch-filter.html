@@ -1,0 +1,85 @@
+
+    <section class="data-panel" aria-label="Production queue">
+      <div class="panel-head">
+        <div>
+          <h3>Aug 15, 2026 Mail Batch</h3>
+          <p>Active subscribers only. Use the batch filter to focus on the immediate 1st/15th mailing.</p>
+        </div>
+        <span class="panel-count">3 shown</span>
+      </div>
+      <div class="batch-actions" aria-label="Batch status actions">
+        <span>Update shown rows:</span>
+        <button type="button" data-bulk-status="To Prepare">To Prepare</button>
+        <button type="button" data-bulk-status="Printing">Printing</button>
+        <button type="button" data-bulk-status="Assembling">Assembling</button>
+        <button type="button" data-bulk-status="Ready to Mail">Ready to Mail</button>
+        <button type="button" data-bulk-status="Mailed">Mailed</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ship Date</th>
+              <th>Status</th>
+              <th>Recipient</th>
+              <th>Character</th>
+              <th>Plan</th>
+              <th>Letter</th>
+              <th>Mailing ID</th>
+              <th>Billing Order</th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody>
+    <tr>
+      <td>Aug 15, 2026</td>
+      <td>
+        <select class="status-select status-to-prepare" data-status-select="MAIL-2383FD20718F2B0473E578E4::2">
+          <option selected>To Prepare</option><option >Printing</option><option >Assembling</option><option >Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td><strong>Ava Example</strong><span>ava.example@example.test</span></td>
+      <td>Marley</td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td class="mono">MAIL-2383FD20718F2B0473E578E4</td>
+      <td class="mono">ORD-5001</td>
+      <td><div class="flag-stack"><span class="flag flag-amber">Next batch</span></div></td>
+    </tr>
+  
+    <tr>
+      <td>Aug 15, 2026</td>
+      <td>
+        <select class="status-select status-assembling" data-status-select="MAIL-858D276D8AE36ED676FBB9A7::5">
+          <option >To Prepare</option><option >Printing</option><option selected>Assembling</option><option >Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td><strong>Cara Placeholder</strong><span>cara.placeholder@example.test</span></td>
+      <td>Ringo</td>
+      <td>Month-to-month</td>
+      <td>2</td>
+      <td class="mono">MAIL-858D276D8AE36ED676FBB9A7</td>
+      <td class="mono">ORD-5004</td>
+      <td><div class="flag-stack"><span class="flag flag-amber">Next batch</span></div></td>
+    </tr>
+  
+    <tr>
+      <td>Aug 15, 2026</td>
+      <td>
+        <select class="status-select status-ready-to-mail" data-status-select="MAIL-C1E62BBF6F054A3FB8563CF7::6">
+          <option >To Prepare</option><option >Printing</option><option >Assembling</option><option selected>Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td><strong>Drew Instance</strong><span>drew.instance@example.test</span></td>
+      <td>Penelope</td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td class="mono">MAIL-C1E62BBF6F054A3FB8563CF7</td>
+      <td class="mono">ORD-5005</td>
+      <td><div class="flag-stack"><span class="flag flag-amber">Next batch</span></div></td>
+    </tr>
+  </tbody>
+        </table>
+      </div>
+    </section>
+  

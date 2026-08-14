@@ -1,0 +1,525 @@
+
+    <section class="data-panel" aria-label="Mailing QA">
+      <div class="panel-head">
+        <div>
+          <h3>Mailing QA</h3>
+          <p>One truth for mailing day: payment, envelope, letter, artifact, insert, physical location, and final ready state.</p>
+        </div>
+        <span class="panel-count">9 items</span>
+      </div>
+
+      <div class="print-summary qa-summary">
+        <div><span>Ready</span><strong>0</strong></div>
+        <div><span>Envelopes to print</span><strong>13</strong></div>
+        <div><span>Needs check</span><strong>9</strong></div>
+        <div><span>Problems</span><strong>3</strong></div>
+      </div>
+
+      <div class="print-toolbar" aria-label="QA scope">
+        <span>Show:</span>
+        <button type="button" class="" data-qa-scope="monthly">Month-to-month only</button>
+        <button type="button" class="active" data-qa-scope="all">All open mailings</button>
+      </div>
+
+      <div class="batch-actions" aria-label="QA actions">
+        <span>Batch actions:</span>
+        <button type="button" data-qa-mark-ready>Mark clean shown rows Ready</button>
+        <button type="button" data-qa-mark-mailed>Mark QA-ready rows Mailed</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="qa-table">
+          <thead>
+            <tr>
+              <th>Ship Date</th>
+              <th>Recipient</th>
+              <th>Character</th>
+              <th>Plan</th>
+              <th>Letter</th>
+              <th>Env Qty</th>
+              <th>Payment</th><th>Envelope</th><th>Letter</th><th>Artifact</th><th>Map / Insert</th><th>Location</th><th>QA</th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody>
+    <tr class="qa-attention-row">
+      <td>Aug 15, 2026</td>
+      <td><strong>Gale Incomplete</strong><span>gale.incomplete@example.test</span></td>
+      <td>Marley<span>Marley color envelope</span></td>
+      <td>Needs Review</td>
+      <td>1</td>
+      <td><strong>1</strong></td>
+      
+    <td>
+      <select class="qa-select qa-needs-check" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::payment">
+        <option >Active</option><option selected>Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::insert">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-problem" data-qa-select="MAIL-C8109CF66BD4E3D12C15D8EA::9::field::qa">
+        <option >Open</option><option selected>Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-rose">Missing subscription</span><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-green">Prebuilt</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Aug 15, 2026</td>
+      <td><strong>Iris Noemail</strong><span>Missing email</span></td>
+      <td>Marley<span>Marley color envelope</span></td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td><strong>2</strong></td>
+      
+    <td>
+      <select class="qa-select qa-needs-check" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::payment">
+        <option >Active</option><option selected>Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::insert">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-problem" data-qa-select="MAIL-FE69D52A90CF1025FF2C9E14::11::field::qa">
+        <option >Open</option><option selected>Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-rose">Missing email</span><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-blue">Month-to-month</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Needs date</td>
+      <td><strong>Hugo Nodate</strong><span>hugo.nodate@example.test</span></td>
+      <td>Ringo<span>Ringo color envelope</span></td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td><strong>2</strong></td>
+      
+    <td>
+      <select class="qa-select qa-needs-check" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::payment">
+        <option >Active</option><option selected>Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-not-needed" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::insert">
+        <option >Need Check</option><option >Packed</option><option selected>Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-problem" data-qa-select="MAIL-856BE72D18B20428FF551990::10::field::qa">
+        <option >Open</option><option selected>Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-rose">Missing ship date</span><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-blue">Month-to-month</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Aug 15, 2026</td>
+      <td><strong>Drew Instance</strong><span>drew.instance@example.test</span></td>
+      <td>Penelope<span>Adult standard envelope</span></td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td><strong>2</strong></td>
+      
+    <td>
+      <select class="qa-select qa-active" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::payment">
+        <option selected>Active</option><option >Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-not-needed" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::insert">
+        <option >Need Check</option><option >Packed</option><option selected>Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-open" data-qa-select="MAIL-C1E62BBF6F054A3FB8563CF7::6::field::qa">
+        <option selected>Open</option><option >Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-blue">Month-to-month</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Aug 15, 2026</td>
+      <td><strong>Ava Example</strong><span>ava.example@example.test</span></td>
+      <td>Marley<span>Marley color envelope</span></td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td><strong>2</strong></td>
+      
+    <td>
+      <select class="qa-select qa-active" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::payment">
+        <option selected>Active</option><option >Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::insert">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-open" data-qa-select="MAIL-2383FD20718F2B0473E578E4::2::field::qa">
+        <option selected>Open</option><option >Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-blue">Month-to-month</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Jul 15, 2026</td>
+      <td><strong>Ben Sample</strong><span>ben.sample@example.test</span></td>
+      <td>Marley<span>Marley color envelope</span></td>
+      <td>12-month</td>
+      <td>3</td>
+      <td><strong>1</strong></td>
+      
+    <td>
+      <select class="qa-select qa-active" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::payment">
+        <option selected>Active</option><option >Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-in-ashley-box" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::envelope">
+        <option >Need Print</option><option >Printed</option><option >Both Printed</option><option selected>In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-stuffed" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::letter">
+        <option >Need Print</option><option >Printed</option><option selected>Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::insert">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-ashley" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::location">
+        <option >Marcy</option><option selected>Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-open" data-qa-select="MAIL-9EEF07B5C6E96CDEDFC04E17::4::field::qa">
+        <option selected>Open</option><option >Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-green">Prebuilt</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Sep 1, 2026</td>
+      <td><strong>Ava Example</strong><span>ava.example@example.test</span></td>
+      <td>Ringo<span>Ringo color envelope</span></td>
+      <td>6-month</td>
+      <td>1</td>
+      <td><strong>1</strong></td>
+      
+    <td>
+      <select class="qa-select qa-active" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::payment">
+        <option selected>Active</option><option >Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-in-ashley-box" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::envelope">
+        <option >Need Print</option><option >Printed</option><option >Both Printed</option><option selected>In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-stuffed" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::letter">
+        <option >Need Print</option><option >Printed</option><option selected>Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-not-needed" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::insert">
+        <option >Need Check</option><option >Packed</option><option selected>Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-ashley" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::location">
+        <option >Marcy</option><option selected>Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-open" data-qa-select="MAIL-DDCE24BA5A52D88DD71CA7EE::3::field::qa">
+        <option selected>Open</option><option >Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-green">Prebuilt</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Aug 15, 2026</td>
+      <td><strong>Cara Placeholder</strong><span>cara.placeholder@example.test</span></td>
+      <td>Ringo<span>Ringo color envelope</span></td>
+      <td>Month-to-month</td>
+      <td>2</td>
+      <td><strong>2</strong></td>
+      
+    <td>
+      <select class="qa-select qa-active" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::payment">
+        <option selected>Active</option><option >Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-not-needed" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::insert">
+        <option >Need Check</option><option >Packed</option><option selected>Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-open" data-qa-select="MAIL-858D276D8AE36ED676FBB9A7::5::field::qa">
+        <option selected>Open</option><option >Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-blue">Month-to-month</span></div></td>
+    </tr>
+  
+    <tr class="qa-attention-row">
+      <td>Aug 20, 2026</td>
+      <td><strong>Jax Offbatch</strong><span>jax.offbatch@example.test</span></td>
+      <td>Ringo<span>Ringo color envelope</span></td>
+      <td>Month-to-month</td>
+      <td>1</td>
+      <td><strong>2</strong></td>
+      
+    <td>
+      <select class="qa-select qa-active" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::payment">
+        <option selected>Active</option><option >Needs Check</option><option >CC Failed</option><option >Paused</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::envelope">
+        <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-print" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::letter">
+        <option selected>Need Print</option><option >Printed</option><option >Stuffed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-need-check" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::artifact">
+        <option selected>Need Check</option><option >Packed</option><option >Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-not-needed" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::insert">
+        <option >Need Check</option><option >Packed</option><option selected>Not Needed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-marcy" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::location">
+        <option selected>Marcy</option><option >Ashley</option><option >Batch Bin</option><option >Mailed</option>
+      </select>
+    </td>
+  
+    <td>
+      <select class="qa-select qa-open" data-qa-select="MAIL-0B1E8E35593679D89582EA00::12::field::qa">
+        <option selected>Open</option><option >Problem</option><option >Ready</option>
+      </select>
+    </td>
+  
+      <td><div class="flag-stack"><span class="flag flag-amber">Ship date is not a 1st/15th batch</span><span class="flag flag-amber">Letter folder not mapped</span><span class="flag flag-blue">Month-to-month</span></div></td>
+    </tr>
+  </tbody>
+        </table>
+      </div>
+    </section>
+  

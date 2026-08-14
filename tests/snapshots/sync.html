@@ -1,0 +1,81 @@
+
+    <section class="data-panel sync-panel" aria-label="Squarespace sync simulator">
+      <div class="panel-head">
+        <div>
+          <h3>Squarespace Sync Simulator</h3>
+          <p>Preview how a daily sync turns a renewal order into the next Everletter mailings.</p>
+        </div>
+        <span class="panel-count">Daily sync</span>
+      </div>
+      <div class="sync-layout">
+        <div class="sync-form">
+          <label>
+            <span>Existing subscriber</span>
+            <select id="syncSubscriber"><option value="SUB-05722BF9D0F39DCBB5A989F6" >Ben Sample Â· ben.sample@example.test</option><option value="SUB-2C3FB479DC6FE8099A7AE4BA" selected>Ava Example Â· ava.example@example.test</option><option value="SUB-A11B8E92FDF644C592C0B020" >Cara Placeholder Â· cara.placeholder@example.test</option><option value="SUB-DAA163CF49E403FC4E856E7D" >Drew Instance Â· drew.instance@example.test</option><option value="SUB-BC2E1226CE938DA5878C078D" >Gale Incomplete Â· gale.incomplete@example.test</option><option value="SUB-63F9D7DC81C7097FD476DF12" >Iris Noemail Â· SUB-63F9D7DC81C7097FD476DF12</option><option value="SUB-4E1779CADF14F5A5F274F032" >Jax Offbatch Â· jax.offbatch@example.test</option><option value="SUB-1FC944C710D0971D0411BFD6" >Evan Testcase Â· evan.testcase@example.test</option><option value="SUB-B9A343E342B99D7D678419A9" >Hugo Nodate Â· hugo.nodate@example.test</option></select>
+          </label>
+          <label>
+            <span>Plan / order type</span>
+            <select id="syncPlan">
+              <option selected>Month-to-month</option><option >6-month</option><option >12-month</option><option >One-time</option>
+            </select>
+          </label>
+          <label>
+            <span>Order paid date</span>
+            <input id="syncOrderDate" type="date" value="2026-07-12" />
+          </label>
+          <label>
+            <span>Subscription sequence</span>
+            <select id="syncSubscription"><option value="PLAN-6A90FE88AE1218648EA5DEBD" selected>Ava Example Â· Marley Â· Month-to-month</option><option value="PLAN-C32AC16621684ED902C8C3CF" >Ava Example Â· Ringo Â· 6-month</option></select>
+          </label>
+        </div>
+
+        <div class="sync-summary">
+          <h4>Ava Example</h4>
+          <p>ava.example@example.test Â· SUB-2C3FB479DC6FE8099A7AE4BA</p>
+          <p>Ava Example Â· Marley Â· Month-to-month</p>
+          <dl>
+            <div><dt>Existing letters</dt><dd>1</dd></div>
+            <div><dt>Highest letter #</dt><dd>1</dd></div>
+            <div><dt>New letters</dt><dd>2</dd></div>
+            <div><dt>Order number</dt><dd>New in Squarespace</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div class="generated-mailings">
+        <h4>Generated mailing rows</h4>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Letter #</th>
+                <th>Ship Date</th>
+                <th>Status</th>
+                <th>Mailing ID</th>
+                <th>Why</th>
+              </tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>2</td>
+                  <td>Jul 15, 2026</td>
+                  <td><span class="pill status-to-prepare">To Prepare</span></td>
+                  <td class="mono">SIM-PLAN-6A90FE88AE1218648EA5DEBD-20260715-L2</td>
+                  <td>Next letter after #1 for this exact recipient + character subscription.</td>
+                </tr>
+              
+                <tr>
+                  <td>3</td>
+                  <td>Aug 1, 2026</td>
+                  <td><span class="pill status-to-prepare">To Prepare</span></td>
+                  <td class="mono">SIM-PLAN-6A90FE88AE1218648EA5DEBD-20260801-L3</td>
+                  <td>Next letter after #1 for this exact recipient + character subscription.</td>
+                </tr>
+              
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  

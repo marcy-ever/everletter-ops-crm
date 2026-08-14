@@ -92,28 +92,81 @@ export function loadSpreadsheetRows() {
 // comment). Tests that don't care about time-dependent fields (e.g.
 // shared-state-get.e2e) simply omit it and get the real clock, unchanged
 // from before this was unified.
-export function loadAppJsSandbox(fixedNow) {
-  const source = fs.readFileSync(path.join(ROOT, "public/app.js"), "utf8");
+//
+// captureRenders (default false, opt-in) turns on two things
+// tests/render-snapshots.test.mjs needs and nothing else uses:
+//  - document.querySelector(selector)'s stub elements actually retain their
+//    innerHTML instead of discarding it (the previous, still-default
+//    behavior - a fresh no-op stub every call, read always "" - is
+//    unchanged when this flag is off, so existing callers see zero
+//    behavior change). Elements are memoized by selector so the harness can
+//    read back what a given mount (e.g. '#viewMount') was last written,
+//    matching how app.js itself captures each mount into its own top-level
+//    const exactly once at load time and reuses that same reference for
+//    every later render.
+//  - the sandbox's return value gains a `state` property: a real reference
+//    to app.js's own module-scoped `state` object, not a copy. `state` is
+//    declared with `const` at the top of app.js, and const/let bindings -
+//    unlike `var` or top-level `function` declarations - are never
+//    reflected as properties on a vm context's global object (verified
+//    directly: a throwaway `vm.Script` with top-level const/var/function/let
+//    only exposes the var and the function on the context afterward). The
+//    only way to reach a const declared inside a vm.Script is from code
+//    compiled in that same script, so this appends one line to app.js's own
+//    source text - never written to the file on disk, only to the in-memory
+//    string this function compiles - handing back a real reference to the
+//    exact object every render function already closes over.
+export function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}) {
+  const rawSource = fs.readFileSync(path.join(ROOT, "public/app.js"), "utf8");
+  const source = captureRenders ? `${rawSource}\nvar __appState = state;\n` : rawSource;
 
-  function stubElement() {
-    return {
+  const elementsBySelector = new Map();
+
+  function makeStubElement() {
+    let html = "";
+    const base = {
       addEventListener() {},
-      querySelector: () => stubElement(),
       querySelectorAll: () => [],
       classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
       style: {},
       dataset: {},
       getAttribute: () => null,
       setAttribute() {},
-      set innerHTML(_value) {},
+      // Nested lookups (e.g. viewMount.querySelector('[data-bin-print]'))
+      // are for wiring event listeners, never for reading back captured
+      // output - a fresh, unmemoized stub each time matches the pre-existing
+      // behavior and is all any call site needs (several call this without
+      // optional chaining, so it must never return null/undefined).
+      querySelector: () => makeStubElement(),
+    };
+    if (captureRenders) {
+      return {
+        ...base,
+        get innerHTML() {
+          return html;
+        },
+        set innerHTML(value) {
+          html = value;
+        },
+      };
+    }
+    return {
+      ...base,
       get innerHTML() {
         return "";
       },
+      set innerHTML(_value) {},
     };
   }
 
+  function queryDocument(selector) {
+    if (!captureRenders) return makeStubElement();
+    if (!elementsBySelector.has(selector)) elementsBySelector.set(selector, makeStubElement());
+    return elementsBySelector.get(selector);
+  }
+
   const sandbox = {
-    document: { querySelector: () => stubElement(), querySelectorAll: () => [] },
+    document: { querySelector: queryDocument, querySelectorAll: () => [] },
     window: { EVERLETTER_SEED: undefined, location: { hash: "" } },
     console,
     localStorage: { getItem: () => null, setItem() {} },
@@ -137,5 +190,10 @@ export function loadAppJsSandbox(fixedNow) {
 
   vm.createContext(sandbox);
   new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
+
+  if (captureRenders) {
+    sandbox.state = sandbox.__appState;
+    sandbox.getCapturedHtml = (selector) => elementsBySelector.get(selector)?.innerHTML ?? "";
+  }
   return sandbox;
 }
