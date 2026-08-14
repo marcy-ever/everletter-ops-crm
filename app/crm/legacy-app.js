@@ -6,26 +6,30 @@
 // in a sandbox and diffed its output against the lib/ versions. That's gone
 // now that this file can import real TypeScript modules (the app.js -> ESM
 // move, step 2) - one implementation, imported here instead of duplicated.
-import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from '@/lib/domain/ids';
 import { mailingKey, componentKey, exceptionReviewKey } from '@/lib/domain/keys';
-import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from '@/lib/domain/mailing-rules';
+import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // Step 3b: pure business logic extracted into lib/domain/ (shared with the
 // server, same reasoning as the imports above) and app/crm/format.ts
 // (display formatting only the browser needs - see that module's header).
-import { normalizePlan, plannedLetterCount, printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
-import { normalizeCharacter, driveCharacterKey, letterNumberKey } from '@/lib/domain/characters';
+// buildSubscriberId/buildRecipientId/buildSubscriptionId/buildMailingId
+// (lib/domain/ids), normalizePlan (lib/domain/plans), normalizeCharacter
+// (lib/domain/characters), isOverdueMailing/isDueNext14Days/monthKey/
+// nearestBatchDate (lib/domain/mailing-rules), and everything from
+// lib/domain/spreadsheet/normalize are no longer imported here directly -
+// their only call sites were inside buildSeedFromSpreadsheet/
+// spreadsheetExceptionReasons, which now live in
+// lib/domain/spreadsheet/build-seed.ts and import these themselves.
+import { plannedLetterCount, printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
+import { driveCharacterKey, letterNumberKey } from '@/lib/domain/characters';
 import { batchDatesForOrder } from '@/lib/domain/batch-dates';
-import {
-  normalizeSpreadsheetRow,
-  getSpreadsheetValue,
-  spreadsheetDateToIso,
-  splitNameAddress,
-  normalizeBoolean,
-  normalizeStatus,
-  compactOrderNumber,
-  compactNumber,
-} from '@/lib/domain/spreadsheet/normalize';
 import { escapeHtml, formatDate, includesText, statusClass, number, titleCase } from './format';
+// buildSeedFromSpreadsheet (the 206-line seed builder) and
+// spreadsheetExceptionReasons (the exception-reason checks it calls) are
+// commit 3's extraction - the highest-risk single move in step 3b, kept
+// mechanical: same logic, same order, same output. now/automationRules are
+// threaded in explicitly at the one real call site (readWorkbookFile,
+// below) instead of read internally, same reasoning as todayIso(now).
+import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
 
 const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
 
@@ -243,214 +247,6 @@ function defaultAutomationRules() {
   return window.EVERLETTER_SEED?.automationRules || state.seed?.automationRules || [];
 }
 
-function spreadsheetExceptionReasons(row, activeState) {
-  const reasons = [];
-  if (!row.recipientName || row.recipientName === 'Unknown recipient') reasons.push('Missing recipient');
-  if (!row.address) reasons.push('Missing address');
-  if (!row.email) reasons.push('Missing email');
-  if (!row.character || row.character === 'Needs Review') reasons.push('Missing character');
-  if (!row.plan || row.plan === 'Needs Review') reasons.push('Missing subscription');
-  if (!row.shipDate) reasons.push('Missing ship date');
-  if (row.shipDate) {
-    const day = Number(row.shipDate.slice(-2));
-    if (![1, 15].includes(day)) reasons.push('Ship date is not a 1st/15th batch');
-  }
-  if (activeState === 'Active' && row.status === 'Mailed' && row.shipDate && row.shipDate > todayIso(new Date())) {
-    reasons.push('Future mailing already marked mailed');
-  }
-  return reasons;
-}
-
-function buildSeedFromSpreadsheet(rows, sourceName) {
-  const normalizedRows = rows
-    .map((raw, index) => ({ raw: normalizeSpreadsheetRow(raw), sourceRow: index + 2 }))
-    .map(({ raw, sourceRow }) => {
-      const customerBlock = getSpreadsheetValue(raw, 'Customer Name and Address', 'Customer Name/Address', 'Name and Address');
-      const recipient = splitNameAddress(customerBlock);
-      const orderNumber = compactOrderNumber(getSpreadsheetValue(raw, 'Order ID', 'Order Number'));
-      const orderDate = spreadsheetDateToIso(getSpreadsheetValue(raw, 'Original Order Date', 'Original Order date', 'Order Date'));
-      const shipDate = spreadsheetDateToIso(getSpreadsheetValue(raw, 'Ship Date', 'Mailing Date'));
-      const endDate = spreadsheetDateToIso(getSpreadsheetValue(raw, 'End Date', 'End date'));
-      return {
-        sourceRow,
-        orderNumber,
-        orderDate,
-        endDate,
-        recipientName: recipient.name,
-        address: recipient.address,
-        character: normalizeCharacter(getSpreadsheetValue(raw, 'Character')),
-        letterNumber: compactNumber(getSpreadsheetValue(raw, 'Letter Number', 'Letter #')),
-        shipDate,
-        suggestedShipDate: nearestBatchDate(shipDate),
-        plan: normalizePlan(getSpreadsheetValue(raw, 'Subscription', 'Plan')),
-        status: normalizeStatus(getSpreadsheetValue(raw, 'Status')),
-        notes: String(getSpreadsheetValue(raw, 'Notes') || '').trim(),
-        active: normalizeBoolean(getSpreadsheetValue(raw, 'Active?', 'Active')),
-        email: String(getSpreadsheetValue(raw, 'Email', 'Customer Email') || '').trim().toLowerCase(),
-      };
-    })
-    .filter((row) => row.orderNumber || row.recipientName !== 'Unknown recipient' || row.email || row.shipDate);
-
-  const subscribers = new Map();
-  const recipients = new Map();
-  const orders = new Map();
-  const subscriptions = new Map();
-  const mailings = [];
-  const exceptions = [];
-  const today = todayIso(new Date());
-
-  normalizedRows.forEach((row) => {
-    const subscriberId = buildSubscriberId({ email: row.email, recipientName: row.recipientName, address: row.address });
-    const recipientId = buildRecipientId({ subscriberId, recipientName: row.recipientName, address: row.address });
-    const orderId = row.orderNumber ? `ORD-${row.orderNumber}` : `ORD-MISSING-${row.sourceRow}`;
-    const subscriptionId = buildSubscriptionId({ recipientId, character: row.character, plan: row.plan });
-    const activeState = row.active ? 'Active' : 'Archived';
-    const mailingId = buildMailingId({ orderId, recipientId, character: row.character, letterNumber: row.letterNumber, sourceRow: row.sourceRow });
-
-    if (!subscribers.has(subscriberId)) {
-      subscribers.set(subscriberId, {
-        subscriberId,
-        email: row.email,
-        displayName: row.recipientName,
-        status: activeState,
-        firstOrderDate: row.orderDate,
-        openMailings: 0,
-        totalMailings: 0,
-        nextShipDate: '',
-        issueCount: 0,
-      });
-    }
-
-    if (!recipients.has(recipientId)) {
-      recipients.set(recipientId, {
-        recipientId,
-        subscriberId,
-        name: row.recipientName,
-        address: row.address,
-        characters: new Set(),
-        totalMailings: 0,
-        nextShipDate: '',
-      });
-    }
-
-    if (!orders.has(orderId)) {
-      orders.set(orderId, {
-        orderId,
-        subscriberId,
-        sourceOrderNumber: row.orderNumber,
-        createdOn: row.orderDate,
-        billingMonth: monthKey(row.orderDate),
-        plan: row.plan,
-        status: 'Imported',
-        amount: '',
-      });
-    }
-
-    if (!subscriptions.has(subscriptionId)) {
-      subscriptions.set(subscriptionId, {
-        subscriptionId,
-        subscriberId,
-        recipientId,
-        plan: row.plan,
-        character: row.character,
-        startDate: row.orderDate,
-        endDate: row.endDate,
-        activeState,
-        generatedMailings: 0,
-      });
-    }
-
-    const mailing = {
-      mailingId,
-      subscriberId,
-      recipientId,
-      orderId,
-      orderDate: row.orderDate,
-      subscriptionId,
-      recipientName: row.recipientName,
-      email: row.email,
-      character: row.character,
-      plan: row.plan,
-      letterNumber: row.letterNumber,
-      shipDate: row.shipDate,
-      suggestedShipDate: row.suggestedShipDate,
-      status: row.status,
-      activeState,
-      notes: row.notes,
-      overdue: isOverdueMailing({ activeState, status: row.status, shipDate: row.shipDate }, today),
-      dueNext14Days: isDueNext14Days({ activeState, status: row.status, shipDate: row.shipDate }, today),
-      sourceRow: row.sourceRow,
-    };
-    mailings.push(mailing);
-
-    const subscriber = subscribers.get(subscriberId);
-    const recipient = recipients.get(recipientId);
-    const subscription = subscriptions.get(subscriptionId);
-    subscriber.totalMailings += 1;
-    recipient.totalMailings += 1;
-    subscription.generatedMailings += 1;
-    recipient.characters.add(mailing.character);
-
-    if (activeState === 'Active' && isOpenStatus(mailing.status)) {
-      subscriber.openMailings += 1;
-      if (mailing.shipDate && (!subscriber.nextShipDate || mailing.shipDate < subscriber.nextShipDate)) subscriber.nextShipDate = mailing.shipDate;
-      if (mailing.shipDate && (!recipient.nextShipDate || mailing.shipDate < recipient.nextShipDate)) recipient.nextShipDate = mailing.shipDate;
-    }
-
-    const reasons = spreadsheetExceptionReasons(row, activeState);
-    if (activeState === 'Active' && reasons.length) {
-      subscriber.issueCount += 1;
-      exceptions.push({
-        exceptionId: `EX-${row.sourceRow}`,
-        severity: reasons.some((reason) => reason.includes('Missing') || reason.includes('ship date')) ? 'High' : 'Low',
-        reason: reasons.join('; '),
-        mailingId: mailing.mailingId,
-        subscriberId,
-        recipientName: mailing.recipientName,
-        shipDate: mailing.shipDate,
-        suggestedShipDate: reasons.some((reason) => reason.toLowerCase().includes('ship date')) ? mailing.suggestedShipDate : '',
-        status: mailing.status,
-        sourceRow: row.sourceRow,
-      });
-    }
-  });
-
-  const normalizedRecipients = Array.from(recipients.values()).map((recipient) => ({
-    ...recipient,
-    characters: Array.from(recipient.characters).sort(),
-  }));
-  const subscriberRows = Array.from(subscribers.values());
-
-  const summary = {
-    asOf: today,
-    sourceFile: sourceName,
-    subscriberCount: subscribers.size,
-    activeSubscriberCount: subscriberRows.filter((subscriber) => subscriber.status === 'Active').length,
-    archivedSubscriberCount: subscriberRows.filter((subscriber) => subscriber.status !== 'Active').length,
-    recipientCount: recipients.size,
-    orderCount: orders.size,
-    subscriptionCount: subscriptions.size,
-    mailingCount: mailings.length,
-    openMailingCount: mailings.filter((mailing) => mailing.activeState === 'Active' && isOpenStatus(mailing.status)).length,
-    archivedMailingCount: mailings.filter((mailing) => mailing.activeState !== 'Active').length,
-    overdueCount: mailings.filter((mailing) => mailing.activeState === 'Active' && mailing.overdue).length,
-    dueNext14Count: mailings.filter((mailing) => mailing.activeState === 'Active' && mailing.dueNext14Days).length,
-    exceptionCount: exceptions.length,
-    missingShipDateCount: exceptions.filter((item) => item.reason.includes('ship date')).length,
-  };
-
-  return {
-    summary,
-    subscribers: subscriberRows.sort((a, b) => (a.nextShipDate || '9999').localeCompare(b.nextShipDate || '9999')),
-    recipients: normalizedRecipients.sort((a, b) => a.name.localeCompare(b.name)),
-    orders: Array.from(orders.values()).sort((a, b) => String(b.createdOn).localeCompare(String(a.createdOn))),
-    subscriptions: Array.from(subscriptions.values()).sort((a, b) => a.subscriptionId.localeCompare(b.subscriptionId)),
-    mailings: mailings.sort((a, b) => (a.shipDate || '9999').localeCompare(b.shipDate || '9999')),
-    exceptions: exceptions.sort((a, b) => (b.severity.localeCompare(a.severity) || (a.shipDate || '').localeCompare(b.shipDate || ''))),
-    automationRules: defaultAutomationRules(),
-  };
-}
-
 async function readWorkbookFile(file) {
   if (!window.XLSX) throw new Error('The Excel parser did not load. Refresh the CRM and try again.');
   const workbook = window.XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
@@ -462,7 +258,7 @@ async function readWorkbookFile(file) {
   // buildSeedFromSpreadsheet drops these blank rows afterward on its own.
   const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: true, blankrows: true });
   if (!rows.length) throw new Error('That worksheet looks empty.');
-  const seed = buildSeedFromSpreadsheet(rows, file.name);
+  const seed = buildSeedFromSpreadsheet(rows, file.name, new Date(), defaultAutomationRules());
   if (!seed.mailings.length) throw new Error('I could not find any mailing rows in that sheet.');
   return { seed, sheetName, rowCount: rows.length };
 }
