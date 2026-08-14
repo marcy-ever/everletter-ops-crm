@@ -8,7 +8,7 @@
 
 **Workflow: two Claude sessions, two roles.** Code changes to this repo go through a separate execution session/environment ("VM Claude") that receives a precisely-scoped task prompt and does the actual implementation — writes the code, runs tests, opens the PR. A local/orchestrating Claude session (working alongside Brad) is where the design decisions actually get made: discussing direction, reviewing what VM Claude produced, and drafting the next task prompt — not making direct code edits to this repo itself. If you are the local/orchestrating session: don't implement here, draft the prompt. If you are VM Claude executing a task prompt: that prompt is your scope — implement it for real, verify it for real, and report back plainly what you did and didn't get to (see this migration's existing task prompts for the expected level of detail, and be honest about gaps — e.g. flag when live/interactive verification isn't possible in your environment rather than skipping it silently).
 
-The migration described below is **done**, not aspirational. Sections 1-9 describe the app as it actually runs today — not the original OpenAI Codex/Sites build. A short history note follows this section for context on why some conventions (like `public/app.js` remaining a vanilla-JS monolith) still look the way they do, even though the infrastructure around them changed completely.
+The migration described below is **done**, not aspirational. Sections 1-9 describe the app as it actually runs today — not the original OpenAI Codex/Sites build. A short history note follows this section for context on why some conventions (like `app/crm/legacy-app.js` remaining a vanilla-JS monolith) still look the way they do, even though the infrastructure around them changed completely.
 
 **Kept, as decided:**
 
@@ -26,7 +26,7 @@ The migration described below is **done**, not aspirational. Sections 1-9 descri
 - **Hosting:** self-hosted via Docker Compose on the owner's NAS ("FranklinsTower", per Brad — see §4/§7). Deploys automatically on merge to `main` via GitHub Actions.
 - **Persistence:** self-hosted Postgres via Docker. Fully normalized relational schema (`db/schema/`), not the single JSON blob D1 held — see `docs/schema-design.md` for the complete design and migration history.
 
-**`public/app.js`:** this is a large, untyped vanilla-JS monolith, but it holds the real product logic (state, views, validation, envelope generation) and has been battle-tested with real operational use. Plan to migrate it into typed React components incrementally over time as workflows are touched, not as an immediate up-front rewrite. This is still true today — the infrastructure migration below didn't touch it.
+**`app/crm/legacy-app.js`:** this is a large, untyped vanilla-JS monolith, but it holds the real product logic (state, views, validation, envelope generation) and has been battle-tested with real operational use. Plan to migrate it into typed React components incrementally over time as workflows are touched, not as an immediate up-front rewrite. This is still true today — the infrastructure migration below didn't touch it.
 
 **Known risks:**
 
@@ -36,7 +36,7 @@ The migration described below is **done**, not aspirational. Sections 1-9 descri
 
 **CI/CD:** exists and is load-bearing — GitHub Actions builds and pushes a Docker image on every push to `main`, then deploys it to the NAS automatically. This is a real, current fact, not a future decision: **a merge to `main` is a production deploy.** See §7 for the exact flow, and `.github/workflows/build-and-push.yml` for the source of truth.
 
-**History, for context — not a live description:** this app was originally built via OpenAI's Codex/Sites tooling, which is why `public/app.js` exists as one large vanilla-JS file wrapped by a server-rendered React shell, rather than typed React components throughout — that build path favored exactly that shape, and rewriting `app.js` wasn't (and still isn't) the priority, per the note above. The Codex/Sites-specific tooling itself — Cloudflare Workers, Vinext, D1, the `.openai/` config, `worker/`, `vite.config.ts` — has been fully removed from the tree (commit `feb8bf8` and the Postgres migration described in `docs/schema-design.md`). Nothing below describes any of that as live infrastructure; where it's mentioned again, it's explicitly historical.
+**History, for context — not a live description:** this app was originally built via OpenAI's Codex/Sites tooling, which is why `app/crm/legacy-app.js` exists as one large vanilla-JS file wrapped by a server-rendered React shell, rather than typed React components throughout — that build path favored exactly that shape, and rewriting `app.js` wasn't (and still isn't) the priority, per the note above. The Codex/Sites-specific tooling itself — Cloudflare Workers, Vinext, D1, the `.openai/` config, `worker/`, `vite.config.ts` — has been fully removed from the tree (commit `feb8bf8` and the Postgres migration described in `docs/schema-design.md`). Nothing below describes any of that as live infrastructure; where it's mentioned again, it's explicitly historical.
 
 ## 1. Project Overview
 
@@ -65,7 +65,7 @@ Runtime and languages:
 
 - Node.js `>=22.13.0`
 - TypeScript `5.9.3` for the application shell, API route, database schema/access layer, and the `lib/` modules
-- JavaScript (browser-native, non-module) for most CRM behavior in `public/app.js`
+- JavaScript (browser-native; a real ES module as of the app.js → ESM move, §9) for most CRM behavior in `app/crm/legacy-app.js`
 - CSS in `app/globals.css`
 - SQL migrations for Postgres, generated and applied via Drizzle Kit
 
@@ -97,7 +97,7 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 
 - `app/` - App Router UI shell, global CSS, auth helper, and API routes.
 - `app/api/shared-state/route.ts` - GET/POST API for the CRM dataset and shared overrides. GET reconstructs `app.js`'s dataset shape from the normalized tables (`lib/build-dataset-from-tables.ts` + `lib/build-overrides-from-tables.ts`); POST dispatches through `lib/write-to-tables.ts` inside one Postgres transaction. See "Current data flow" below and `docs/schema-design.md` — don't restate that doc's history here, it stays current on its own.
-- `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script loading (`seed-data.js` → `xlsx.full.min.js` → `app.js`).
+- `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script/module loading: `seed-data.js` → `xlsx.full.min.js` (both still plain `beforeInteractive` `<Script>` tags) → `<CrmApp />` (mounts and initializes `app/crm/legacy-app.js`, replacing the old `afterInteractive` `<Script src="/app.js">` tag as of the app.js → ESM move, §9).
 - `app/layout.tsx` - Root HTML layout and metadata.
 - `app/globals.css` - All CRM, responsive, mobile, and print-related styling (~2,400 lines — see Known Issues).
 - `app/access-denied/page.tsx` - Plain page shown to authenticated users whose email isn't on the `ALLOWED_USERS` allowlist.
@@ -105,13 +105,14 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 - `auth.ts` (repo root) - Auth.js config: Google provider, jwt/session callbacks that attach the resolved role (or `null`) to the session via `lib/allowlist.ts`.
 - `proxy.ts` (repo root) - Route protection for the whole app (Next 16 renamed `middleware.ts` to `proxy.ts`; see the Authentication section under §4).
 - `lib/allowlist.ts` - Parses `ALLOWED_USERS` (`email:role` pairs) and resolves a role for a given email. Pure/testable; see `docs/auth.md`.
-- `lib/ids.ts` - Deterministic, hashed ID generation for subscribers/recipients/subscriptions/mailings. Mirrored (not imported — `public/app.js` is a non-bundled browser script) by an identical implementation inline in `app.js`; kept in sync by tests that run the real `app.js` in a sandbox and diff its output against this module.
+- `lib/ids.ts` - Deterministic, hashed ID generation for subscribers/recipients/subscriptions/mailings. Mirrored (not imported — `app/crm/legacy-app.js` is a real ES module now, but importing this directly is deliberately left for a later decomposition step rather than folded into the ESM move itself, §9) by an identical implementation inline in `app.js`; kept in sync by tests that run the real module in a sandbox and diff its output against this module.
 - `lib/keys.ts` - `mailingKey`/`componentKey`/`exceptionReviewKey` generation and parsing. Same mirrored/tested-in-sync relationship with `app.js` as `lib/ids.ts`. Existing overrides depend on these staying stable across refactors.
 - `lib/mailing-rules.ts` - Cadence/status rules (open status, overdue, due-within-14-days, nearest batch date). Same mirrored relationship with `app.js`.
 - `lib/write-to-tables.ts` - Writes a POSTed import or status change into the normalized tables, transactionally.
 - `lib/build-dataset-from-tables.ts` - Reconstructs the full CRM dataset shape `app.js` expects, by querying the normalized tables directly. The only thing GET reads from now.
 - `lib/build-overrides-from-tables.ts` - Reconstructs `componentOverrides` and reviewed-exception keys for GET, since neither has an equivalent field in the dataset shape itself.
-- `public/app.js` - Main application (~3,000 lines). Owns state, views, spreadsheet parsing, validation, mailing calculations, status changes, profiles, envelope HTML generation, QA, packet/bin workflows, simulators, and DOM event binding.
+- `app/crm/legacy-app.js` - Main application (~3,000 lines). Owns state, views, spreadsheet parsing, validation, mailing calculations, status changes, profiles, envelope HTML generation, QA, packet/bin workflows, simulators, and DOM event binding. A real ES module as of the app.js → ESM move (§9) — importable/exportable, but still an untyped vanilla-JS monolith otherwise; no rendering logic changed by that move.
+- `app/crm/CrmApp.tsx` - `"use client"` component that calls `legacy-app.js`'s exported `initCrmApp()` from a mount effect (browser-only, guarded against double-invocation). Rendered from `app/page.tsx`; the only thing that ever imports `legacy-app.js`.
 - `public/everletterSeed.json` and `public/seed-data.js` - Sanitized empty fallback dataset, loaded synchronously before the real dataset arrives from `/api/shared-state`. Never replace these with production customer data in Git.
 - `public/assets/` - Everletter logo, wax seal, character art, envelope corner art, and sample-letter images.
 - `db/schema/` - Drizzle table definitions, one file per entity (`subscribers.ts`, `subscriptions.ts`, `orders.ts`, `mailings.ts`, `mailing_components.ts`, `exceptions.ts`, `ingestion_events.ts`, `staging_locations.ts`), plus `relations.ts` and a barrel `index.ts`. Full design rationale: `docs/schema-design.md`.
@@ -124,11 +125,11 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 ### Current data flow
 
 1. A user uploads the current `.xlsx`, `.xls`, or `.csv` mailing schedule in the Import Sheet view.
-2. `public/app.js` parses and validates it in the browser and builds a structured dataset (subscribers, recipients, subscriptions, orders, mailings, summary, exceptions) via `buildSeedFromSpreadsheet`.
+2. `app/crm/legacy-app.js` parses and validates it in the browser and builds a structured dataset (subscribers, recipients, subscriptions, orders, mailings, summary, exceptions) via `buildSeedFromSpreadsheet`.
 3. Publishing POSTs the complete dataset to `/api/shared-state` as `kind=crmDataset`, `key=current`. The route runs it through `lib/write-to-tables.ts`'s `writeImport()`, which writes it into the normalized tables inside one Postgres transaction — all or nothing.
 4. Mailing-status, component-status, and reviewed-exception changes each POST their own `kind`/`key`/`value` and are written directly to the relevant table by `lib/write-to-tables.ts`, also transactionally.
 5. On GET, the route calls `buildDatasetFromTables()` to reconstruct the same dataset shape `app.js` expects, directly from the normalized tables — nothing cached, nothing denormalized in between — plus `lib/build-overrides-from-tables.ts` for `componentOverrides` and the `reviewed` exception-key list.
-6. On load, `public/app.js` initializes its state synchronously from the empty committed fallback (`window.EVERLETTER_SEED`), then replaces it wholesale with the real reconstructed dataset once `/api/shared-state` resolves. Status/component-status overrides and reviewed-exception flags are additionally cached to `localStorage` as a client-side fallback — the dataset itself is not.
+6. On load, `app/crm/legacy-app.js` initializes its state synchronously from the empty committed fallback (`window.EVERLETTER_SEED`), then replaces it wholesale with the real reconstructed dataset once `/api/shared-state` resolves. Status/component-status overrides and reviewed-exception flags are additionally cached to `localStorage` as a client-side fallback — the dataset itself is not.
 
 There is no `crm_state` table, blob, or "record kinds" list anymore — it was dropped entirely once the normalized tables became the sole source of truth for both directions. The complete history of that migration (why each table looks the way it does, the dual-write rollout, every schema gap found and either closed or deliberately accepted) is in **[docs/schema-design.md](docs/schema-design.md)** — read it before touching `lib/write-to-tables.ts` or `lib/build-dataset-from-tables.ts` rather than re-deriving any of it here.
 
@@ -182,14 +183,14 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 
 - Purpose: envelope typography for each Everletter character and adult envelopes.
 - Account: none required; fonts are loaded at print-window runtime from `fonts.googleapis.com`/`fonts.gstatic.com`.
-- Code config: the `@import` generated in `public/app.js` near the envelope print HTML.
+- Code config: the `@import` generated in `app/crm/legacy-app.js` near the envelope print HTML.
 - Risk: envelope appearance depends on network access and font loading at print time (see Known Issues).
 
 ### Google Drive (manual workflow; not integrated)
 
 - Purpose: stores print-ready letters and customer envelope files organized by character.
 - Account: Everletter's Google Workspace/Drive. Marcy should provide the exact owner/login to the next developer; do not use or mix the unrelated Aarcadian Drive.
-- Code config: `driveConfig` in `public/app.js`, but all private folder URLs/IDs were intentionally removed before the GitHub export. Buttons currently alert when no URL is attached.
+- Code config: `driveConfig` in `app/crm/legacy-app.js`, but all private folder URLs/IDs were intentionally removed before the GitHub export. Buttons currently alert when no URL is attached.
 - Status: no OAuth, Drive API, or service-account integration exists.
 
 ### Squarespace (planned; not integrated)
@@ -197,14 +198,14 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 - Purpose: current storefront, subscription checkout, renewals, and sample-request form. Intended future source for automatic paid-order ingestion.
 - Site: `https://www.theeverletter.com/`
 - Account: Everletter's Squarespace account; credentials are held by Marcy/Ashley and are not in the repo.
-- Code config: none. `public/app.js` contains only a Sync Simulator, automation rules, and explanatory UI.
+- Code config: none. `app/crm/legacy-app.js` contains only a Sync Simulator, automation rules, and explanatory UI.
 - Status: no webhook, API token, scheduled sync, or product/service mapping is implemented.
 
 ### Mailchimp (planned; not integrated)
 
 - Purpose: intended automated delivery of Kid/Adult sample-letter emails and lead tagging.
 - Account: not yet documented/connected; Marcy knows Mailchimp and planned to set it up.
-- Code config: none. The Sample Requests view in `public/app.js` is a mock workflow and preview library only.
+- Code config: none. The Sample Requests view in `app/crm/legacy-app.js` is a mock workflow and preview library only.
 - Status: no API key, audience ID, journey, webhook, or email send exists.
 
 ### Gmail / Google Workspace (manual workflow; not integrated)
@@ -219,7 +220,7 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 
 - Purpose: restrict the real CRM to authorized users.
 - Provider: Auth.js (`next-auth@5`) with Google OAuth, plus an `ALLOWED_USERS` email/role allowlist enforced in `proxy.ts` (Next 16's rename of `middleware.ts`). No passwords, no user database.
-- Full reference — allowlist format and current entries, how to check the resolved role in server code and in `public/app.js`, how to add a user, and what's explicitly **not** built yet (no per-feature restrictions exist): see **[docs/auth.md](docs/auth.md)**.
+- Full reference — allowlist format and current entries, how to check the resolved role in server code and in `app/crm/legacy-app.js`, how to add a user, and what's explicitly **not** built yet (no per-feature restrictions exist): see **[docs/auth.md](docs/auth.md)**.
 - Status: **live and verified**, not merely structurally complete (see Decided Direction, above). Real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are wired up, and a live sign-in has been verified working end-to-end for at least one allowlisted account. Ashley's own sign-in specifically hasn't been confirmed yet.
 - A blank `AUTH_SECRET` is not a soft failure — Auth.js validates it eagerly, and any request that reaches `/api/auth/signin` with it unset gets a real HTTP 500 (`MissingSecret`), verified directly while fixing the local-setup docs. See §5/§6.
 
@@ -350,17 +351,17 @@ Highest priority:
 
 - **No live-update mechanism between users.** The app uses plain HTTP GET/POST for `/api/shared-state` — there's no websocket or push mechanism, so if Marcy and Ashley are both using the CRM at the same time, one person's changes (status updates, imports, reviewed exceptions) won't appear for the other until they manually refresh the page. This risks someone acting on stale data without realizing it. TODO for whoever picks this up next (likely Codex): at minimum, a lightweight "this page may be stale, refresh to see recent changes" indicator would prevent acting on outdated information — doesn't require full realtime sync, just a signal. A full live-update experience (websockets or polling-based) would be a bigger undertaking to consider once that minimal version is in place.
 - **Re-importing a spreadsheet still overwrites current data with no history, versioned rollback, or user-facing export/restore flow.** This survived the migration off the JSON blob — `lib/write-to-tables.ts`'s `writeImport()` still deletes any subscriber/subscription/order/mailing/exception row not present in the new import (verified directly: `db.delete(...).where(notInArray(...))` for each entity), the same "current import replaces everything" behavior the blob had, just now expressed as real deletes across normalized tables instead of overwriting one JSON value. This is a distinct problem from the dataset-loss risk the NAS backups (see §4) now cover — daily `pg_dump` snapshots protect against losing the database entirely, not against undoing one bad reimport or reviewing what an import actually changed.
-- **Status/component-status saves are asynchronous and optimistic, with no retry or user-visible failure indicator.** `saveSharedState()` (`public/app.js:173-181`) fires the POST and silently swallows any failure (`.catch(() => {})`, "keep local changes usable if the shared endpoint is briefly unavailable") — a failed save looks identical to a successful one from the UI, and there's no retry queue.
-- **Two separate sets of unguarded bulk-action buttons apply a status change to every currently-shown row with a single click and no confirmation dialog.** Each row fires an independent, fire-and-forget POST (`saveSharedState`, `public/app.js:173-181`) — no batching, no undo, no confirmation step:
-  - Production Queue's "Update shown rows" status buttons (`public/app.js:935-942` for the buttons, `974-979` for the click handler that loops every shown row through `updateMailingStatus`, `public/app.js:286-291`).
-  - Ashley Bins' "Update shown rows" mark-ready/mark-needs-check buttons (`public/app.js:2433-2438` for the buttons, `2485-2501` for the click handler, which fires three `updateComponentStatus` calls per row).
+- **Status/component-status saves are asynchronous and optimistic, with no retry or user-visible failure indicator.** `saveSharedState()` (`app/crm/legacy-app.js:148-156`) fires the POST and silently swallows any failure (`.catch(() => {})`, "keep local changes usable if the shared endpoint is briefly unavailable") — a failed save looks identical to a successful one from the UI, and there's no retry queue.
+- **Two separate sets of unguarded bulk-action buttons apply a status change to every currently-shown row with a single click and no confirmation dialog.** Each row fires an independent, fire-and-forget POST (`saveSharedState`, `app/crm/legacy-app.js:148-156`) — no batching, no undo, no confirmation step:
+  - Production Queue's "Update shown rows" status buttons (`app/crm/legacy-app.js:910-917` for the buttons, `949-955` for the click handler that loops every shown row through `updateMailingStatus`, `261-266`).
+  - Ashley Bins' "Update shown rows" mark-ready/mark-needs-check buttons (`app/crm/legacy-app.js:2408-2413` for the buttons, `2460-2476` for the click handler, which fires three `updateComponentStatus` calls per row).
 
   A single accidental click — or a click by someone who doesn't realize what the button does — can silently overwrite the status of every currently-shown mailing at once. This already happened with the Production Queue buttons: Marcy confirmed she clicked them believing they were status *filters*, not bulk-rewrite actions — the pill-button styling doesn't visually distinguish them from the filter controls elsewhere in the UI. The Ashley Bins instance has the identical shape and hasn't been reported as misclicked yet, but nothing about it is actually safer. TODO for whoever picks this up next (likely Codex): add a confirmation step before either fires (e.g. "Set status to X for the N mailings currently shown?"), and consider restyling both so they're not visually confusable with filters — especially before real operational data is being tracked day to day, a misclick currently has no safety net at all.
-- Stable keys (`mailingKey`/`componentKey`/`exceptionReviewKey`) are derived in browser code, mirrored (not imported — `app.js` is a non-bundled script) by `lib/keys.ts` for the server side. A key-generation change on either side that isn't kept in sync can orphan existing overrides.
+- Stable keys (`mailingKey`/`componentKey`/`exceptionReviewKey`) are derived in browser code, mirrored (not imported - `app.js` is a real ES module now, but this is deliberately still a separate copy rather than an import, same as `lib/ids.ts` above) by `lib/keys.ts` for the server side. A key-generation change on either side that isn't kept in sync can orphan existing overrides.
 - Ashley's own Google sign-in specifically hasn't been verified yet (see Decided Direction's risk list, above).
-- No per-feature/per-role restrictions exist yet, even though the resolved role is available (`session.role`, and `data-user-role` on the page shell for `public/app.js`). Pending Marcy specifying what Ashley should be restricted from. See `docs/auth.md`.
+- No per-feature/per-role restrictions exist yet, even though the resolved role is available (`session.role`, and `data-user-role` on the page shell for `app/crm/legacy-app.js`). Pending Marcy specifying what Ashley should be restricted from. See `docs/auth.md`.
 - Private Google Drive folder IDs aren't in this repository at all, so Drive buttons remain incomplete everywhere the app now runs — unlike under the old Sites deployment, there's no separately-configured "live" version anymore that could differ from this source; the NAS deploy builds directly from this same git history.
-- The `exceptions` table has no columns to fully verify a `reviewedException` override key. The client's key (`exceptionReviewKey`, `public/app.js`) encodes `mailingId`/`subscriberId`/`reason`/`shipDate`, but server-side matching only cross-checks `mailingId` and `reason` — there's no column for `subscriberId`/`shipDate`. This is a known, documented schema limit (see `docs/schema-design.md`'s dual-write notes), not a shortcut anyone's forgotten about. TODO for whoever picks this up next (likely Codex): decide whether to add `subscriberId`/`shipDate` snapshot columns to `exceptions`, or explicitly accept this as a permanent limitation of `reviewedException` matching.
+- The `exceptions` table has no columns to fully verify a `reviewedException` override key. The client's key (`exceptionReviewKey`, `app/crm/legacy-app.js`) encodes `mailingId`/`subscriberId`/`reason`/`shipDate`, but server-side matching only cross-checks `mailingId` and `reason` — there's no column for `subscriberId`/`shipDate`. This is a known, documented schema limit (see `docs/schema-design.md`'s dual-write notes), not a shortcut anyone's forgotten about. TODO for whoever picks this up next (likely Codex): decide whether to add `subscriberId`/`shipDate` snapshot columns to `exceptions`, or explicitly accept this as a permanent limitation of `reviewedException` matching.
 - `devops/clear_db.sh` truncates a `crm_state` table that no longer exists (dropped along with the rest of the JSON-blob storage — see `docs/schema-design.md`) — it will fail as committed. Verified directly against the current schema; not yet fixed.
 
 Integrations not built:
@@ -374,7 +375,7 @@ Integrations not built:
 
 Code quality/maintenance:
 
-- `public/app.js` is a very large monolithic script (~3,000 lines) with untyped state and direct DOM rendering.
+- `app/crm/legacy-app.js` is a very large monolithic script (~3,000 lines) with untyped state and direct DOM rendering.
 - `app/globals.css` is similarly large (~2,400 lines) and should be decomposed carefully.
 - `examples/d1/` remains — leftover Cloudflare D1 starter template code, unused by the CRM.
 - Some source strings show mojibake such as `Â·`; normalize encoding while preserving intended display.
@@ -417,6 +418,6 @@ Logical next steps, roughly in order:
 9. **Connect Squarespace**: idempotent ingestion, raw-payload preservation, subscription identity independent of order numbers, multiple subscriptions per email, mailing schedules created only after successful payment.
 10. **Add Mailchimp sample automation**: capture requests, tag Kid/Adult, send samples, record consent/source/time, match later purchases.
 11. **Add observability and operational safeguards**: monitoring/error reporting, an audit log, failed-save retry visibility (§8), and a verified restore drill against the now-real backups.
-12. **Incrementally migrate `public/app.js` and decompose `app/globals.css`** into typed modules/components, one touched workflow at a time — not a scheduled rewrite, per the Decided Direction section above.
+12. **Incrementally migrate `app/crm/legacy-app.js` and decompose `app/globals.css`** into typed modules/components, one touched workflow at a time — not a scheduled rewrite, per the Decided Direction section above.
 
-Do not begin by rewriting the UI. The working operational rules encoded in `public/app.js` are valuable and are already covered by the real test suite (`docs/testing.md`) at the level that suite tests. Migrate one workflow at a time into typed modules while keeping mailing-day behavior stable.
+Do not begin by rewriting the UI. The working operational rules encoded in `app/crm/legacy-app.js` are valuable and are already covered by the real test suite (`docs/testing.md`) at the level that suite tests. Migrate one workflow at a time into typed modules while keeping mailing-day behavior stable.

@@ -111,20 +111,21 @@ non-reimportable dataset - do not run `pnpm test:e2e` against it.
 
 `tests/render-snapshots.test.mjs` is part of `test:unit` (unconditional, no
 skip logic, no Postgres or spreadsheet fixture needed) and covers something
-nothing else in this suite touches: what `public/app.js`'s render functions
-actually output. The pre-existing tests prove the data layer (import →
-normalized tables → reconstruction); this suite proves what each of the
-twelve views renders from a given `state`. It's step 1 of the planned
-`app.js` decomposition - the safety net every later refactor step diffs
-against - and is itself test infrastructure only; it makes no production
-code changes.
+nothing else in this suite touches: what `app/crm/legacy-app.js`'s render
+functions actually output. The pre-existing tests prove the data layer
+(import → normalized tables → reconstruction); this suite proves what each
+of the twelve views renders from a given `state`. It's step 1 of the
+planned `app.js` decomposition - the safety net every later refactor step
+diffs against - and is itself test infrastructure only; it makes no
+production code changes.
 
 How it works: `tests/e2e-helpers.mjs`'s `loadAppJsSandbox(fixedNow, {
-captureRenders: true })` runs the real `public/app.js` in a `vm` context
-with a `document` stub that records `innerHTML` writes per selector (see
-that file's own comment for why `captureRenders` defaults to `false` and is
-fully backward compatible with every other caller). Each test case builds
-an explicit `state` (never relies on defaults), calls the real
+captureRenders: true })` dynamic-imports the real `app/crm/legacy-app.js`
+(a real ES module as of step 2 of the decomposition plan, §9) with a
+`document` stub installed on `globalThis` that records `innerHTML` writes
+per selector (see that file's own comment for why `captureRenders` defaults
+to `false` and is fully backward compatible with every other caller). Each
+test case builds an explicit `state` (never relies on defaults), calls the real
 `renderView()`, and diffs the captured `#viewMount` HTML against a
 committed snapshot in `tests/snapshots/*.html` - one plain, readable file
 per case, not minified or JSON-wrapped, so a snapshot diff shows up as a
@@ -174,8 +175,9 @@ and a real bug (the ENOENT crash above). One definition now provides:
   hand in one place instead of drifting across files.
 - `loadSpreadsheetRows()` - reads and parses the real test spreadsheet the
   same way every file needs it.
-- `loadAppJsSandbox(fixedNow?)` - runs the real `public/app.js` in a
-  sandboxed `vm` context so tests call its actual functions
+- `loadAppJsSandbox(fixedNow?)` - dynamic-imports the real
+  `app/crm/legacy-app.js` (with `document`/`window`/`localStorage`/`fetch`
+  stubs installed on `globalThis` first) so tests call its actual functions
   (`buildSeedFromSpreadsheet`, etc.) instead of a reimplementation. `fixedNow`
   is optional: pass it to pin the sandbox's `Date` to an exact instant
   (needed by `build-dataset-from-tables.e2e`, which compares client-side and

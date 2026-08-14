@@ -1,10 +1,11 @@
 /**
  * Canonical spec for the mailing business rules app.js computes client-side
- * in buildSeedFromSpreadsheet (public/app.js) and reuses in its own render
- * logic: which statuses count as "open," whether a mailing is overdue or
- * due in the next 14 days, and the nearest 1st/15th batch date for a given
- * ship date. app.js is a non-bundled browser script and can't import this
- * module - its own inline copies (the `openStatuses` constant, the
+ * in buildSeedFromSpreadsheet (app/crm/legacy-app.js) and reuses in its own
+ * render logic: which statuses count as "open," whether a mailing is
+ * overdue or due in the next 14 days, and the nearest 1st/15th batch date
+ * for a given ship date. app.js is a real ES module now (the app.js -> ESM
+ * move, see CLAUDE.md) but doesn't import this module - its own inline
+ * copies (the `openStatuses` constant, the
  * `overdue`/`dueNext14Days` fields built inline in buildSeedFromSpreadsheet,
  * and the `nearestBatchDate`/`daysBetween`/`todayIso` functions) remain the
  * actual source of truth for what the browser computes. This module exists
@@ -35,7 +36,7 @@ export function isOpenStatus(status: string | null | undefined): boolean {
 
 // Matches app.js's todayIso(): the LOCAL calendar date of `now`, as
 // "YYYY-MM-DD". The getTimezoneOffset() round-trip is deliberate (see
-// public/app.js's own copy and the git history behind PR #3, "Fix
+// app/crm/legacy-app.js's own copy and the git history behind PR #3, "Fix
 // spreadsheet import date shifting back a day in western timezones") - it
 // makes the result stable regardless of which timezone the runtime (browser
 // or, here, the Node server) happens to be in.

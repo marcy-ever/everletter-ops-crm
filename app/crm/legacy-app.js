@@ -289,8 +289,8 @@ function slug(value) {
     .replace(/^-|-$/g, '') || 'unknown';
 }
 
-// Pure-JS, synchronous, dependency-free SHA-256 (FIPS 180-4). app.js is a
-// non-bundled <script> - no crypto module, and Web Crypto's subtle.digest
+// Pure-JS, synchronous, dependency-free SHA-256 (FIPS 180-4). app.js runs
+// in the browser - no Node crypto module, and Web Crypto's subtle.digest
 // is async-only, which doesn't fit these functions' inline call sites. The
 // literal same implementation is vendored in lib/ids.ts so the two stay in
 // sync; tests/ids.test.mjs checks output parity, not source-text parity

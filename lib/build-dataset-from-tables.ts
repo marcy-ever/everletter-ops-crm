@@ -1,5 +1,5 @@
 /**
- * Reconstructs app.js's full crmDataset shape (public/app.js's
+ * Reconstructs app.js's full crmDataset shape (app/crm/legacy-app.js's
  * buildSeedFromSpreadsheet output) by querying the normalized tables
  * (db/schema/) directly. app/api/shared-state/route.ts's GET handler calls
  * buildDatasetFromTables() for this; there is no other read path and

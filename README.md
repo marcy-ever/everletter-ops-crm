@@ -5,7 +5,7 @@ Private operations CRM for Everletter mailing production.
 ## Current Architecture
 
 - Next.js/React shell in `app/`
-- Main browser CRM logic in `public/app.js`
+- Main browser CRM logic in `app/crm/legacy-app.js`
 - Shared state API in `app/api/shared-state/route.ts`, backed by self-hosted Postgres via Drizzle (`db/schema.ts`)
 - Styling in `app/globals.css`
 - Static brand and character assets in `public/assets/`
