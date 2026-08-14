@@ -107,6 +107,59 @@ stops being true for the database `DATABASE_URL` points at** - i.e., it's
 pointed at anything resembling a real, hand-edited, or otherwise
 non-reimportable dataset - do not run `pnpm test:e2e` against it.
 
+## Golden-HTML view snapshots
+
+`tests/render-snapshots.test.mjs` is part of `test:unit` (unconditional, no
+skip logic, no Postgres or spreadsheet fixture needed) and covers something
+nothing else in this suite touches: what `public/app.js`'s render functions
+actually output. The pre-existing tests prove the data layer (import →
+normalized tables → reconstruction); this suite proves what each of the
+twelve views renders from a given `state`. It's step 1 of the planned
+`app.js` decomposition - the safety net every later refactor step diffs
+against - and is itself test infrastructure only; it makes no production
+code changes.
+
+How it works: `tests/e2e-helpers.mjs`'s `loadAppJsSandbox(fixedNow, {
+captureRenders: true })` runs the real `public/app.js` in a `vm` context
+with a `document` stub that records `innerHTML` writes per selector (see
+that file's own comment for why `captureRenders` defaults to `false` and is
+fully backward compatible with every other caller). Each test case builds
+an explicit `state` (never relies on defaults), calls the real
+`renderView()`, and diffs the captured `#viewMount` HTML against a
+committed snapshot in `tests/snapshots/*.html` - one plain, readable file
+per case, not minified or JSON-wrapped, so a snapshot diff shows up as a
+normal diff in review. Input data comes from a synthetic, committed fixture
+(`tests/fixtures/synthetic-rows.json`) run through the real
+`buildSeedFromSpreadsheet()` - never `testing/Import_20260812_181828.xlsx`,
+which is real customer data and can't be committed (see CLAUDE.md's
+sanitized-repo data boundary).
+
+**To regenerate snapshots after an intentional rendering change:**
+
+```bash
+UPDATE_SNAPSHOTS=1 pnpm test:unit
+```
+
+**A snapshot diff in a refactor PR is a finding to explain, never a file to
+regenerate away.** The whole point of this suite is to catch rendering
+changes a refactor wasn't supposed to make. Regenerating on red without
+first understanding *why* the HTML changed defeats the harness - if the
+diff is expected (e.g. an intentional markup change), say so in the PR
+description; if it isn't, it just caught a real regression.
+
+Two known, deliberately-unpinned edge cases are documented directly in
+`tests/render-snapshots.test.mjs`'s module comment and at the relevant test
+case: `number()`'s use of `.toLocaleString()` is locale-dependent (harmless
+in practice while fixture counts stay under 1,000, since thousands
+separators are the only thing that varies), and `batchDatesForOrder()` (used
+only by the Sync Simulator view) has a real, pre-existing timezone bug -
+it round-trips through `.toISOString()` with no `getTimezoneOffset()`
+correction, unlike every sibling date function in the file, so under a
+positive-UTC-offset `TZ` its generated dates shift back one calendar day.
+Confirmed via direct `TZ=Asia/Tokyo` reproduction. Not fixed here - no
+production code changes is a hard constraint of this suite - but flagged
+as a real finding for whoever picks up the next decomposition step.
+
 ## What `tests/e2e-helpers.mjs` provides
 
 Extracted after the setup/gating preamble was found copy-pasted verbatim

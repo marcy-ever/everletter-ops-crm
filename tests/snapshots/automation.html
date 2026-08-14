@@ -1,0 +1,57 @@
+
+    <section class="automation-layout" aria-label="Automation map">
+      <div class="automation-column">
+        <h3>Live order flow</h3>
+        <ol class="flow-list">
+          
+    <li>
+      <span class="step-icon">1</span>
+      <div><strong>Squarespace order arrives</strong><span>Webhook or scheduled API sync captures the raw order exactly once.</span></div>
+    </li>
+  
+          
+    <li>
+      <span class="step-icon">2</span>
+      <div><strong>Match account</strong><span>Use Squarespace customer ID first, email second. One email can own multiple subscriptions.</span></div>
+    </li>
+  
+          
+    <li>
+      <span class="step-icon">3</span>
+      <div><strong>Match subscription sequence</strong><span>Use recipient, address, character, and plan to find the exact subscription under that account.</span></div>
+    </li>
+  
+          
+    <li>
+      <span class="step-icon">4</span>
+      <div><strong>Continue letter sequence</strong><span>Find the highest existing letter number for that exact subscription sequence.</span></div>
+    </li>
+  
+          
+    <li>
+      <span class="step-icon">5</span>
+      <div><strong>Calculate 1st/15th batches</strong><span>Apply the 3-day cutoff and two-letter monthly cadence automatically.</span></div>
+    </li>
+  
+          
+    <li>
+      <span class="step-icon">6</span>
+      <div><strong>Generate mailings</strong><span>Month-to-month creates two monthly mailings. 6-month creates 12. 12-month creates 24.</span></div>
+    </li>
+  
+          
+    <li>
+      <span class="step-icon">7</span>
+      <div><strong>Gate exceptions</strong><span>Missing dates, addresses, characters, emails, or unclear subscription matches stop before production.</span></div>
+    </li>
+  
+        </ol>
+      </div>
+      <div class="automation-column">
+        <h3>Rules to lock before connecting Squarespace</h3>
+        <div class="rule-stack">
+          <article class="rule-item"><strong>Mailing cadence</strong><p>Everletter has two batch dates per month: the 1st and the 15th.</p></article><article class="rule-item"><strong>3-day cutoff</strong><p>A new subscription can join a batch when the signup/payment is at least roughly 3 days before the 1st or 15th. Otherwise it rolls to the next batch.</p></article><article class="rule-item"><strong>Spreadsheet bridge</strong><p>Until Squarespace sync is live, import the updated Everletter Mailing Schedule through the Import Sheet screen.</p></article>
+        </div>
+      </div>
+    </section>
+  

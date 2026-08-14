@@ -1,0 +1,169 @@
+
+    <section class="data-panel" aria-label="Batch print">
+      <div class="panel-head">
+        <div>
+          <h3>Batch Print</h3>
+          <p>Shows envelopes still marked Need Print. Once a customer envelope is marked Printed or In Ashley Box, it drops off this print list.</p>
+        </div>
+        <span class="panel-count">4 shown / 8 envelopes</span>
+      </div>
+
+      <div class="print-summary">
+        <div><span>Mailing rows</span><strong>4</strong></div>
+        <div><span>Envelopes to print</span><strong>8</strong></div>
+        <div><span>Month-to-month</span><strong>4</strong></div>
+        <div><span>Latest renewal</span><strong>Jun 30, 2026</strong></div>
+      </div>
+
+      <div class="print-toolbar" aria-label="Print scope">
+        <span>Show:</span>
+        <button type="button" class="" data-print-scope="monthly">Month-to-month only</button>
+        <button type="button" class="active" data-print-scope="all">All open mailings</button>
+      </div>
+
+      <div class="envelope-groups" aria-label="Envelope groups">
+        <button type="button" class="active" data-print-stock="all">All stocks <strong>8</strong></button>
+        <button type="button" class="" data-print-stock="Adult standard envelope">Adult standard envelope <strong>2</strong></button><button type="button" class="" data-print-stock="Marley color envelope">Marley color envelope <strong>2</strong></button><button type="button" class="" data-print-stock="Ringo color envelope">Ringo color envelope <strong>4</strong></button>
+      </div>
+
+      <div class="batch-actions" aria-label="Print actions">
+        <span>Print actions:</span>
+        <button type="button" data-browser-print>Print This List</button>
+        <button type="button" data-print-envelopes>Print shown Envelopes (8)</button>
+        <button type="button" data-mark-envelopes-printed>Mark shown Envelopes Printed</button>
+        <button type="button" data-drive-url="">Open Print-Ready Folder</button>
+        <button type="button" data-print-action="batch-envelope">Open Batch Envelopes</button>
+        <button type="button" data-print-action="batch-letter">Open Batch Letters</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ship Date</th>
+              <th>Recipient</th>
+              <th>Mode</th>
+              <th>Renewal Date</th>
+              <th>Status</th>
+              <th>Envelope Status</th>
+              <th>Storage Bin</th>
+              <th>Envelope Stock</th>
+              <th>Env Qty</th>
+              <th>Envelope</th>
+              <th>Letter</th>
+              <th>Print Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+    <tr>
+      <td>Aug 15, 2026</td>
+      <td><strong>Drew Instance</strong><span>drew.instance@example.test</span></td>
+      <td><span class="flag flag-amber">Month-to-month</span></td>
+      <td><strong>Jun 15, 2026</strong><span>Paid/order date</span></td>
+      <td>
+        <select class="status-select status-ready-to-mail" data-print-status="MAIL-C1E62BBF6F054A3FB8563CF7::6">
+          <option >To Prepare</option><option >Printing</option><option >Assembling</option><option selected>Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td>
+        <select class="qa-select qa-need-print" data-print-envelope-status="MAIL-C1E62BBF6F054A3FB8563CF7::6">
+          <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+        </select>
+      </td>
+      <td>Ashley / Aug 15, 2026 bin</td>
+      <td>Adult standard envelope</td>
+      <td><strong>2</strong><span>This paid month</span></td>
+      <td>
+        <button type="button" class="link-button" data-print-one-envelope="MAIL-C1E62BBF6F054A3FB8563CF7::6">Print Envelope</button>
+        <button type="button" class="link-button" data-print-action="envelope">Open Folder</button>
+        <span>Needs envelope link</span>
+      </td>
+      <td><button type="button" class="link-button" data-print-action="letter">Needs Link</button><span>Needs letter link</span></td>
+      <td>Time-sensitive renewal; generate only after paid order sync.</td>
+    </tr>
+  
+    <tr>
+      <td>Aug 15, 2026</td>
+      <td><strong>Ava Example</strong><span>ava.example@example.test</span></td>
+      <td><span class="flag flag-amber">Month-to-month</span></td>
+      <td><strong>Jun 1, 2026</strong><span>Paid/order date</span></td>
+      <td>
+        <select class="status-select status-to-prepare" data-print-status="MAIL-2383FD20718F2B0473E578E4::2">
+          <option selected>To Prepare</option><option >Printing</option><option >Assembling</option><option >Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td>
+        <select class="qa-select qa-need-print" data-print-envelope-status="MAIL-2383FD20718F2B0473E578E4::2">
+          <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+        </select>
+      </td>
+      <td>Ashley / Aug 15, 2026 bin</td>
+      <td>Marley color envelope</td>
+      <td><strong>2</strong><span>This paid month</span></td>
+      <td>
+        <button type="button" class="link-button" data-print-one-envelope="MAIL-2383FD20718F2B0473E578E4::2">Print Envelope</button>
+        <button type="button" class="link-button" data-print-action="envelope">Open Folder</button>
+        <span>Needs envelope link</span>
+      </td>
+      <td><button type="button" class="link-button" data-print-action="letter">Needs Link</button><span>Needs letter link</span></td>
+      <td>Time-sensitive renewal; generate only after paid order sync.</td>
+    </tr>
+  
+    <tr>
+      <td>Aug 15, 2026</td>
+      <td><strong>Cara Placeholder</strong><span>cara.placeholder@example.test</span></td>
+      <td><span class="flag flag-amber">Month-to-month</span></td>
+      <td><strong>Jun 10, 2026</strong><span>Paid/order date</span></td>
+      <td>
+        <select class="status-select status-assembling" data-print-status="MAIL-858D276D8AE36ED676FBB9A7::5">
+          <option >To Prepare</option><option >Printing</option><option selected>Assembling</option><option >Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td>
+        <select class="qa-select qa-need-print" data-print-envelope-status="MAIL-858D276D8AE36ED676FBB9A7::5">
+          <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+        </select>
+      </td>
+      <td>Ashley / Aug 15, 2026 bin</td>
+      <td>Ringo color envelope</td>
+      <td><strong>2</strong><span>This paid month</span></td>
+      <td>
+        <button type="button" class="link-button" data-print-one-envelope="MAIL-858D276D8AE36ED676FBB9A7::5">Print Envelope</button>
+        <button type="button" class="link-button" data-print-action="envelope">Open Folder</button>
+        <span>Needs envelope link</span>
+      </td>
+      <td><button type="button" class="link-button" data-print-action="letter">Needs Link</button><span>Needs letter link</span></td>
+      <td>Time-sensitive renewal; generate only after paid order sync.</td>
+    </tr>
+  
+    <tr>
+      <td>Aug 20, 2026</td>
+      <td><strong>Jax Offbatch</strong><span>jax.offbatch@example.test</span></td>
+      <td><span class="flag flag-amber">Month-to-month</span></td>
+      <td><strong>Jun 30, 2026</strong><span>Paid/order date</span></td>
+      <td>
+        <select class="status-select status-to-prepare" data-print-status="MAIL-0B1E8E35593679D89582EA00::12">
+          <option selected>To Prepare</option><option >Printing</option><option >Assembling</option><option >Ready to Mail</option><option >Mailed</option>
+        </select>
+      </td>
+      <td>
+        <select class="qa-select qa-need-print" data-print-envelope-status="MAIL-0B1E8E35593679D89582EA00::12">
+          <option selected>Need Print</option><option >Printed</option><option >Both Printed</option><option >In Ashley Box</option><option >Not Needed</option>
+        </select>
+      </td>
+      <td>Ashley / Aug 20, 2026 bin</td>
+      <td>Ringo color envelope</td>
+      <td><strong>2</strong><span>This paid month</span></td>
+      <td>
+        <button type="button" class="link-button" data-print-one-envelope="MAIL-0B1E8E35593679D89582EA00::12">Print Envelope</button>
+        <button type="button" class="link-button" data-print-action="envelope">Open Folder</button>
+        <span>Needs envelope link</span>
+      </td>
+      <td><button type="button" class="link-button" data-print-action="letter">Needs Link</button><span>Needs letter link</span></td>
+      <td>Time-sensitive renewal; generate only after paid order sync.</td>
+    </tr>
+  </tbody>
+        </table>
+      </div>
+    </section>
+  

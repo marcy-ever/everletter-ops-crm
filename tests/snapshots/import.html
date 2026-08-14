@@ -1,0 +1,35 @@
+
+    <section class="data-panel import-panel" aria-label="Import spreadsheet">
+      <div class="panel-head">
+        <div>
+          <h3>Import updated spreadsheet</h3>
+          <p>Add new Squarespace orders to your current Everletter Mailing Schedule, then upload the .xlsx here. The CRM will rebuild mailings, exceptions, batches, subscribers, QA, and bins from it.</p>
+        </div>
+        <span class="panel-count">Launch-week bridge</span>
+      </div>
+
+      <div class="import-layout">
+        <article class="import-card">
+          <span class="sample-badge">Current CRM data</span>
+          <dl class="sample-fields">
+            <div><dt>Source</dt><dd>synthetic-rows.json (tests/fixtures)</dd></div>
+            <div><dt>Shared upload</dt><dd>Not uploaded yet</dd></div>
+            <div><dt>Mailings</dt><dd>11</dd></div>
+            <div><dt>Needs Review</dt><dd>4</dd></div>
+          </dl>
+        </article>
+
+        <article class="import-card import-uploader">
+          <label class="file-drop">
+            <span>Choose Everletter Mailing Schedule</span>
+            <strong>.xlsx, .xls, or .csv</strong>
+            <input id="spreadsheetUpload" type="file" accept=".xlsx,.xls,.csv" />
+          </label>
+          <p class="import-hint">Use the same columns you already have: Order ID, Original Order Date, Customer Name and Address, Character, Letter Number, Ship Date, Subscription, Status, Active?, Email.</p>
+          
+        </article>
+      </div>
+
+      
+    </section>
+  
