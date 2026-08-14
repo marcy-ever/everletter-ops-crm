@@ -73,7 +73,7 @@ Framework and build:
 
 - React `19.2.6`
 - React DOM `19.2.6`
-- Next.js `16.2.6` (App Router), built and run by Next's own toolchain (Turbopack) — no separate build plugin or alternate runtime layer sits in front of it anymore.
+- Next.js `16.2.6` (App Router), built and run by Next's own toolchain — no separate build plugin or alternate runtime layer sits in front of it anymore. `pnpm build`'s own banner confirms Turbopack specifically (`▲ Next.js 16.2.6 (Turbopack)`), Next 16's default; nothing in `package.json` passes a Turbopack flag explicitly.
 
 Data and import:
 
@@ -155,7 +155,7 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 ### Self-hosted Docker Compose (NAS)
 
 - Purpose: runs Postgres (always) and, optionally, the containerized app itself — locally for full-stack verification, and on the NAS as the actual production deploy target.
-- Host: the NAS, referred to as "FranklinsTower" per Brad's report (matches the `FT_SSH_*` secret naming in `.github/workflows/build-and-push.yml`). I have no direct access to this host and can't independently verify its live running state — treat any claim about what's currently running there as Brad's report, not something observed from this session.
+- Host: the NAS, referred to as "FranklinsTower" per Brad's report (matches the `FT_SSH_*` secret naming in `.github/workflows/build-and-push.yml`). This host is not directly accessible from this repository or its tooling, and its live running state isn't independently verifiable from here — treat any claim about what's currently running there as Brad's report, not something observed.
 - Code config: `devops/docker-compose.yml` (Postgres only — the `postgres` service and the `postgres-data` volume) and `devops/docker-compose.app.yml` (the app service). The two are split deliberately so a Postgres-only local startup never has to satisfy the app service's auth vars — see that file's header comment for the full rationale, and §6 for the commands. `package.json`'s `docker:up`/`docker:up:full`/`docker:down` scripts wire these up.
 - Data: lives in the `everletter-ops-crm_postgres-data` Docker volume, not in this repository.
 
@@ -176,7 +176,7 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 - Purpose: disaster recovery for the NAS's Postgres data — distinct from the "all app data is disposable test data" development assumption stated at the top of this file. Once real customer data is live, this is what actually protects it.
 - Code config: `devops/backup.sh` (`pg_dump` → gzip → local rotating copy, plus an `rclone` upload to Backblaze B2), scheduled to run daily via DSM Task Scheduler on the NAS.
 - Full setup, account ownership, and the DSM-specific gotchas hit getting `rclone` working: **[docs/backups.md](docs/backups.md)**.
-- I have not verified a real restore drill, and the doc doesn't describe one having been run either — worth doing before this matters for real data.
+- No real restore drill has been verified or is described in the doc — worth doing before this matters for real data.
 
 ### Google Fonts
 
@@ -225,7 +225,7 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 
 ### DNS and custom domain
 
-- No custom CRM domain or DNS configuration is present in this repository. The app is exposed via the NAS's Docker port mapping — container port 3000 to host port 3100 (`devops/docker-compose.app.yml`). Whether port 3100 is reachable only on the local network or is also forwarded/proxied for external access is NAS-side configuration outside this repo; I can't verify it from the tree — confirm with Brad. The marketing site/domain remains in Squarespace and is not configured here.
+- No custom CRM domain or DNS configuration is present in this repository. The app is exposed via the NAS's Docker port mapping — container port 3000 to host port 3100 (`devops/docker-compose.app.yml`). Whether port 3100 is reachable only on the local network or is also forwarded/proxied for external access is NAS-side configuration outside this repo and not verifiable from the tree — confirm with Brad. The marketing site/domain remains in Squarespace and is not configured here.
 
 ### Payments/SMS/other APIs
 
@@ -279,10 +279,13 @@ No Cloudflare/Wrangler/Miniflare bindings exist anywhere in this stack anymore. 
 
    ```bash
    pnpm docker:up
+   set -a; source .env.local; set +a
    pnpm db:migrate
    ```
 
-   `docker:up` starts only the `postgres` service (`devops/docker-compose.yml`) and works with **zero** auth vars set, deliberately — see §5. `docker:up`/`docker:up:full`/`docker:down` all pass an explicit `--project-directory .` and `-p everletter-ops-crm`, so the project name (and its data volume) stay stable regardless of where the compose files themselves live.
+   `docker:up` reads `.env.local` itself (via Compose's `--env-file` flag) and starts only the `postgres` service (`devops/docker-compose.yml`), working with **zero** auth vars set, deliberately — see §5. `docker:up`/`docker:up:full`/`docker:down` all pass an explicit `--project-directory .` and `-p everletter-ops-crm`, so the project name (and its data volume) stay stable regardless of where the compose files themselves live.
+
+   `db:migrate` is different: `drizzle-kit` reads `process.env.DATABASE_URL` directly (`drizzle.config.ts:3-6`) and throws immediately if it's unset — it does **not** load `.env.local` on its own, verified directly. The `source .env.local` step above is required before `db:migrate` (and before running any other `drizzle-kit` command by hand); skipping it fails with `DATABASE_URL is required`, not a silent fallback.
 
 6. Start local development:
 
@@ -308,7 +311,7 @@ pnpm db:generate
 pnpm db:migrate
 ```
 
-Only run `pnpm db:generate` after intentionally changing something under `db/schema/`, then inspect the generated migration in `drizzle/`, commit it, and run `pnpm db:migrate` to apply it to your local Postgres.
+Only run `pnpm db:generate` after intentionally changing something under `db/schema/`, then inspect the generated migration in `drizzle/`, commit it, and run `pnpm db:migrate` to apply it to your local Postgres. Both `drizzle-kit` commands need `DATABASE_URL` exported into the shell first (`set -a; source .env.local; set +a` — see step 5 above); neither loads `.env.local` on its own.
 
 ### Tests
 
@@ -330,7 +333,7 @@ This is a real, current test suite — not the stale starter tests this file use
 
 Deployment is **automatic** on merge to `main` — this is a change from earlier in this migration; don't assume a manual step is required or possible to skip.
 
-Real flow, read directly from `.github/workflows/build-and-push.yml` and `devops/deploy.sh` (I have no access to the NAS itself and haven't observed a live run succeed — everything below is what the committed code does, not observed production behavior; confirm current live state with Brad):
+Real flow, read directly from `.github/workflows/build-and-push.yml` and `devops/deploy.sh` (the NAS itself is not accessible from here, and no live run has been observed to succeed — everything below is what the committed code does, not observed production behavior; confirm current live state with Brad):
 
 1. A commit lands on `main` (merge or direct push).
 2. GitHub Actions' `build-and-push` job builds the app image from `devops/app.Dockerfile` and pushes it to GHCR as `ghcr.io/marcy-ever/everletter-ops-crm:latest` and `:<commit-sha>`.
