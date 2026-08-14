@@ -37,7 +37,7 @@ import { mailingComponents } from "../db/schema/mailing_components";
 import { mailings } from "../db/schema/mailings";
 import { exceptions } from "../db/schema/exceptions";
 import { subscriptions } from "../db/schema/subscriptions";
-import { componentKey, exceptionReviewKey } from "./keys";
+import { componentKey, exceptionReviewKey } from "./domain/keys";
 
 type Db = ReturnType<typeof getDb>;
 

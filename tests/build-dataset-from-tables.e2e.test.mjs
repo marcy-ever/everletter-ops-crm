@@ -139,7 +139,7 @@ test("buildDatasetFromTables reconstructs the real spreadsheet identically to ap
   const rows = loadSpreadsheetRows();
 
   const appJs = await loadAppJsSandbox(fixedNow);
-  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, sourceFile);
+  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, sourceFile, fixedNow, []);
 
   await truncateAllTables(db);
   await writeImport(clientSeed, db);

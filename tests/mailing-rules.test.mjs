@@ -9,7 +9,7 @@ import {
   isDueNext14Days,
   monthKey,
   nearestBatchDate,
-} from "../lib/mailing-rules.ts";
+} from "../lib/domain/mailing-rules.ts";
 
 // Format/behavior-locking tests, not parity tests - see tests/ids.test.mjs's
 // module comment for why (same reasoning, same step 3a change:

@@ -6,8 +6,8 @@ import { orders } from "@/db/schema/orders";
 import { mailings } from "@/db/schema/mailings";
 import { mailingComponents } from "@/db/schema/mailing_components";
 import { exceptions } from "@/db/schema/exceptions";
-import { mailingKey as appMailingKey, parseComponentKey, parseExceptionReviewKey, parseMailingKey } from "@/lib/keys";
-import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
+import { mailingKey as appMailingKey, parseComponentKey, parseExceptionReviewKey, parseMailingKey } from "@/lib/domain/keys";
+import { buildRecipientId, buildSubscriptionId } from "@/lib/domain/ids";
 
 /**
  * Writes app.js's crmDataset/mailingStatus/componentStatus/

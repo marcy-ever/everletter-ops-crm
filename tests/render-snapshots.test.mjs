@@ -152,10 +152,15 @@ const rows = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
 
 // Built once, on a throwaway sandbox, through the real buildSeedFromSpreadsheet
 // - not reimplemented. The resulting seed is a plain object, reused as-is
-// across every case's own fresh sandbox below.
+// across every case's own fresh sandbox below. now/automationRules are
+// passed explicitly (step 3b threaded both in as real parameters - see
+// lib/domain/spreadsheet/build-seed.ts's own header) - this used to go
+// through a seedBuilderSandbox.window.EVERLETTER_SEED = {...} mutation
+// instead, working around buildSeedFromSpreadsheet reading window/state
+// internally for automationRules. That workaround is gone now that the
+// function doesn't read either.
 const seedBuilderSandbox = await loadAppJsSandbox(FIXED_NOW);
-seedBuilderSandbox.window.EVERLETTER_SEED = { automationRules: AUTOMATION_RULES };
-const seed = seedBuilderSandbox.buildSeedFromSpreadsheet(rows, "synthetic-rows.json (tests/fixtures)");
+const seed = seedBuilderSandbox.buildSeedFromSpreadsheet(rows, "synthetic-rows.json (tests/fixtures)", FIXED_NOW, AUTOMATION_RULES);
 
 const avaSubscriber = seed.subscribers.find((subscriber) => subscriber.email === "ava.example@example.test");
 assert.ok(avaSubscriber, "fixture invariant: Ava's subscriber should exist in the built seed");
