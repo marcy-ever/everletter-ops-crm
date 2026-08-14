@@ -9,6 +9,23 @@
 import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from '@/lib/domain/ids';
 import { mailingKey, componentKey, exceptionReviewKey } from '@/lib/domain/keys';
 import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from '@/lib/domain/mailing-rules';
+// Step 3b: pure business logic extracted into lib/domain/ (shared with the
+// server, same reasoning as the imports above) and app/crm/format.ts
+// (display formatting only the browser needs - see that module's header).
+import { normalizePlan, plannedLetterCount, printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
+import { normalizeCharacter, driveCharacterKey, letterNumberKey } from '@/lib/domain/characters';
+import { batchDatesForOrder } from '@/lib/domain/batch-dates';
+import {
+  normalizeSpreadsheetRow,
+  getSpreadsheetValue,
+  spreadsheetDateToIso,
+  splitNameAddress,
+  normalizeBoolean,
+  normalizeStatus,
+  compactOrderNumber,
+  compactNumber,
+} from '@/lib/domain/spreadsheet/normalize';
+import { escapeHtml, formatDate, includesText, statusClass, number, titleCase } from './format';
 
 const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
 
@@ -95,35 +112,6 @@ const driveConfig = {
 // see that function at the bottom). Declared here, at module scope, because
 // every render function below closes over these same bindings by name.
 let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap;
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function formatDate(value) {
-  if (!value) return 'Needs date';
-  const date = new Date(`${value}T00:00:00`);
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
-}
-
-function includesText(values, query) {
-  if (!query.trim()) return true;
-  const needle = query.trim().toLowerCase();
-  return values.some((value) => String(value ?? '').toLowerCase().includes(needle));
-}
-
-function statusClass(status) {
-  return String(status).toLowerCase().replace(/[^a-z0-9]+/g, '-');
-}
-
-function number(value) {
-  return Number(value || 0).toLocaleString();
-}
 
 function loadStatusOverrides() {
   try {
@@ -249,121 +237,6 @@ function updateComponentStatus(mailing, field, status) {
 
 function mailingMonthKey(mailing) {
   return String(mailing.shipDate || '').slice(0, 7);
-}
-
-function envelopeQuantityForMailing(mailing) {
-  return mailing.plan === 'Month-to-month' ? 2 : 1;
-}
-
-function compactOrderNumber(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  if (/^\d+\.0$/.test(raw)) return raw.replace(/\.0$/, '');
-  return raw;
-}
-
-function compactNumber(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  if (/^\d+\.0$/.test(raw)) return raw.replace(/\.0$/, '');
-  return raw;
-}
-
-function normalizeHeader(value) {
-  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-function normalizeSpreadsheetRow(row) {
-  const normalized = {};
-  Object.entries(row).forEach(([key, value]) => {
-    normalized[normalizeHeader(key)] = value;
-  });
-  return normalized;
-}
-
-function getSpreadsheetValue(row, ...names) {
-  for (const name of names) {
-    const value = row[normalizeHeader(name)];
-    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
-  }
-  return '';
-}
-
-function spreadsheetDateToIso(value) {
-  if (!value) return '';
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-  if (typeof value === 'number') {
-    const date = new Date(Math.round((value - 25569) * 86400 * 1000));
-    return date.toISOString().slice(0, 10);
-  }
-  const raw = String(value).trim();
-  if (!raw) return '';
-  const isoMatch = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
-  }
-  const usMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
-  if (usMatch) {
-    const year = usMatch[3].length === 2 ? `20${usMatch[3]}` : usMatch[3];
-    return `${year}-${usMatch[1].padStart(2, '0')}-${usMatch[2].padStart(2, '0')}`;
-  }
-  const parsed = new Date(raw);
-  if (!Number.isNaN(parsed.getTime())) {
-    return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  }
-  return '';
-}
-
-function splitNameAddress(block) {
-  const lines = String(block || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return {
-    name: lines[0] || 'Unknown recipient',
-    address: lines.slice(1).join(', ').replace(/\s+/g, ' ').trim(),
-  };
-}
-
-function normalizeBoolean(value) {
-  if (value === true) return true;
-  if (value === false) return false;
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (!raw) return false;
-  return ['true', 'yes', 'y', '1', 'active', 'checked'].includes(raw);
-}
-
-function normalizePlan(value) {
-  const raw = String(value || '').trim();
-  const lower = raw.toLowerCase();
-  if (!raw) return 'Needs Review';
-  if (lower.includes('12')) return '12-month';
-  if (lower.includes('6')) return '6-month';
-  if (lower.includes('month') || lower.includes('renewal')) return 'Month-to-month';
-  if (lower.includes('one') || lower.includes('sample') || lower.includes('1')) return 'One-time';
-  return raw;
-}
-
-function normalizeCharacter(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return 'Needs Review';
-  const lower = raw.toLowerCase();
-  const known = ['marley', 'ringo', 'oliver', 'harper', 'penelope', 'marigold', 'seraphine', 'legends'];
-  if (lower.includes('old marley')) return 'Old Marley';
-  const found = known.find((name) => lower.includes(name));
-  if (found) return found.charAt(0).toUpperCase() + found.slice(1);
-  return raw;
-}
-
-function normalizeStatus(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return 'To Prepare';
-  const lower = raw.toLowerCase();
-  if (lower.includes('print')) return 'Printing';
-  if (lower.includes('assem')) return 'Assembling';
-  if (lower.includes('ready')) return 'Ready to Mail';
-  if (lower.includes('mail')) return 'Mailed';
-  if (lower.includes('prepare') || lower.includes('prep')) return 'To Prepare';
-  return raw;
 }
 
 function defaultAutomationRules() {
@@ -1043,40 +916,6 @@ function profileMailingCard(mailing) {
   `;
 }
 
-function batchDatesForOrder(orderDate, count) {
-  const dates = [];
-  const start = new Date(`${orderDate}T00:00:00`);
-  const cursor = new Date(start);
-  cursor.setDate(1);
-
-  while (dates.length < count) {
-    for (const day of [1, 15]) {
-      const batch = new Date(cursor);
-      batch.setDate(day);
-      const diffDays = Math.ceil((batch - start) / 86400000);
-      if (diffDays >= 3) {
-        dates.push(new Date(batch.getTime() - batch.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
-        if (dates.length === count) break;
-      }
-    }
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-
-  return dates;
-}
-
-function plannedLetterCount(plan) {
-  if (plan === 'Month-to-month') return 2;
-  if (plan === '6-month') return 12;
-  if (plan === '12-month') return 24;
-  return 1;
-}
-
-function numericLetter(value) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : 0;
-}
-
 function findSubscriptionMailings(subscriptionId) {
   return state.seed.mailings.filter((mailing) => (
     mailing.subscriptionId === subscriptionId
@@ -1098,12 +937,6 @@ function getRecipient(recipientId) {
   return state.seed.recipients.find((item) => item.recipientId === recipientId) || null;
 }
 
-function printModeForPlan(plan) {
-  if (plan === 'Month-to-month') return 'Month-to-month';
-  if (plan === '6-month' || plan === '12-month') return 'Prepaid bulk';
-  return 'Special';
-}
-
 function envelopeStockForCharacter(character) {
   const key = driveCharacterKey(character);
   const kidCharacters = new Set(['harper', 'marley', 'oliver', 'ringo']);
@@ -1111,29 +944,9 @@ function envelopeStockForCharacter(character) {
   return 'Adult standard envelope';
 }
 
-function titleCase(value) {
-  return String(value || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
-    .join(' ');
-}
-
 function storageBinForMailing(mailing) {
   if (!mailing.shipDate) return 'Needs date';
   return `Ashley / ${formatDate(mailing.shipDate)} bin`;
-}
-
-function driveCharacterKey(character) {
-  return String(character || '')
-    .trim()
-    .replace(/^(new|old)\s+/i, '')
-    .toLowerCase();
-}
-
-function letterNumberKey(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? String(parsed) : '';
 }
 
 function characterFolderUrl(mailing) {
