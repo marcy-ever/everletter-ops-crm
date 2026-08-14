@@ -11,7 +11,7 @@
  * so server-side reconstruction code (lib/build-dataset-from-tables.ts) has
  * a tested, single definition of each rule instead of re-deriving it ad
  * hoc - exactly the kind of duplicated business logic that caused the
- * id-collision bug (see lib/ids.ts's history comment). tests/mailing-rules.test.mjs
+ * id-collision bug (see lib/ids.ts's module comment). tests/mailing-rules.test.mjs
  * verifies this module's output is identical to app.js's real functions for
  * the same input.
  *

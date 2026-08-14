@@ -11,7 +11,7 @@ import { stagingLocations } from "./staging_locations";
 // customer's current saved address). See docs/schema-design.md.
 export const mailings = pgTable("mailings", {
   // `${orderId}::${character}::${letterNumber}` (letterNumber empty-string
-  // if absent) - derived server-side in lib/dual-write.ts, NOT app.js's own
+  // if absent) - derived server-side in lib/write-to-tables.ts, NOT app.js's own
   // generated mailingId. app.js's mailingId truncates to 34 chars and
   // routinely collides for the most common case (a Month-to-month
   // subscriber's 2 letters under one order) - see docs/schema-design.md.

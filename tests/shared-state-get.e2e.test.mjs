@@ -1,9 +1,8 @@
 // Verifies GET /api/shared-state's table-backed behavior end to end,
 // against real Postgres and the real POST/GET route handlers - not mocks.
-// Covers exactly the three things flagged as real regression risk when GET
-// moved off the (now entirely removed - see docs/schema-design.md's Phase 2
-// notes) crm_state blob (see the task this was written for and
-// lib/build-overrides-from-tables.ts's module comment):
+// Covers three things (see lib/build-overrides-from-tables.ts's module
+// comment for why componentOverrides/reviewed each need their own fetch,
+// separate from the rest of the dataset):
 //  1. componentOverrides is populated correctly after a real componentStatus
 //     POST, using the real componentKey() format.
 //  2. marking an exception reviewed (POST) makes GET's `reviewed` list
@@ -31,7 +30,7 @@ import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables
 
 test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status all round-trip correctly through the real POST/GET handlers", { skip: e2eSkipReason() }, async () => {
   const { POST, GET } = await import("../app/api/shared-state/route");
-  const { dualWriteImport } = await import("../lib/dual-write");
+  const { writeImport } = await import("../lib/write-to-tables");
   const { getDb } = await import("../db");
 
   const db = getDb();
@@ -41,7 +40,7 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   const appJs = loadAppJsSandbox();
   const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx");
 
-  await dualWriteImport(clientSeed, db);
+  await writeImport(clientSeed, db);
 
   async function post(body) {
     const response = await POST(new Request("http://localhost/api/shared-state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
@@ -54,7 +53,7 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   }
 
   // Two known, already-documented categories of mailing never survive
-  // dual-write (an unrecognized/"Needs Review" Plan cell, or the genuine
+  // write-to-tables (an unrecognized/"Needs Review" Plan cell, or the genuine
   // ORD-2858 spreadsheet duplicate - see lib/build-dataset-from-tables.ts's
   // module comment) - picking a target mailing at random risks landing on
   // one of those and testing a mailing GET can never see. Restrict to
@@ -69,8 +68,8 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
 
   // --- 2. reviewed exception ---
   // Same reasoning as survivingMailings above: an exception whose mailing
-  // didn't survive dual-write can never be matched by
-  // dualWriteReviewedException (it joins through mailings.app_mailing_id),
+  // didn't survive write-to-tables can never be matched by
+  // writeReviewedException (it joins through mailings.app_mailing_id),
   // so exceptions.reviewed would never actually get set - pick one backed
   // by a surviving mailing so this test exercises a real, matchable case.
   const survivingMailingIds = new Set(survivingMailings.map((m) => m.mailingId));
@@ -109,10 +108,3 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   assert.ok(reconstructedMailing, "the status-updated mailing should still be present in dataset.mailings");
   assert.equal(reconstructedMailing.status, newStatus);
 });
-
-// A dedicated "GET works with crm_state never populated" test lived here
-// while crm_state still existed as an unwritten table (proving GET had no
-// hidden dependency on a stale row). Removed now that the table itself is
-// dropped (see docs/schema-design.md's Phase 2 notes) - there's no table
-// left to be "populated" or not, so the thing that test proved is now true
-// structurally, not something a test needs to keep demonstrating.

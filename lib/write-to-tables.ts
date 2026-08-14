@@ -11,27 +11,21 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
 
 /**
  * Writes app.js's crmDataset/mailingStatus/componentStatus/
- * reviewedException payloads into the normalized Option A tables (see
- * db/schema/, docs/schema-design.md). Originally a shadow write alongside
- * the real crm_state blob write in app/api/shared-state/route.ts - as of
- * Option B Phase 2's final step, crm_state (table and write) is gone
- * entirely, and this is the only write app/api/shared-state/route.ts's
- * POST does.
+ * reviewedException payloads into the normalized tables (see db/schema/,
+ * docs/schema-design.md) - the only write app/api/shared-state/route.ts's
+ * POST handler does.
  *
- * Phase 2 of Option B: load-bearing and transactional, not shadow/
- * validation-only anymore (see docs/schema-design.md's dual-write notes
- * for the full Phase 1 -> Phase 2 history). Every exported function here
- * takes the caller's db/transaction handle (see the `Db` type below) and
- * no longer swallows its own errors - a real failure here (a bad
- * connection, a constraint violation, a bug) now propagates up and rolls
- * back the whole transaction via app/api/shared-state/route.ts's
- * `db.transaction()`.
- *
- * This is deliberately different from the per-record skip-and-log calls
- * throughout this file (e.g. "skipping subscription, unrecognized plan") -
- * those are expected, legitimate business outcomes (app.js's own
- * exceptions mechanism already flags the same rows as broken), not errors,
- * and still don't throw. Only genuinely unexpected failures propagate now.
+ * Every exported function here takes the caller's db/transaction handle
+ * (see the `Db` type below) rather than opening its own connection, and
+ * none of them swallow an unexpected error: a real failure (a bad
+ * connection, a constraint violation, a bug) propagates up and rolls back
+ * the whole transaction via app/api/shared-state/route.ts's
+ * `db.transaction()`. This is deliberately different from the per-record
+ * skip-and-log calls throughout this file (e.g. "skipping subscription,
+ * unrecognized plan") - those are expected, legitimate business outcomes
+ * (app.js's own exceptions mechanism already flags the same rows as
+ * broken), not errors, and still don't throw. Only genuinely unexpected
+ * failures propagate.
  *
  * Known, deliberate simplifications (see docs/schema-design.md for the
  * full reasoning behind each):
@@ -39,13 +33,15 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/ids";
  *    state/zip are never populated (app.js never produces structured
  *    address fields to begin with).
  *  - subscriptions/mailings rows are skipped (not written) when the
- *    source data is already something app.js itself treats as broken
- *    (an unrecognized plan, or a missing ship date) - the blob stays the
- *    complete, authoritative copy regardless.
- *  - exceptions.type stores app.js's raw joined `reason` string, not the
- *    bad_address/missing_date/duplicate/unusual_sequence categories
- *    docs/schema-design.md originally sketched - those don't correspond,
- *    so forcing a category here would just be a different kind of guess.
+ *    source data is already something app.js itself treats as broken (an
+ *    unrecognized plan, or a missing ship date) - guessing a value or
+ *    throwing would both be worse than skipping a row app.js's own
+ *    exceptions mechanism already flags as broken.
+ *  - exceptions.type stores app.js's raw joined `reason` string, not a
+ *    normalized bad_address/missing_date/duplicate/unusual_sequence
+ *    category - app.js's actual reason strings don't correspond to any
+ *    small fixed set of categories, so forcing one here would just be a
+ *    different kind of guess.
  *  - reviewedException override keys are matched to an exceptions row via
  *    mailings.app_mailing_id (joined through exceptions.mailing_id) plus
  *    exceptions.type == the key's reason segment; the table has no column
@@ -145,7 +141,7 @@ const LETTERS_BY_PLAN: Record<string, number> = {
 };
 
 function log(...args: unknown[]) {
-  console.error("[dual-write]", ...args);
+  console.error("[write-to-tables]", ...args);
 }
 
 function toDateOrNull(value: string | null | undefined): Date | null {
@@ -171,16 +167,16 @@ function stableMailingId(orderId: string, character: string, letterNumber: numbe
   return `${orderId}::${character}::${letterNumber ?? ""}`;
 }
 
-export async function dualWriteImport(seed: Seed, db: Db): Promise<void> {
+export async function writeImport(seed: Seed, db: Db): Promise<void> {
   await runImport(seed, db);
 }
 
 async function runImport(seed: Seed, db: Db) {
   const recipientsById = new Map(seed.recipients.map((r) => [r.recipientId, r]));
 
-  // Defense in depth against a future regression of the id-collision bug
-  // this module's SeedRecipient/SeedSubscription ids depend on (see the
-  // history note in lib/ids.ts): recompute each recipientId/subscriptionId
+  // Defense in depth against the collision this module's
+  // SeedRecipient/SeedSubscription ids depend on hashing to avoid (see
+  // lib/ids.ts's module comment): recompute each recipientId/subscriptionId
   // from the same raw fields app.js used and log (never block) if app.js's
   // inline copy has drifted from lib/ids.ts's spec.
   for (const r of seed.recipients) {
@@ -401,7 +397,7 @@ async function runImport(seed: Seed, db: Db) {
 
   // --- reconcile removals, children before parents ---
   // mailing_components isn't written during import at all (it's populated
-  // reactively by dualWriteComponentStatus, see below) - but it still has
+  // reactively by writeComponentStatus, see below) - but it still has
   // a NOT NULL FK to mailings.id, so any component rows belonging to a
   // mailing that's about to be removed must go first or the mailings
   // delete below fails with a FK violation.
@@ -451,7 +447,7 @@ async function findMailingByAppKey(mailingId: string, sourceRow: string, db: Db)
   return rows[0];
 }
 
-export async function dualWriteMailingStatus(key: string, status: string, db: Db): Promise<void> {
+export async function writeMailingStatus(key: string, status: string, db: Db): Promise<void> {
   const parsed = parseMailingKey(key);
   if (!parsed) {
     log("mailingStatus: could not parse key, skipping:", key);
@@ -462,7 +458,7 @@ export async function dualWriteMailingStatus(key: string, status: string, db: Db
   await db.update(mailings).set({ status }).where(eq(mailings.id, match.id));
 }
 
-export async function dualWriteComponentStatus(key: string, status: string, db: Db): Promise<void> {
+export async function writeComponentStatus(key: string, status: string, db: Db): Promise<void> {
   const parsed = parseComponentKey(key);
   if (!parsed) {
     log("componentStatus: could not parse key, skipping:", key);
@@ -486,7 +482,7 @@ export async function dualWriteComponentStatus(key: string, status: string, db: 
   }
 }
 
-export async function dualWriteReviewedException(key: string, db: Db): Promise<void> {
+export async function writeReviewedException(key: string, db: Db): Promise<void> {
   const parsed = parseExceptionReviewKey(key);
   if (!parsed) {
     log("reviewedException: could not parse key, skipping:", key);

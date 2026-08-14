@@ -1,16 +1,11 @@
-// Verifies the actual behavior change from Option B Phase 2's transactional
-// write path (see docs/schema-design.md's Phase 2 notes): a genuine,
-// unexpected failure inside lib/dual-write.ts must roll back every write
-// that happened earlier in the same transaction, not just fail silently
-// partway through. This is the real guarantee route.ts's db.transaction()
-// is supposed to provide - this test exercises the actual dualWriteImport()
-// function and a real Postgres transaction, not a mock.
-//
-// crm_state (table and write both) is gone as of Option B Phase 2's final
-// step - see docs/schema-design.md's Phase 2 notes - so these tests assert
-// on the normalized tables directly rather than on a crm_state row - see
-// each test's own comment for why the two tests differ in what they can
-// prove.
+// Verifies lib/write-to-tables.ts's transactional guarantee: a genuine,
+// unexpected failure must roll back every write that happened earlier in
+// the same transaction, not just fail silently partway through. This is
+// the real guarantee route.ts's db.transaction() is supposed to provide -
+// this test exercises the actual writeImport() function and a real
+// Postgres transaction, not a mock. These tests assert on the normalized
+// tables directly - see each test's own comment for why the two tests
+// differ in what they can prove.
 //
 // This file (and the other tests/*.e2e.test.mjs files) truncates/reimports
 // the real shared local Postgres tables - run these through `pnpm test:e2e`
@@ -26,8 +21,8 @@ import assert from "node:assert/strict";
 import { countRows } from "./db-test-helpers.mjs";
 import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
 
-test("a real failure inside dualWriteImport rolls back every normalized-table write from the same transaction", { skip: e2eSkipReason({ requiresFixture: false }) }, async () => {
-  const { dualWriteImport } = await import("../lib/dual-write");
+test("a real failure inside writeImport rolls back every normalized-table write from the same transaction", { skip: e2eSkipReason({ requiresFixture: false }) }, async () => {
+  const { writeImport } = await import("../lib/write-to-tables");
   const { getDb } = await import("../db");
   const { subscribers } = await import("../db/schema/subscribers");
   const { subscriptions } = await import("../db/schema/subscriptions");
@@ -41,7 +36,7 @@ test("a real failure inside dualWriteImport rolls back every normalized-table wr
   // `for (const m of seed.mailings)`, which throws a real TypeError once it
   // gets there, well after subscribers/subscriptions have already been
   // written to `tx`. This is not a contrived mock failure - it's the same
-  // kind of genuine bug (bad/incomplete data reaching dual-write) the
+  // kind of genuine bug (bad/incomplete data reaching write-to-tables) the
   // transactional rewrite is meant to guard against.
   const brokenSeed = {
     subscribers: [{ subscriberId: "SUB-ROLLBACK-TEST", email: "rollback@example.com", displayName: "Rollback Test", status: "Active" }],
@@ -52,11 +47,11 @@ test("a real failure inside dualWriteImport rolls back every normalized-table wr
     exceptions: [],
   };
 
-  // Mirrors route.ts's POST exactly: dualWriteImport is the only thing
-  // inside the transaction now that crm_state isn't written here.
+  // Mirrors route.ts's POST exactly: writeImport is the only thing
+  // inside the transaction.
   await assert.rejects(
     db.transaction(async (tx) => {
-      await dualWriteImport(brokenSeed, tx);
+      await writeImport(brokenSeed, tx);
     }),
     /mailings|iterable|undefined/i,
   );
@@ -65,7 +60,7 @@ test("a real failure inside dualWriteImport rolls back every normalized-table wr
   assert.equal(await countRows(db, subscriptions), 0, "the subscription write that happened earlier in the SAME transaction should have rolled back too");
 });
 
-test("the real POST /api/shared-state handler commits (200/{ok:true}) when dual-write soft-skips (not an error) instead of rolling back", { skip: e2eSkipReason({ requiresFixture: false }) }, async () => {
+test("the real POST /api/shared-state handler commits (200/{ok:true}) when write-to-tables soft-skips (not an error) instead of rolling back", { skip: e2eSkipReason({ requiresFixture: false }) }, async () => {
   const { POST } = await import("../app/api/shared-state/route");
   const { getDb } = await import("../db");
 
@@ -73,7 +68,7 @@ test("the real POST /api/shared-state handler commits (200/{ok:true}) when dual-
   await truncateAllTables(db);
 
   // A well-formed mailingStatus key that won't match any real mailing row -
-  // dualWriteMailingStatus soft-skips this (findMailingByAppKey logs "no
+  // writeMailingStatus soft-skips this (findMailingByAppKey logs "no
   // confident match" and returns null) without throwing and without
   // writing anything to any table. That's exactly why this test can't
   // point at a row as proof the transaction committed cleanly - a

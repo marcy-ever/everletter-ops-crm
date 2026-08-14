@@ -11,7 +11,7 @@
     "start": "next start",
     "test": "pnpm test:unit && pnpm test:e2e",
     "test:unit": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test tests/allowlist.test.mjs tests/ids.test.mjs tests/keys.test.mjs tests/mailing-rules.test.mjs tests/build-dataset-from-tables.test.mjs tests/build-overrides-from-tables.test.mjs",
-    "test:e2e": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test --test-concurrency=1 tests/build-dataset-from-tables.e2e.test.mjs tests/dual-write-transactional.e2e.test.mjs tests/shared-state-get.e2e.test.mjs",
+    "test:e2e": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test --test-concurrency=1 tests/build-dataset-from-tables.e2e.test.mjs tests/write-to-tables-transactional.e2e.test.mjs tests/shared-state-get.e2e.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",

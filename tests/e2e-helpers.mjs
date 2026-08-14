@@ -1,5 +1,5 @@
 // Shared setup for tests/*.e2e.test.mjs files (build-dataset-from-tables,
-// dual-write-transactional, shared-state-get). Each of those files opened
+// write-to-tables-transactional, shared-state-get). Each of those files opened
 // with an identical copy-pasted preamble - env loading, a sandboxed
 // public/app.js loader, the truncate statement, and the has-fixture/has-db
 // skip gates - and the duplication had already caused real drift: the

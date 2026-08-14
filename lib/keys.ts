@@ -3,7 +3,7 @@
  * (mailingKey/componentKey/exceptionReviewKey in public/app.js). app.js is a
  * non-bundled browser script and can't import this module - its own inline
  * copies of these functions remain the actual source of truth for what the
- * browser sends. This module exists so server-side dual-write code has a
+ * browser sends. This module exists so server-side write-to-tables code has a
  * tested, parseable spec to match incoming override keys against, instead of
  * re-deriving the format ad hoc. tests/keys.test.mjs verifies this module's
  * output is identical to app.js's real functions for the same input.

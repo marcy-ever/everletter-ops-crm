@@ -7,13 +7,11 @@ if (!databaseUrl) {
 
 export default defineConfig({
   out: "./drizzle",
-  // db/schema/*.ts: the normalized Option A tables (docs/schema-design.md) -
+  // db/schema/*.ts: the normalized tables (docs/schema-design.md) -
   // relations.ts and index.ts are deliberately excluded, since drizzle-kit
   // only needs the pgTable() definitions (including their .references()
   // calls) to generate migrations; relations() only affects the runtime
-  // query API, not the SQL schema. db/schema.ts (the original crm_state
-  // table) is gone as of Option B Phase 2's final step - see
-  // docs/schema-design.md.
+  // query API, not the SQL schema.
   schema: [
     "./db/schema/subscribers.ts",
     "./db/schema/subscriptions.ts",
