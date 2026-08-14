@@ -2,33 +2,41 @@
 
 ## Decided Direction / Migration Plan
 
-The sections below (1-9) describe the app **as built**, which was shaped by the OpenAI Codex/Sites build path rather than chosen on merit. The following direction has since been decided and should guide future work:
+**Target end state:** a well-designed, stable foundation — architecture and data layer — solid enough that Marcy can hand feature work to her own Codex session without either of them needing to make major infrastructure changes first. Marcy is not a software engineer; Brad (this repo's engineer) is. Judge every refactor/infrastructure change against that bar: does it make the foundation something a non-engineer-led session can safely build features on top of, or does it just move the problem around. Apply real software design principles as code is touched — DRY, KISS, modularity, reusable and independently testable components — not as a blanket rewrite mandate, but whenever a change already has code open and the duplication/coupling in front of it is real, not speculative.
 
-**Keep as-is:**
+**All current app data is disposable test data.** Nothing needs to be preserved, backed up, or migrated carefully during this build-out — it can be deleted and reimported freely. The uploaded spreadsheet remains the actual source of truth for testing/validation, not whatever currently happens to be in the database. (This assumption stops being true once real customer data is live again — don't carry it forward past that point without checking.)
 
-- Next.js, React, TypeScript, Drizzle ORM — all solid and portable. No replacement planned.
+**Workflow: two Claude sessions, two roles.** Code changes to this repo go through a separate execution session/environment ("VM Claude") that receives a precisely-scoped task prompt and does the actual implementation — writes the code, runs tests, opens the PR. A local/orchestrating Claude session (working alongside Brad) is where the design decisions actually get made: discussing direction, reviewing what VM Claude produced, and drafting the next task prompt — not making direct code edits to this repo itself. If you are the local/orchestrating session: don't implement here, draft the prompt. If you are VM Claude executing a task prompt: that prompt is your scope — implement it for real, verify it for real, and report back plainly what you did and didn't get to (see this migration's existing task prompts for the expected level of detail, and be honest about gaps — e.g. flag when live/interactive verification isn't possible in your environment rather than skipping it silently).
 
-**Drop (forced by the Codex/Sites path, not chosen on merit):**
+The migration described below is **done**, not aspirational. Sections 1-9 describe the app as it actually runs today — not the original OpenAI Codex/Sites build. A short history note follows this section for context on why some conventions (like `public/app.js` remaining a vanilla-JS monolith) still look the way they do, even though the infrastructure around them changed completely.
+
+**Kept, as decided:**
+
+- Next.js, React, TypeScript, Drizzle ORM — all solid and portable. No replacement was needed.
+
+**Dropped (forced by the Codex/Sites path, not chosen on merit) — all removed as of commit `feb8bf8`:**
 
 - OpenAI Sites as the deploy platform (proprietary, not portable).
 - Cloudflare Workers as the runtime.
-- Vinext (`0.0.50`) — too immature/low-version to depend on long-term.
+- Vinext (`0.0.50`), Vite, the Cloudflare Vite plugin, and Wrangler.
+- Cloudflare D1 as the datastore.
 
-**Replace with:**
+**Replaced with, now live:**
 
-- **Hosting:** self-hosted via Docker Compose on the owner's NAS, replacing OpenAI Sites/Cloudflare Workers.
-- **Persistence:** self-hosted Postgres via Docker, replacing Cloudflare D1. Drizzle is already dialect-agnostic, so this is a config/driver change, not a rewrite.
+- **Hosting:** self-hosted via Docker Compose on the owner's NAS ("FranklinsTower", per Brad — see §4/§7). Deploys automatically on merge to `main` via GitHub Actions.
+- **Persistence:** self-hosted Postgres via Docker. Fully normalized relational schema (`db/schema/`), not the single JSON blob D1 held — see `docs/schema-design.md` for the complete design and migration history.
 
-**`public/app.js`:** this is a large, untyped vanilla-JS monolith, but it holds the real product logic (state, views, validation, envelope generation) and has been battle-tested with real operational use. Plan to migrate it into typed React components incrementally over time as workflows are touched, not as an immediate up-front rewrite.
+**`public/app.js`:** this is a large, untyped vanilla-JS monolith, but it holds the real product logic (state, views, validation, envelope generation) and has been battle-tested with real operational use. Plan to migrate it into typed React components incrementally over time as workflows are touched, not as an immediate up-front rewrite. This is still true today — the infrastructure migration below didn't touch it.
 
-**Known risks to prioritize (in rough order):**
+**Known risks:**
 
-1. **App-level auth enforcement is live and verified.** Google OAuth (Auth.js) plus an email allowlist gate every route (see the Authentication section under Infrastructure & Services). Real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are wired up, and a live sign-in has been verified working end-to-end.
-2. **No backup/versioning of the dataset.** The whole CRM dataset is a single JSON blob (`crmDataset::current`) that is overwritten on every import, with no history or restore path.
-3. **Ashley (co-owner) should now be able to log in.** The credential blocker described in #1 is resolved (live sign-in verified for at least one allowlisted account); Ashley's own sign-in specifically hasn't been tested yet.
-4. **Test suite is stale/broken.** `pnpm test` runs starter-template tests unrelated to the CRM; it is not a real release gate right now.
+1. **Ashley's own Google sign-in still hasn't specifically been verified.** The credential blocker is resolved — real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are wired up, and a live sign-in has been verified working end-to-end for at least one allowlisted account (see the Authentication section under §4) — but Ashley's own account specifically hasn't been confirmed yet.
+2. ~~No backup/versioning of the dataset.~~ **Resolved.** Local rotating dumps plus offsite Backblaze B2 backups now run daily on the NAS — see `docs/backups.md`.
+3. ~~Test suite is stale/broken.~~ **Resolved.** `pnpm test` runs a real suite now — unit tests plus end-to-end tests against a real local Postgres — and is a real release gate. See `docs/testing.md`.
 
-**CI/CD:** GitLab is under consideration for later but not decided yet. No CI/CD system should be assumed or built against until this is settled.
+**CI/CD:** exists and is load-bearing — GitHub Actions builds and pushes a Docker image on every push to `main`, then deploys it to the NAS automatically. This is a real, current fact, not a future decision: **a merge to `main` is a production deploy.** See §7 for the exact flow, and `.github/workflows/build-and-push.yml` for the source of truth.
+
+**History, for context — not a live description:** this app was originally built via OpenAI's Codex/Sites tooling, which is why `public/app.js` exists as one large vanilla-JS file wrapped by a server-rendered React shell, rather than typed React components throughout — that build path favored exactly that shape, and rewriting `app.js` wasn't (and still isn't) the priority, per the note above. The Codex/Sites-specific tooling itself — Cloudflare Workers, Vinext, D1, the `.openai/` config, `worker/`, `vite.config.ts` — has been fully removed from the tree (commit `feb8bf8` and the Postgres migration described in `docs/schema-design.md`). Nothing below describes any of that as live infrastructure; where it's mentioned again, it's explicitly historical.
 
 ## 1. Project Overview
 
@@ -47,43 +55,39 @@ The app currently provides:
 - Squarespace sync and automation simulators that document intended future behavior
 - Responsive/mobile layouts focused on customer lookup and quick status changes
 
-Current maturity: **working operational prototype / early production system**. A private hosted version exists and has been used with real imported data. Core spreadsheet import, shared status persistence, filtering, profiles, envelope printing, QA, and bin tracking work. It is not yet a finished system of record: the main customer dataset is still produced from spreadsheet imports, the D1 schema is denormalized, authentication is hosting-controlled rather than app-controlled, and Squarespace/Mailchimp/Drive integrations are not implemented.
+Current maturity: **working operational prototype / early production system**. A private hosted version exists (self-hosted via Docker Compose on the owner's NAS — see §4/§7) and has been used with real imported data. Core spreadsheet import, shared status persistence, filtering, profiles, envelope printing, QA, and bin tracking work. It is not yet a finished system of record: the main customer dataset is still produced from spreadsheet imports rather than native entry, and Squarespace/Mailchimp/Drive integrations are not implemented. The data layer itself is no longer the gap it once was — the full normalized-schema migration described in `docs/schema-design.md` is complete.
 
-Important data boundary: this GitHub repository is intentionally sanitized. It contains no real customer spreadsheet data and no private Google Drive folder IDs. The live customer dataset is stored in the hosted D1 database. The committed seed files are empty fallbacks.
+Important data boundary: this GitHub repository is intentionally sanitized. It contains no real customer spreadsheet data and no private Google Drive folder IDs. The live customer dataset lives in self-hosted Postgres on the NAS (see §4/§7) — not in this repository, and not in any cloud-hosted database. The committed seed files (`public/everletterSeed.json`, `public/seed-data.js`) are empty fallbacks — no real data, just automation-rule text and a zeroed summary — used only before any real dataset has loaded.
 
 ## 2. Tech Stack
 
 Runtime and languages:
 
 - Node.js `>=22.13.0`
-- TypeScript `5.9.3` for the application shell, API route, worker, database schema, and build configuration
+- TypeScript `5.9.3` for the application shell, API route, database schema/access layer, and the `lib/` modules
 - JavaScript (browser-native, non-module) for most CRM behavior in `public/app.js`
 - CSS in `app/globals.css`
-- SQL/SQLite migrations for Cloudflare D1
+- SQL migrations for Postgres, generated and applied via Drizzle Kit
 
 Framework and build:
 
 - React `19.2.6`
 - React DOM `19.2.6`
-- Next.js-compatible App Router APIs via Next `16.2.6`
-- Vinext `0.0.50`, which builds the Next/React app for a Cloudflare Worker runtime
-- Vite `8.0.13`
-- Cloudflare Vite plugin `1.37.1`
-- Wrangler `4.92.0`
+- Next.js `16.2.6` (App Router), built and run by Next's own toolchain (Turbopack) — no separate build plugin or alternate runtime layer sits in front of it anymore.
 
 Data and import:
 
-- Cloudflare D1 (SQLite) for hosted shared state
-- Drizzle ORM `0.45.2` and Drizzle Kit `0.31.10` for schema/migration definitions
-- SheetJS/xlsx `0.18.5`; a browser bundle is committed at `public/xlsx.full.min.js`
+- Postgres 17, self-hosted via Docker (`devops/docker-compose.yml`) — a fully normalized relational schema (`db/schema/`), not a single blob. See `docs/schema-design.md` for the complete design and the two-phase migration that got here.
+- `pg` (node-postgres) plus Drizzle ORM `0.45.2` / Drizzle Kit `0.31.10` for the connection and schema/migrations.
+- SheetJS/xlsx `0.18.5`; a browser bundle is committed at `public/xlsx.full.min.js`.
 
 Styling/tooling:
 
-- Tailwind/PostCSS packages are installed, but the product UI is primarily hand-written CSS rather than Tailwind utilities
-- ESLint `9.39.4` with Next configuration
-- Node's built-in test runner
+- Tailwind/PostCSS packages are installed, but the product UI is primarily hand-written CSS rather than Tailwind utilities.
+- ESLint `9.39.4` with Next configuration.
+- Node's built-in test runner (`node --test`), wired to a real test suite — see `docs/testing.md`.
 
-Package manager: **pnpm** is the sole authority (`pnpm-lock.yaml` and `pnpm-workspace.yaml`). The historical `package-lock.json` has been removed.
+Package manager: **pnpm** is the sole authority (`pnpm-lock.yaml` and `pnpm-workspace.yaml`). No `package-lock.json` exists.
 
 The non-obvious architectural choice is deliberate but transitional: the React/TSX layer provides the server-rendered shell, while most product behavior and rendering live in one large browser script. This made rapid prototyping and print-window generation easy, but new substantial work should gradually move into typed modules/components without rewriting working workflows all at once.
 
@@ -92,39 +96,41 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 ### Major directories
 
 - `app/` - App Router UI shell, global CSS, auth helper, and API routes.
-- `app/api/shared-state/route.ts` - GET/POST API for the current dataset and shared overrides. The Cloudflare D1 (`cloudflare:workers`) backing was removed along with the Worker/Sites runtime; this is currently a non-persistent stub (GET returns empty state, POST returns 503) pending the Postgres/Drizzle migration.
-- `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script loading.
+- `app/api/shared-state/route.ts` - GET/POST API for the CRM dataset and shared overrides. GET reconstructs `app.js`'s dataset shape from the normalized tables (`lib/build-dataset-from-tables.ts` + `lib/build-overrides-from-tables.ts`); POST dispatches through `lib/dual-write.ts` inside one Postgres transaction. See "Current data flow" below and `docs/schema-design.md` — don't restate that doc's history here, it stays current on its own.
+- `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script loading (`seed-data.js` → `xlsx.full.min.js` → `app.js`).
 - `app/layout.tsx` - Root HTML layout and metadata.
-- `app/globals.css` - All CRM, responsive, mobile, and print-related styling.
-- `app/_sites-preview/` - Leftover starter preview code. It is not part of the current page and should be removed with its unused dependency.
+- `app/globals.css` - All CRM, responsive, mobile, and print-related styling (~2,400 lines — see Known Issues).
 - `app/access-denied/page.tsx` - Plain page shown to authenticated users whose email isn't on the `ALLOWED_USERS` allowlist.
 - `app/api/auth/[...nextauth]/route.ts` - Auth.js's catch-all route (sign-in, callback, sign-out, session, etc.), re-exporting `handlers` from `auth.ts`.
 - `auth.ts` (repo root) - Auth.js config: Google provider, jwt/session callbacks that attach the resolved role (or `null`) to the session via `lib/allowlist.ts`.
-- `proxy.ts` (repo root) - Route protection for the whole app (Next 16 renamed `middleware.ts` to `proxy.ts`; see the Authentication section under Infrastructure & Services).
-- `lib/allowlist.ts` - Parses `ALLOWED_USERS` (`email:role` pairs) and resolves a role for a given email. Pure/testable; see `tests/allowlist.test.mjs`.
-- `public/app.js` - Main application. It owns state, views, spreadsheet parsing, validation, mailing calculations, status changes, profiles, envelope HTML generation, QA, packet/bin workflows, simulators, and DOM event binding.
-- `public/everletterSeed.json` and `public/seed-data.js` - Sanitized empty fallback dataset. Never replace these with production customer data in Git.
+- `proxy.ts` (repo root) - Route protection for the whole app (Next 16 renamed `middleware.ts` to `proxy.ts`; see the Authentication section under §4).
+- `lib/allowlist.ts` - Parses `ALLOWED_USERS` (`email:role` pairs) and resolves a role for a given email. Pure/testable; see `docs/auth.md`.
+- `lib/ids.ts` - Deterministic, hashed ID generation for subscribers/recipients/subscriptions/mailings. Mirrored (not imported — `public/app.js` is a non-bundled browser script) by an identical implementation inline in `app.js`; kept in sync by tests that run the real `app.js` in a sandbox and diff its output against this module.
+- `lib/keys.ts` - `mailingKey`/`componentKey`/`exceptionReviewKey` generation and parsing. Same mirrored/tested-in-sync relationship with `app.js` as `lib/ids.ts`. Existing overrides depend on these staying stable across refactors.
+- `lib/mailing-rules.ts` - Cadence/status rules (open status, overdue, due-within-14-days, nearest batch date). Same mirrored relationship with `app.js`.
+- `lib/dual-write.ts` - Writes a POSTed import or status change into the normalized tables, transactionally.
+- `lib/build-dataset-from-tables.ts` - Reconstructs the full CRM dataset shape `app.js` expects, by querying the normalized tables directly. The only thing GET reads from now.
+- `lib/build-overrides-from-tables.ts` - Reconstructs `componentOverrides` and reviewed-exception keys for GET, since neither has an equivalent field in the dataset shape itself.
+- `public/app.js` - Main application (~3,000 lines). Owns state, views, spreadsheet parsing, validation, mailing calculations, status changes, profiles, envelope HTML generation, QA, packet/bin workflows, simulators, and DOM event binding.
+- `public/everletterSeed.json` and `public/seed-data.js` - Sanitized empty fallback dataset, loaded synchronously before the real dataset arrives from `/api/shared-state`. Never replace these with production customer data in Git.
 - `public/assets/` - Everletter logo, wax seal, character art, envelope corner art, and sample-letter images.
-- `db/schema.ts` - Drizzle definition of the current `crm_state` table.
-- `db/index.ts` - Was the Drizzle/D1 binding helper (`cloudflare:workers` env.DB). Now a stub that throws, pending a real `drizzle-orm/node-postgres` connection.
-- `drizzle/` - Generated D1 (SQLite-dialect) migration and Drizzle metadata. Will be regenerated once the schema/dialect moves to Postgres.
-- `tests/rendered-html.test.mjs` - Starter-template tests. These are stale and do not represent the CRM; see Known Issues.
-- `examples/` - Starter D1 example code, not used by the CRM. It can be removed after confirming no tooling requires it.
+- `db/schema/` - Drizzle table definitions, one file per entity (`subscribers.ts`, `subscriptions.ts`, `orders.ts`, `mailings.ts`, `mailing_components.ts`, `exceptions.ts`, `ingestion_events.ts`, `staging_locations.ts`), plus `relations.ts` and a barrel `index.ts`. Full design rationale: `docs/schema-design.md`.
+- `db/index.ts` - `getDb()`, a real `drizzle-orm/node-postgres` connection backed by `DATABASE_URL`. Throws with a clear message if `DATABASE_URL` is unset — there is no silent fallback.
+- `drizzle/` - Generated Postgres migrations (six as of this writing, `0000`-`0005`) and Drizzle metadata.
+- `tests/` - The real unit and end-to-end test suite, wired into `pnpm test`. See §6 and `docs/testing.md`.
+- `devops/` - Docker Compose files (`docker-compose.yml` for Postgres, `docker-compose.app.yml` for the app service), the app's `Dockerfile`, the NAS deploy script, and backup/maintenance scripts. See §4/§7.
+- `examples/d1/` - Leftover Cloudflare D1 starter template code, not used by the CRM and not wired into anything. Safe to remove; hasn't been yet.
 
 ### Current data flow
 
 1. A user uploads the current `.xlsx`, `.xls`, or `.csv` mailing schedule in the Import Sheet view.
-2. `public/app.js` parses and validates it in the browser and builds a structured dataset containing subscribers, recipients, subscriptions, orders, mailings, summaries, and exceptions.
-3. Publishing POSTs the complete JSON dataset to `/api/shared-state` as `kind=crmDataset`, `key=current`.
-4. D1 stores that JSON in one `crm_state` row. Mailing statuses, component statuses, and reviewed exceptions are stored as additional key/value rows.
-5. On load, the browser merges hosted values with localStorage fallbacks and the empty committed seed.
+2. `public/app.js` parses and validates it in the browser and builds a structured dataset (subscribers, recipients, subscriptions, orders, mailings, summary, exceptions) via `buildSeedFromSpreadsheet`.
+3. Publishing POSTs the complete dataset to `/api/shared-state` as `kind=crmDataset`, `key=current`. The route runs it through `lib/dual-write.ts`'s `dualWriteImport()`, which writes it into the normalized tables inside one Postgres transaction — all or nothing.
+4. Mailing-status, component-status, and reviewed-exception changes each POST their own `kind`/`key`/`value` and are written directly to the relevant table by `lib/dual-write.ts`, also transactionally.
+5. On GET, the route calls `buildDatasetFromTables()` to reconstruct the same dataset shape `app.js` expects, directly from the normalized tables — nothing cached, nothing denormalized in between — plus `lib/build-overrides-from-tables.ts` for `componentOverrides` and the `reviewed` exception-key list.
+6. On load, `public/app.js` initializes its state synchronously from the empty committed fallback (`window.EVERLETTER_SEED`), then replaces it wholesale with the real reconstructed dataset once `/api/shared-state` resolves. Status/component-status overrides and reviewed-exception flags are additionally cached to `localStorage` as a client-side fallback — the dataset itself is not.
 
-Current D1 record kinds:
-
-- `crmDataset::current` - full imported CRM JSON
-- `mailingStatus::<mailingKey>` - production status overrides
-- `componentStatus::<componentKey>` - envelope/letter/insert/location/QA state
-- `reviewedException::<exceptionKey>` - reviewed flags
+There is no `crm_state` table, blob, or "record kinds" list anymore — it was dropped entirely once the normalized tables became the sole source of truth for both directions. The complete history of that migration (why each table looks the way it does, the dual-write rollout, every schema gap found and either closed or deliberately accepted) is in **[docs/schema-design.md](docs/schema-design.md)** — read it before touching `lib/dual-write.ts` or `lib/build-dataset-from-tables.ts` rather than re-deriving any of it here.
 
 ### Conventions to preserve
 
@@ -133,48 +139,51 @@ Current D1 record kinds:
 - Mailing cadence is the 1st and 15th. A roughly three-day cutoff determines whether a new order can join the imminent batch.
 - Month-to-month customers receive two letters per payment and normally need two envelopes printed together. Six- and twelve-month orders receive 12 and 24 letters respectively and are usually prepared in advance.
 - Character changes restart the letter number at 1 and should remain a Needs Review event because the envelope/bin workflow changes.
-- Preserve stable mailing/component key generation when refactoring; existing D1 overrides depend on those keys.
+- Preserve stable mailing/component key generation when refactoring; existing overrides depend on those keys (`lib/keys.ts` is the canonical spec).
 - Keep customer-data configuration out of static/public assets. Use server-side secrets/config or normalized database records.
 
 ## 4. Infrastructure & Services
 
 ### GitHub
 
-- Purpose: primary source-control repository.
+- Purpose: primary source-control repository, and (as of the CI/CD workflow below) the trigger for production deployment.
 - Repository: `https://github.com/marcy-ever/everletter-ops-crm`
-- Account/owner: GitHub user/organization `marcy-ever`; Marcy owns the credentials. Log in at GitHub.
-- Code config: `.git/config` locally; remote name is `origin`. No GitHub Actions workflow is currently committed.
-- Important: GitHub is source-of-truth for code, but it is not currently connected to automatic production deployment.
+- Account/owner: GitHub user/organization `marcy-ever`; Marcy owns the credentials.
+- Code config: `.git/config` locally; remote name is `origin`. `.github/workflows/build-and-push.yml` is a real, committed GitHub Actions workflow.
+- Important: pushing to `main` **does** trigger production deployment now. This is a change from earlier in this migration — don't assume manual-only deploys.
 
-### OpenAI Sites
+### Self-hosted Docker Compose (NAS)
 
-- Purpose: current private hosting/deployment control plane. It builds/runs the app as a Cloudflare Worker and provisions/binds D1.
-- Live private URL: `https://everletter-ops-crm.marcy12s.chatgpt.site`
-- Sites project ID: `appgprj_6a5aa9f98dc08191860bdf5becfcba2c`
-- Account: Marcy's OpenAI/ChatGPT workspace/account. Access through the Sites-enabled Codex/OpenAI workspace used to create the app. Exact login credentials are not stored in the repo.
-- Code config: `.openai/hosting.json`, `build/sites-vite-plugin.ts`, `vite.config.ts`, and `worker/index.ts`.
-- Deployment is manual through the Sites tooling; pushing GitHub alone does not update the live site.
+- Purpose: runs Postgres (always) and, optionally, the containerized app itself — locally for full-stack verification, and on the NAS as the actual production deploy target.
+- Host: the NAS, referred to as "FranklinsTower" per Brad's report (matches the `FT_SSH_*` secret naming in `.github/workflows/build-and-push.yml`). I have no direct access to this host and can't independently verify its live running state — treat any claim about what's currently running there as Brad's report, not something observed from this session.
+- Code config: `devops/docker-compose.yml` (Postgres only — the `postgres` service and the `postgres-data` volume) and `devops/docker-compose.app.yml` (the app service). The two are split deliberately so a Postgres-only local startup never has to satisfy the app service's auth vars — see that file's header comment for the full rationale, and §6 for the commands. `package.json`'s `docker:up`/`docker:up:full`/`docker:down` scripts wire these up.
+- Data: lives in the `everletter-ops-crm_postgres-data` Docker volume, not in this repository.
 
-### Cloudflare Workers runtime (managed by OpenAI Sites)
+### GitHub Container Registry (GHCR)
 
-- Purpose: executes the Vinext server bundle and serves static assets.
-- Account: currently managed through OpenAI Sites, not a separately documented Everletter Cloudflare account.
-- Code config: `worker/index.ts`, `vite.config.ts`, and generated `dist/` output.
-- Bindings expected by the worker: `ASSETS`, `IMAGES`, and `DB`. Sites supplies these in hosted environments.
+- Purpose: hosts the built application image the NAS pulls.
+- Image: `ghcr.io/marcy-ever/everletter-ops-crm`, tagged `:latest` and `:<commit-sha>`.
+- Code config: `devops/app.Dockerfile` (multi-stage build — `pnpm build` in a builder stage, then a slim `node:22-alpine` runner using Next's standalone output). Built and pushed by `.github/workflows/build-and-push.yml`.
 
-### Cloudflare D1 (managed by OpenAI Sites)
+### CI/CD
 
-- Purpose: durable production storage for the imported CRM dataset and shared workflow overrides.
-- Account: Sites-managed under the same OpenAI Sites project. A standalone Everletter-owned Cloudflare/D1 account has been discussed but not created/migrated.
-- Code config: logical binding `DB` in `.openai/hosting.json`; schema in `db/schema.ts`; migration in `drizzle/0000_black_forgotten_one.sql`; access in `app/api/shared-state/route.ts` and `db/index.ts`.
-- No database ID or credential is committed. Local development uses a placeholder D1 ID and project-local Miniflare/Wrangler state.
+- Purpose: build the app image and deploy it, automatically, on every merge to `main`.
+- Provider: GitHub Actions, `.github/workflows/build-and-push.yml`. On every push to `main` (a manual `workflow_dispatch` run only exercises the build/push step, gated separately from the deploy job so it can never trigger a NAS deploy on its own): builds and pushes the GHCR image, then SSHes into the NAS (`FT_SSH_HOST`/`FT_SSH_USER`/`FT_SSH_PORT`/`FT_SSH_PRIVATE_KEY` repository secrets) and runs `devops/deploy.sh` there.
+- This supersedes any earlier note that no CI/CD system exists or should be assumed — one exists and is load-bearing for production. **A merge to `main` is a production deploy**, not a review-only action.
+
+### Backups (Postgres → Backblaze B2)
+
+- Purpose: disaster recovery for the NAS's Postgres data — distinct from the "all app data is disposable test data" development assumption stated at the top of this file. Once real customer data is live, this is what actually protects it.
+- Code config: `devops/backup.sh` (`pg_dump` → gzip → local rotating copy, plus an `rclone` upload to Backblaze B2), scheduled to run daily via DSM Task Scheduler on the NAS.
+- Full setup, account ownership, and the DSM-specific gotchas hit getting `rclone` working: **[docs/backups.md](docs/backups.md)**.
+- I have not verified a real restore drill, and the doc doesn't describe one having been run either — worth doing before this matters for real data.
 
 ### Google Fonts
 
 - Purpose: envelope typography for each Everletter character and adult envelopes.
 - Account: none required; fonts are loaded at print-window runtime from `fonts.googleapis.com`/`fonts.gstatic.com`.
 - Code config: the `@import` generated in `public/app.js` near the envelope print HTML.
-- Risk: envelope appearance depends on network access and font loading at print time.
+- Risk: envelope appearance depends on network access and font loading at print time (see Known Issues).
 
 ### Google Drive (manual workflow; not integrated)
 
@@ -210,38 +219,33 @@ Current D1 record kinds:
 
 - Purpose: restrict the real CRM to authorized users.
 - Provider: Auth.js (`next-auth@5`) with Google OAuth, plus an `ALLOWED_USERS` email/role allowlist enforced in `proxy.ts` (Next 16's rename of `middleware.ts`). No passwords, no user database.
-- Full reference - allowlist format and current entries, how to check the resolved role in server code and in `public/app.js`, how to add a user, and what's explicitly **not** built yet (no per-feature restrictions exist): see **[docs/auth.md](docs/auth.md)**.
-- Status: structurally complete but not live-tested. `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are still placeholders in `.env.example` pending Marcy setting up the Google Cloud OAuth project.
-- Superseded: the old OpenAI Sites/ChatGPT-header-based approach (`app/chatgpt-auth.ts`, never actually called by the page) has been removed. The previous known limitation (Ashley unrecognized in the required ChatGPT workspace) no longer applies - Google OAuth plus the allowlist replaces it entirely.
+- Full reference — allowlist format and current entries, how to check the resolved role in server code and in `public/app.js`, how to add a user, and what's explicitly **not** built yet (no per-feature restrictions exist): see **[docs/auth.md](docs/auth.md)**.
+- Status: **live and verified**, not merely structurally complete (see Decided Direction, above). Real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are wired up, and a live sign-in has been verified working end-to-end for at least one allowlisted account. Ashley's own sign-in specifically hasn't been confirmed yet.
+- A blank `AUTH_SECRET` is not a soft failure — Auth.js validates it eagerly, and any request that reaches `/api/auth/signin` with it unset gets a real HTTP 500 (`MissingSecret`), verified directly while fixing the local-setup docs. See §5/§6.
 
 ### DNS and custom domain
 
-- No custom CRM domain or DNS configuration is present. The production CRM uses the `chatgpt.site` URL. The marketing site/domain remains in Squarespace and is not configured in this repo.
+- No custom CRM domain or DNS configuration is present in this repository. The app is exposed via the NAS's Docker port mapping — container port 3000 to host port 3100 (`devops/docker-compose.app.yml`). Whether port 3100 is reachable only on the local network or is also forwarded/proxied for external access is NAS-side configuration outside this repo; I can't verify it from the tree — confirm with Brad. The marketing site/domain remains in Squarespace and is not configured here.
 
 ### Payments/SMS/other APIs
 
 - Stripe/Squarespace payment data is not directly integrated.
 - No SMS service exists.
-- No R2 object storage is configured (`r2` is `null` in `.openai/hosting.json`).
+- No object storage (R2 or otherwise) is configured for this app.
 
 ## 5. Environment Variables & Secrets
 
-The application currently requires **no user-supplied `.env` variables** for the sanitized local build. Do not invent or commit secrets.
+All required and optional variables are documented in `.env.example` — copy it to `.env.local` (gitignored) for local development. Do not invent or commit secrets.
 
-Hosted bindings (provided by Sites/Cloudflare, not ordinary env vars):
+- `DATABASE_URL` - read directly by the app and by `drizzle-kit` (source `.env.local` into your shell first — `drizzle-kit` doesn't auto-load it). Defaults to local Postgres (`postgres://everletter:everletter@localhost:5433/everletter_dev`), matching `devops/docker-compose.yml`'s defaults.
+- `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` - read by `devops/docker-compose.yml` (via `--env-file .env.local`) to configure the Postgres container. Keep in sync with `DATABASE_URL` by hand — dotenv files don't support variable interpolation. `POSTGRES_PASSWORD` is required and fails loudly (Compose's `:?` guard) if unset; the other two have dev-safe fallbacks.
+- `AUTH_SECRET` - required for `pnpm dev` and `pnpm docker:up:full`, **not** for `pnpm docker:up` (Postgres only — no app process runs, so nothing reads it). Validated eagerly by Auth.js: leaving it blank isn't a graceful degrade, it's a real HTTP 500 the first time anything hits `/api/auth/signin` — verified directly. Generate one with `openssl rand -base64 32` (see `.env.example`'s comment for why `npx auth secret`, sometimes recommended elsewhere, is the wrong command in this project).
+- `AUTH_URL` - the Auth.js callback URL, same requirement as `AUTH_SECRET`. `http://localhost:3000` is correct for local `pnpm dev`/`docker:up:full`; a real deployment needs its actual reachable URL.
+- `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` - Google Cloud Console OAuth 2.0 Web application credentials. Needed to complete a real Google sign-in, but — unlike `AUTH_SECRET`/`AUTH_URL` — not validated eagerly; the app process itself starts fine with placeholders, verified directly.
+- `ALLOWED_USERS` - comma-separated `email:role` pairs, the allowlist gate. See `docs/auth.md`.
+- `AUTH_TRUST_HOST` - optional; defaults to `false` in `devops/docker-compose.app.yml`. Not in `.env.example` since it's optional with a working default.
 
-- `DB` - D1 database binding used by `/api/shared-state`.
-- `ASSETS` - static asset fetcher used by the Worker.
-- `IMAGES` - Cloudflare image transformation binding used by Vinext image optimization.
-
-Build/tool variables used or defaulted by the project:
-
-- `CODEX_SANDBOX` - optional; when equal to `seatbelt`, Vite uses polling for file watching.
-- `WRANGLER_WRITE_LOGS` - optional tooling control; defaults to `false` in `vite.config.ts`.
-- `WRANGLER_LOG_PATH` - optional Wrangler log path; npm scripts currently set it and `vite.config.ts` also defaults it to `.wrangler/logs`.
-- `MINIFLARE_REGISTRY_PATH` - optional local Miniflare state location; defaults to `.wrangler/registry`.
-
-No secret values currently live in this GitHub checkout. `.env*`, PEM files, customer data, and deployment tokens are ignored. Sites credentials and database resource identifiers live in the hosting control plane. Future integrations should use names such as `SQUARESPACE_API_TOKEN`, `MAILCHIMP_API_KEY`, and Drive OAuth/service-account variables only after the integration design is chosen; those names are suggestions, not current requirements.
+No Cloudflare/Wrangler/Miniflare bindings exist anywhere in this stack anymore. `DB`/`ASSETS`/`IMAGES` and any `WRANGLER_*`/`MINIFLARE_*`/`CODEX_SANDBOX` variable belonged to the removed Worker runtime and have no equivalent now.
 
 ## 6. Local Setup
 
@@ -262,7 +266,15 @@ No secret values currently live in this GitHub checkout. `.env*`, PEM files, cus
    pnpm install --frozen-lockfile
    ```
 
-4. Copy `.env.example` to `.env.local` (gitignored) and adjust `DATABASE_URL` if needed; the default matches `devops/docker-compose.yml`.
+4. Copy `.env.example` to `.env.local` (gitignored) and generate a real `AUTH_SECRET` — required before `pnpm dev` will do anything but 500 on sign-in (see §5):
+
+   ```bash
+   cp .env.example .env.local
+   openssl rand -base64 32   # paste the output in as AUTH_SECRET= in .env.local
+   ```
+
+   Leave `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`ALLOWED_USERS` as their `.env.example` placeholders for now — they're only needed to complete a real sign-in, not to boot the app or start Postgres.
+
 5. Start local Postgres and apply migrations:
 
    ```bash
@@ -270,7 +282,7 @@ No secret values currently live in this GitHub checkout. `.env*`, PEM files, cus
    pnpm db:migrate
    ```
 
-   `docker:up`/`docker:down` run `devops/docker-compose.yml` with an explicit `--project-directory .` and `-p everletter-ops-crm`, so the project name (and its data volume) stay stable regardless of where the compose file itself lives.
+   `docker:up` starts only the `postgres` service (`devops/docker-compose.yml`) and works with **zero** auth vars set, deliberately — see §5. `docker:up`/`docker:up:full`/`docker:down` all pass an explicit `--project-directory .` and `-p everletter-ops-crm`, so the project name (and its data volume) stay stable regardless of where the compose files themselves live.
 
 6. Start local development:
 
@@ -278,26 +290,35 @@ No secret values currently live in this GitHub checkout. `.env*`, PEM files, cus
    pnpm dev
    ```
 
-### Build, lint, and database migration
+### Full containerized stack (optional)
+
+```bash
+pnpm docker:up:full
+```
+
+Builds and runs the app itself in Docker too (both compose files together: `-f devops/docker-compose.yml -f devops/docker-compose.app.yml`), reachable at `http://localhost:3100`. Unlike `docker:up`, this **does** need every auth var actually filled in — `AUTH_SECRET`/`AUTH_URL`/`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`ALLOWED_USERS` all fail loudly if unset or blank. Meant for full-stack/NAS-parity verification, not day-to-day iteration (`pnpm dev` against the same `docker:up` Postgres is faster for that). `pnpm docker:down` tears down whatever's currently up.
+
+### Build, lint, typecheck, and database migration
 
 ```bash
 pnpm build
 pnpm lint
+pnpm typecheck
 pnpm db:generate
 pnpm db:migrate
 ```
 
-Only run `pnpm db:generate` after intentionally changing `db/schema.ts`, then inspect the generated migration, commit it, and run `pnpm db:migrate` to apply it to your local Postgres (started via `pnpm docker:up`).
+Only run `pnpm db:generate` after intentionally changing something under `db/schema/`, then inspect the generated migration in `drizzle/`, commit it, and run `pnpm db:migrate` to apply it to your local Postgres.
 
 ### Tests
 
-The declared command is:
-
 ```bash
-pnpm test
+pnpm test:unit   # six unit test files, no external services needed, runs in parallel
+pnpm test:e2e    # three end-to-end files, need local Postgres, deliberately serialized
+pnpm test        # test:unit then test:e2e - the real release gate
 ```
 
-However, the committed tests are stale starter-template tests and are expected to fail against the actual CRM. Replace them before treating the test command as a release gate. For current changes, at minimum run `pnpm build`, manually test spreadsheet import with synthetic data, verify shared-state GET/POST against local D1, and verify envelope print preview/printing.
+This is a real, current test suite — not the stale starter tests this file used to describe. Full details (which tests need Postgres and how to bring it up, why `test:e2e` is serialized, what the shared e2e helper module provides, and — important — **that running `test:e2e` truncates your local dev database**): **[docs/testing.md](docs/testing.md)**. Don't restate that doc's content here; it stays current on its own.
 
 ### Local data caution
 
@@ -307,47 +328,37 @@ However, the committed tests are stale starter-template tests and are expected t
 
 ## 7. Deployment
 
-Deployment is **manual**. GitHub push is not connected to a CI/CD pipeline and does not deploy production.
+Deployment is **automatic** on merge to `main` — this is a change from earlier in this migration; don't assume a manual step is required or possible to skip.
 
-Current Sites deployment flow:
+Real flow, read directly from `.github/workflows/build-and-push.yml` and `devops/deploy.sh` (I have no access to the NAS itself and haven't observed a live run succeed — everything below is what the committed code does, not observed production behavior; confirm current live state with Brad):
 
-1. Start from a clean, reviewed commit in this GitHub repository.
-2. Run:
+1. A commit lands on `main` (merge or direct push).
+2. GitHub Actions' `build-and-push` job builds the app image from `devops/app.Dockerfile` and pushes it to GHCR as `ghcr.io/marcy-ever/everletter-ops-crm:latest` and `:<commit-sha>`.
+3. The `deploy` job — gated on the push event specifically, so a manual `workflow_dispatch` build-only run can never trigger it — SSHes into the NAS using the `FT_SSH_*` repository secrets and runs `~/lyra/everletter-ops-crm/devops/deploy.sh`.
+4. `devops/deploy.sh`: copies itself to a stable temp path and re-execs from there first (so the `git reset --hard` two steps later, which replaces the very script file bash is executing, can't make bash jump to a corrupted byte offset mid-run — verified in isolation, not on the NAS itself); fetches; checks whether either compose file changed since the last deploy; `git reset --hard origin/main`s the NAS checkout; then either does a full `down`/`pull`/`up` (compose files changed) or just pulls and recreates the `app` service (otherwise).
 
-   ```bash
-   pnpm install --frozen-lockfile
-   pnpm build
-   ```
+Rollback: no automated rollback exists. The previous image tag (`:<commit-sha>`) stays in GHCR, so a manual rollback means SSHing in and re-pointing the compose invocation at an older tag by hand — not scripted.
 
-3. Confirm `.openai/hosting.json` still targets the intended Sites project and binds D1 as `DB`.
-4. Use the OpenAI Sites hosting tooling to:
-   - obtain/reuse a source-repository write credential for the existing Sites project;
-   - push the exact validated source commit to the Sites-managed source repository without storing the credential in Git config or a remote URL;
-   - package `dist/`, `.openai/hosting.json`, and `drizzle/` migrations with the Sites packaging helper;
-   - save a site version for that commit;
-   - deploy the version privately;
-   - wait until deployment reports `succeeded`.
-5. Verify `https://everletter-ops-crm.marcy12s.chatgpt.site` using an authorized account.
-
-There is no safe standalone shell command in this repository that can publish to the existing Sites project; deployment requires the Sites connector/control-plane credentials. A developer using Claude Code will either need access to that same Sites tooling/account or should design an explicit migration to an Everletter-owned Cloudflare account. Do not create a second production database casually: the current live customer data is in the Sites-managed D1 database.
-
-Before deploying this sanitized GitHub version, resolve the private operational Drive configuration. The GitHub copy intentionally has blank Drive URLs, while the existing live deployment may still have private links from an earlier source version. Deploying GitHub unchanged could remove those links from the live UI. The D1 dataset itself is not replaced by a code deployment.
+Backups: see **[docs/backups.md](docs/backups.md)** for the real, current Postgres backup setup (local rotation plus offsite Backblaze B2) — this file no longer describes an unprotected dataset.
 
 ## 8. Known Issues & Unfinished Work
 
 Highest priority:
 
-- The spreadsheet is still the upstream system of record. The stated product direction is to move completely away from spreadsheets and use normalized CRM records.
-- D1 stores the entire dataset as one JSON value plus override rows. There are no normalized customer, recipient, subscription, order, mailing, note, event, or audit tables.
-- Imports overwrite `crmDataset::current`; there is no import history, rollback UI, versioned backup, or user-facing export/restore flow.
-- Status saves are asynchronous and optimistic. Failures are logged/alerted inconsistently, and there is no visible retry queue or conflict handling.
-- No live-update mechanism between users. The app uses plain HTTP GET/POST for `/api/shared-state` - there's no websocket or push mechanism, so if Marcy and Ashley are both using the CRM at the same time, one person's changes (status updates, imports, reviewed exceptions) won't appear for the other until they manually refresh the page. This risks someone acting on stale data without realizing it. TODO for whoever picks this up next (likely Codex): at minimum, a lightweight "this page may be stale, refresh to see recent changes" indicator would prevent acting on outdated information - doesn't require full realtime sync, just a signal. A full live-update experience (websockets or polling-based) would be a bigger undertaking to consider once that minimal version is in place.
-- Stable keys are derived in browser code. A key-generation change can orphan existing overrides.
-- The "Update Shown Rows" bulk-status buttons in the Production Queue (`public/app.js:936-943`) apply the selected status to every currently-shown/filtered row (up to 120, per the queue's cap) with a single click and no confirmation dialog. Each row fires an independent, fire-and-forget POST (`updateMailingStatus` -> `saveSharedState`, `public/app.js:287-292` and `173-181`) - no batching, no undo, no confirmation step. A single accidental click - or a click by someone who doesn't realize what the button does - can silently overwrite the status of up to 120 real mailings at once. This already happened: Marcy confirmed she clicked these buttons believing they were status *filters*, not bulk-rewrite actions - the pill-button styling doesn't visually distinguish them from the filter controls elsewhere in the UI. TODO for whoever picks this up next (likely Codex): add a confirmation step before this fires (e.g. "Set status to X for the N mailings currently shown?"), and consider restyling these buttons so they're not visually confusable with filters - especially before real operational data is being tracked day to day, a misclick currently has no safety net at all.
-- Google OAuth (Auth.js) plus an email allowlist now enforce access on every route (`auth.ts`, `proxy.ts`, `lib/allowlist.ts`) - but real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` haven't been set yet, so this hasn't been exercised with a live sign-in. Marcy and Ashley are both in `ALLOWED_USERS`; Ashley's access is unblocked as soon as real credentials land.
-- No per-feature/per-role restrictions exist yet, even though the resolved role is available (`session.role`, and `data-user-role` on the page shell for `public/app.js`). Pending Marcy specifying what Ashley should be restricted from.
-- Private Google Drive folder IDs were removed from GitHub; Drive buttons are therefore incomplete in this source.
-- The `exceptions` table has no columns to fully verify a `reviewedException` override key. The client's key (`exceptionReviewKey`, `public/app.js`) encodes `mailingId`/`subscriberId`/`reason`/`shipDate`, but matching is currently done via `exceptions.mailing_id` -> `mailings.app_mailing_id` plus `exceptions.type` == the key's `reason` segment only - there's no column to cross-check the key's `subscriberId`/`shipDate` segments (see `docs/schema-design.md`'s dual-write notes, which already flagged this as "the point to consider adding a dedicated snapshot column" if real cutover needs it). Deferred out of the Option B field-gap-closure pass (per-mailing `active`/`notes`, `subscriptions.ended_at`) as more invasive and narrower-impact - it only affects override matching in an edge case, not data completeness. TODO for whoever picks this up next (likely Codex): decide whether to add `subscriberId`/`shipDate` snapshot columns to `exceptions`, or explicitly accept this as a permanent limitation of `reviewedException` matching.
+- **No live-update mechanism between users.** The app uses plain HTTP GET/POST for `/api/shared-state` — there's no websocket or push mechanism, so if Marcy and Ashley are both using the CRM at the same time, one person's changes (status updates, imports, reviewed exceptions) won't appear for the other until they manually refresh the page. This risks someone acting on stale data without realizing it. TODO for whoever picks this up next (likely Codex): at minimum, a lightweight "this page may be stale, refresh to see recent changes" indicator would prevent acting on outdated information — doesn't require full realtime sync, just a signal. A full live-update experience (websockets or polling-based) would be a bigger undertaking to consider once that minimal version is in place.
+- **Re-importing a spreadsheet still overwrites current data with no history, versioned rollback, or user-facing export/restore flow.** This survived the migration off the JSON blob — `lib/dual-write.ts`'s `dualWriteImport()` still deletes any subscriber/subscription/order/mailing/exception row not present in the new import (verified directly: `db.delete(...).where(notInArray(...))` for each entity), the same "current import replaces everything" behavior the blob had, just now expressed as real deletes across normalized tables instead of overwriting one JSON value. This is a distinct problem from the dataset-loss risk the NAS backups (see §4) now cover — daily `pg_dump` snapshots protect against losing the database entirely, not against undoing one bad reimport or reviewing what an import actually changed.
+- **Status/component-status saves are asynchronous and optimistic, with no retry or user-visible failure indicator.** `saveSharedState()` (`public/app.js:173-181`) fires the POST and silently swallows any failure (`.catch(() => {})`, "keep local changes usable if the shared endpoint is briefly unavailable") — a failed save looks identical to a successful one from the UI, and there's no retry queue.
+- **Two separate sets of unguarded bulk-action buttons apply a status change to every currently-shown row with a single click and no confirmation dialog.** Each row fires an independent, fire-and-forget POST (`saveSharedState`, `public/app.js:173-181`) — no batching, no undo, no confirmation step:
+  - Production Queue's "Update shown rows" status buttons (`public/app.js:935-942` for the buttons, `974-979` for the click handler that loops every shown row through `updateMailingStatus`, `public/app.js:286-291`).
+  - Ashley Bins' "Update shown rows" mark-ready/mark-needs-check buttons (`public/app.js:2433-2438` for the buttons, `2485-2501` for the click handler, which fires three `updateComponentStatus` calls per row).
+
+  A single accidental click — or a click by someone who doesn't realize what the button does — can silently overwrite the status of every currently-shown mailing at once. This already happened with the Production Queue buttons: Marcy confirmed she clicked them believing they were status *filters*, not bulk-rewrite actions — the pill-button styling doesn't visually distinguish them from the filter controls elsewhere in the UI. The Ashley Bins instance has the identical shape and hasn't been reported as misclicked yet, but nothing about it is actually safer. TODO for whoever picks this up next (likely Codex): add a confirmation step before either fires (e.g. "Set status to X for the N mailings currently shown?"), and consider restyling both so they're not visually confusable with filters — especially before real operational data is being tracked day to day, a misclick currently has no safety net at all.
+- Stable keys (`mailingKey`/`componentKey`/`exceptionReviewKey`) are derived in browser code, mirrored (not imported — `app.js` is a non-bundled script) by `lib/keys.ts` for the server side. A key-generation change on either side that isn't kept in sync can orphan existing overrides.
+- Ashley's own Google sign-in specifically hasn't been verified yet (see Decided Direction's risk list, above).
+- No per-feature/per-role restrictions exist yet, even though the resolved role is available (`session.role`, and `data-user-role` on the page shell for `public/app.js`). Pending Marcy specifying what Ashley should be restricted from. See `docs/auth.md`.
+- Private Google Drive folder IDs aren't in this repository at all, so Drive buttons remain incomplete everywhere the app now runs — unlike under the old Sites deployment, there's no separately-configured "live" version anymore that could differ from this source; the NAS deploy builds directly from this same git history.
+- The `exceptions` table has no columns to fully verify a `reviewedException` override key. The client's key (`exceptionReviewKey`, `public/app.js`) encodes `mailingId`/`subscriberId`/`reason`/`shipDate`, but server-side matching only cross-checks `mailingId` and `reason` — there's no column for `subscriberId`/`shipDate`. This is a known, documented schema limit (see `docs/schema-design.md`'s dual-write notes), not a shortcut anyone's forgotten about. TODO for whoever picks this up next (likely Codex): decide whether to add `subscriberId`/`shipDate` snapshot columns to `exceptions`, or explicitly accept this as a permanent limitation of `reviewedException` matching.
+- `devops/clear_db.sh` truncates a `crm_state` table that no longer exists (dropped along with the rest of the JSON-blob storage — see `docs/schema-design.md`) — it will fail as committed. Verified directly against the current schema; not yet fixed.
 
 Integrations not built:
 
@@ -360,47 +371,49 @@ Integrations not built:
 
 Code quality/maintenance:
 
-- `public/app.js` is a very large monolithic script with untyped state and direct DOM rendering.
-- `app/globals.css` is similarly large and should be decomposed carefully.
-- Starter files remain: `app/_sites-preview/`, `react-loading-skeleton`, and `examples/`.
-- `tests/rendered-html.test.mjs` asserts starter content that no longer exists.
+- `public/app.js` is a very large monolithic script (~3,000 lines) with untyped state and direct DOM rendering.
+- `app/globals.css` is similarly large (~2,400 lines) and should be decomposed carefully.
+- `examples/d1/` remains — leftover Cloudflare D1 starter template code, unused by the CRM.
 - Some source strings show mojibake such as `Â·`; normalize encoding while preserving intended display.
 - Google Fonts load over the network in generated print windows. Printing before fonts finish loading may use fallback fonts.
 - Envelope output needs physical-printer QA for feed orientation, scaling at 100%, A7 paper size, margins, and each character's colored stock.
-- The browser-side xlsx bundle is committed/minified and should be tracked to its exact source/version and updated intentionally.
+- The browser-side xlsx bundle (`public/xlsx.full.min.js`) is committed/minified and should be tracked to its exact source/version and updated intentionally.
 - API input has minimal validation and no payload-size limit. A malformed or oversized dataset could cause operational problems.
-- The API creates schema at request time even though a migration exists.
-- No automated accessibility, mobile, print-layout, integration, or end-to-end tests exist.
+- No automated accessibility, mobile, or print-layout tests exist. Real integration/API-level end-to-end tests now exist (`tests/*.e2e.test.mjs`, see `docs/testing.md`) — browser/UI-level end-to-end tests still don't.
 - No monitoring/error reporting service is configured.
 
 Operational caveats:
 
-- The live D1 dataset may be newer than any spreadsheet or seed in GitHub.
-- The public fake-data demo is a separate deployment and must never be pointed at production D1.
+- The live Postgres data on the NAS will generally be newer/different than the empty committed seed files or any spreadsheet in this repository — same caveat this file made about the old hosted D1 database, just pointed at the current datastore. Don't assume what's in the seed files or a local spreadsheet reflects live state.
 - The real app should remain private because it contains names, emails, and mailing addresses.
 - Re-importing a spreadsheet can cause old Needs Review flags to return because reviewed flags are tied to generated exception keys.
+- The previous "public fake-data demo, separate from production" mentioned in earlier versions of this file could not be re-confirmed against the current tree or infrastructure — if it still exists, get its current status from Brad before relying on this note; it isn't restated here as fact.
 
 ## 9. Recent Context and Recommended Next Steps
 
 Most recent completed work:
 
-- GitHub was chosen as the primary source of truth for code.
-- A clean repository was created and pushed to `marcy-ever/everletter-ops-crm` without customer data or private Drive IDs.
-- The live app already had spreadsheet upload, shared D1 persistence, batch printing, QA, Batch Packet, Ashley Bins, playful branding, mobile-focused behavior, and envelope generation.
-- Marcy was still safely updating the spreadsheet and publishing it through Import Sheet until direct order entry/sync exists.
+- The full normalized-schema migration: designed (`docs/schema-design.md`), dual-written alongside the old blob, validated, promoted to the live read/write path, and the old `crm_state` table dropped entirely. Self-hosted Postgres on the NAS replaced Cloudflare D1.
+- Cloudflare Workers, Vinext, Vite, Wrangler, and OpenAI Sites were removed from the tree; hosting moved to self-hosted Docker Compose on the NAS.
+- CI/CD stood up: GitHub Actions builds and pushes a GHCR image and deploys it to the NAS automatically on every merge to `main`.
+- The Docker Compose setup was split into a Postgres-only base file and an app-service file, fixing a real bug where a fresh clone's Postgres-only startup failed on the app service's unrelated auth-var requirements.
+- The stale starter test suite was replaced with a real one (`pnpm test` now runs actual unit and end-to-end tests and is a real release gate), and leftover starter artifacts (`app/_sites-preview/`, `react-loading-skeleton`, `tests/rendered-html.test.mjs`) were removed.
+- Local Postgres backups (rotating) plus offsite Backblaze B2 backups were set up on the NAS, running daily.
+- Google OAuth plus the `ALLOWED_USERS` allowlist went from structurally-complete-but-untested to a live-verified sign-in.
 
-Logical next steps, in order:
+Logical next steps, roughly in order:
 
-1. **Secure ownership and access:** confirm repository collaborators, enable branch protection, document Sites ownership, and decide whether to retain Sites-managed infrastructure or migrate to an Everletter-owned Cloudflare account.
-2. **Back up live data before structural work:** add authenticated export of the current D1 dataset and overrides; capture timestamped/versioned import snapshots; document restore steps.
-3. **Fix the engineering baseline:** replace stale tests, remove starter artifacts, choose pnpm only, fix encoding, add API validation, and add a small synthetic fixture suite.
-4. **Finish authentication for Marcy and Ashley:** structurally done (Google OAuth via Auth.js + `ALLOWED_USERS` allowlist, enforced by `proxy.ts` on every route) - remaining work is Marcy setting up real Google Cloud OAuth credentials, then a live sign-in check on desktop and phone before broadening use.
-5. **Design normalized D1 schema:** customers, recipients, subscriptions, external orders/payments, mailings, component statuses, notes, exceptions, audit events, imports, and integration cursors. Preserve migration/rollback strategy.
-6. **Build native manual entry/editing:** allow adding and correcting customers/subscriptions/orders directly in CRM so spreadsheet uploads can be retired safely.
-7. **Migrate existing D1 JSON:** write and test a one-time, reversible migration from `crmDataset::current` and override rows into normalized tables.
-8. **Move private operational configuration server-side:** store Drive folder mappings or file references outside public JS; decide whether to use Drive OAuth, service accounts, or curated links.
-9. **Connect Squarespace:** scheduled daily sync is acceptable initially. Make ingestion idempotent, preserve raw external payloads, identify subscriptions independently of order numbers, support multiple subscriptions per email, and create mailing schedules only after successful payment.
-10. **Add Mailchimp sample automation:** capture website sample requests, tag Kid/Adult, send the selected sample, record consent/source/time, and match later purchases.
-11. **Add observability and operational safeguards:** audit log, import/sync dashboard, failed-save retry, monitoring, and routine backup/restore drills.
+1. **Confirm Ashley's own sign-in** against the real deployment — the one remaining piece of the auth rollout.
+2. **Fix the unguarded bulk-action buttons** (Production Queue and Ashley Bins, both described in §8) — add a confirmation step and visually distinguish them from filter controls. One of the two has already caused a real mistake.
+3. **Add the "page may be stale" signal** described in §8, as a lightweight first step toward real live-update between Marcy and Ashley.
+4. **Decide the `exceptions` reviewedException key-verification gap** — add the missing snapshot columns, or explicitly accept the current limitation as permanent (§8).
+5. **Fix or remove `devops/clear_db.sh`** — it references a dropped table and will fail as committed.
+6. **Harden the API and import path**: add real input validation and a payload-size limit to `/api/shared-state` (§8), and give reimports at least a minimal history/rollback story instead of the current delete-and-replace behavior — the NAS backups (§4) cover total data loss, not undoing one bad import.
+7. **Build native manual entry/editing** so spreadsheet upload can eventually be retired as the system of record.
+8. **Move private Drive folder configuration server-side**, and connect the Drive integration for real.
+9. **Connect Squarespace**: idempotent ingestion, raw-payload preservation, subscription identity independent of order numbers, multiple subscriptions per email, mailing schedules created only after successful payment.
+10. **Add Mailchimp sample automation**: capture requests, tag Kid/Adult, send samples, record consent/source/time, match later purchases.
+11. **Add observability and operational safeguards**: monitoring/error reporting, an audit log, failed-save retry visibility (§8), and a verified restore drill against the now-real backups.
+12. **Incrementally migrate `public/app.js` and decompose `app/globals.css`** into typed modules/components, one touched workflow at a time — not a scheduled rewrite, per the Decided Direction section above.
 
-Do not begin by rewriting the UI. The working operational rules encoded in `public/app.js` are valuable and should first be covered with synthetic tests. Then migrate one workflow at a time into typed modules while keeping mailing-day behavior stable.
+Do not begin by rewriting the UI. The working operational rules encoded in `public/app.js` are valuable and are already covered by the real test suite (`docs/testing.md`) at the level that suite tests. Migrate one workflow at a time into typed modules while keeping mailing-day behavior stable.
