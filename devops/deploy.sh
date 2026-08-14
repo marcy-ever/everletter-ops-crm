@@ -2,6 +2,20 @@
 set -e
 export PATH="/usr/local/bin:$PATH"
 
+# This script's own repo gets `git reset --hard`'d below, and bash reads a
+# running script incrementally by byte offset from disk - if `git reset`
+# replaces this file with a different-length version mid-run, bash can jump
+# to the wrong byte offset and execute garbage. Copying self to a stable temp
+# path and re-execing from there, before anything touches git, means the
+# running process is reading a file `git reset` can never overwrite.
+if [ -z "${DEPLOY_SH_REEXEC:-}" ]; then
+  TMP_SELF="$(mktemp /tmp/everletter-deploy.XXXXXX.sh)"
+  cp "$0" "$TMP_SELF"
+  chmod +x "$TMP_SELF"
+  DEPLOY_SH_REEXEC=1 exec "$TMP_SELF" "$@"
+fi
+trap 'rm -f "$0"' EXIT
+
 DATE=$(date +%F_%H:%M:%S)
 REPO_DIR=~/lyra/everletter-ops-crm
 LOGFILE="${REPO_DIR}/devops/deploy.txt"
@@ -21,7 +35,7 @@ git reset --hard origin/main
 COMPOSE="docker-compose -f devops/docker-compose.yml -f devops/docker-compose.app.yml -p everletter-ops-crm --project-directory . --env-file .env.local"
 
 if [ "$COMPOSE_CHANGED" -gt "0" ]; then
-    log "docker-compose.yml changed - full down/up..."
+    log "compose files changed - full down/up..."
     $COMPOSE down
     $COMPOSE pull
     $COMPOSE up -d
