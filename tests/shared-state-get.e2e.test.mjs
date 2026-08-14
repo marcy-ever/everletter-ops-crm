@@ -38,7 +38,7 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
 
   const rows = loadSpreadsheetRows();
   const appJs = await loadAppJsSandbox();
-  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", new Date());
+  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", new Date(), []);
 
   await writeImport(clientSeed, db);
 

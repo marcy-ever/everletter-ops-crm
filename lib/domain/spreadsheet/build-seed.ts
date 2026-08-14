@@ -152,7 +152,7 @@ export interface Seed {
   automationRules: unknown[];
 }
 
-export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], sourceName: string, now: Date, automationRules: unknown[] = []): Seed {
+export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], sourceName: string, now: Date, automationRules: unknown[]): Seed {
   const normalizedRows: NormalizedSpreadsheetRow[] = rows
     .map((raw, index) => ({ raw: normalizeSpreadsheetRow(raw), sourceRow: index + 2 }))
     .map(({ raw, sourceRow }) => {
