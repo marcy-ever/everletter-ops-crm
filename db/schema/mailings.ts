@@ -21,7 +21,7 @@ export const mailings = pgTable("mailings", {
   subscriptionId: text("subscription_id")
     .notNull()
     .references(() => subscriptions.id),
-  // app.js's own generated mailingId (public/app.js) - NOT unique, can
+  // app.js's own generated mailingId (app/crm/legacy-app.js) - NOT unique, can
   // collide (see the `id` comment above). Stored only as a matching aid:
   // an incoming mailingStatus/componentStatus override carries this value
   // (not our stable `id`), so it's needed to look the row back up. Never

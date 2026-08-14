@@ -1,7 +1,7 @@
 // Shared setup for tests/*.e2e.test.mjs files (build-dataset-from-tables,
 // write-to-tables-transactional, shared-state-get). Each of those files opened
 // with an identical copy-pasted preamble - env loading, a sandboxed
-// public/app.js loader, the truncate statement, and the has-fixture/has-db
+// app/crm/legacy-app.js loader, the truncate statement, and the has-fixture/has-db
 // skip gates - and the duplication had already caused real drift: the
 // build-dataset-from-tables copy of loadAppJsSandbox() had the fixedNow
 // time-pinning (see its own comment below), the shared-state-get copy
@@ -13,8 +13,7 @@
 // why that module stayed separate rather than being folded in here.
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import XLSX from "xlsx";
 import { sql } from "drizzle-orm";
 import { subscribers } from "../db/schema/subscribers";
@@ -79,47 +78,84 @@ export function loadSpreadsheetRows() {
   return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: true });
 }
 
-// Runs the real public/app.js in a sandboxed vm context and returns it, so
-// tests can call its real functions (buildSeedFromSpreadsheet, etc.)
-// instead of a reimplementation.
-//
-// fixedNow is optional. When passed, `new Date()` (no args) and `Date.now()`
-// inside the sandbox resolve to that exact instant instead of the real
-// clock - required by build-dataset-from-tables.e2e, which pins both the
-// client-side seed's "now" and buildDatasetFromTables()'s "now" to the same
-// instant so summary.asOf/overdue/dueNext14Days aren't polluted by a
-// frozen-vs-live day-boundary artifact (see lib/mailing-rules.ts's module
-// comment). Tests that don't care about time-dependent fields (e.g.
-// shared-state-get.e2e) simply omit it and get the real clock, unchanged
-// from before this was unified.
-//
-// captureRenders (default false, opt-in) turns on two things
-// tests/render-snapshots.test.mjs needs and nothing else uses:
-//  - document.querySelector(selector)'s stub elements actually retain their
-//    innerHTML instead of discarding it (the previous, still-default
-//    behavior - a fresh no-op stub every call, read always "" - is
-//    unchanged when this flag is off, so existing callers see zero
-//    behavior change). Elements are memoized by selector so the harness can
-//    read back what a given mount (e.g. '#viewMount') was last written,
-//    matching how app.js itself captures each mount into its own top-level
-//    const exactly once at load time and reuses that same reference for
-//    every later render.
-//  - the sandbox's return value gains a `state` property: a real reference
-//    to app.js's own module-scoped `state` object, not a copy. `state` is
-//    declared with `const` at the top of app.js, and const/let bindings -
-//    unlike `var` or top-level `function` declarations - are never
-//    reflected as properties on a vm context's global object (verified
-//    directly: a throwaway `vm.Script` with top-level const/var/function/let
-//    only exposes the var and the function on the context afterward). The
-//    only way to reach a const declared inside a vm.Script is from code
-//    compiled in that same script, so this appends one line to app.js's own
-//    source text - never written to the file on disk, only to the in-memory
-//    string this function compiles - handing back a real reference to the
-//    exact object every render function already closes over.
-export function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}) {
-  const rawSource = fs.readFileSync(path.join(ROOT, "public/app.js"), "utf8");
-  const source = captureRenders ? `${rawSource}\nvar __appState = state;\n` : rawSource;
+const LEGACY_APP_URL = pathToFileURL(path.join(ROOT, "app/crm/legacy-app.js")).href;
+// The real, unpatched Date - captured once, at module load, before any call
+// below might replace globalThis.Date with a FixedDate. Needed so a later
+// call made *without* fixedNow can reliably restore the real clock, even
+// after an earlier call in the same file installed a fixed one (see the
+// fixedNow handling below).
+const RealDate = globalThis.Date;
+let importSequence = 0;
 
+// Runs the real app/crm/legacy-app.js (an ES module, since the app.js ->
+// ESM move) via a real dynamic import() and returns a wrapper exposing its
+// exports, so tests can call its real functions (buildSeedFromSpreadsheet,
+// etc.) instead of a reimplementation.
+//
+// Before that move, this ran app.js as text through `vm.Script` in an
+// isolated context - genuinely isolated from both the real Node globals and
+// every other call's context. Now that the module has real `export`
+// statements, `vm.Script` can't run it at all (export is a syntax error
+// outside module context), and a real ES module can only be loaded through
+// real module machinery (import()), which resolves against Node's single,
+// process-wide module cache and the real globalThis - not an isolated
+// context. This function reconstructs the properties the old isolation
+// gave tests, deliberately, rather than pretending nothing changed:
+//
+//  - Fresh module state per call: dynamic import() caches by the exact
+//    resolved specifier, so importing the same path twice returns the SAME
+//    module instance (same `state` object, same already-true `initialized`
+//    guard) - wrong for tests/render-snapshots.test.mjs, which loads a
+//    fresh sandbox per case specifically so no case's state can leak into
+//    another's. Fixed by appending a `?t=<counter>` cache-busting query
+//    string to the specifier on every call, forcing a full re-evaluation
+//    each time. (tests/ts-extensionless-loader.mjs, the loader hook already
+//    registered for every test run, passes non-relative specifiers - this
+//    one included - straight through to Node's default resolver, which
+//    handles the query string correctly: same file on disk, distinct cache
+//    entry.)
+//  - document/window/localStorage/fetch: legacy-app.js's functions
+//    reference these as bare identifiers, which - now that the module runs
+//    in the real Node realm instead of a vm context - resolve against the
+//    real process-wide `globalThis`, not a per-call sandbox object. So
+//    this installs the same stubs used before directly onto `globalThis`
+//    before importing, and initCrmApp() (called immediately after import -
+//    see below) reads them from there. This is real, shared, mutable
+//    state: the stubs installed by the MOST RECENT call are what every
+//    sandbox's functions see if called afterward, regardless of which
+//    call's wrapper object they were reached through. This is safe under
+//    this suite's actual usage (node:test runs tests within one file
+//    sequentially - see docs/testing.md - and no test file interleaves
+//    calls to two different loadAppJsSandbox() results), but it is a real
+//    behavior change from vm's per-context isolation and would matter if a
+//    future test tried to hold two sandboxes "live" at once.
+//  - fixedNow (optional, unchanged meaning): when passed, `new Date()` (no
+//    args) and `Date.now()` inside the module resolve to that exact instant
+//    instead of the real clock - required by build-dataset-from-tables.e2e,
+//    which pins both the client-side seed's "now" and
+//    buildDatasetFromTables()'s "now" to the same instant so
+//    summary.asOf/overdue/dueNext14Days aren't polluted by a frozen-vs-live
+//    day-boundary artifact (see lib/mailing-rules.ts's module comment).
+//    Every call sets globalThis.Date explicitly - to a FixedDate when
+//    fixedNow is given, back to the real Date otherwise - so one call's
+//    fixedNow can never leak into a later call that didn't ask for it.
+//  - captureRenders (default false, opt-in): turns on two things
+//    tests/render-snapshots.test.mjs needs and nothing else uses -
+//    document.querySelector(selector)'s stub elements actually retain their
+//    innerHTML instead of discarding it (memoized by selector so the
+//    harness can read back what a given mount, e.g. '#viewMount', was last
+//    written to) and getCapturedHtml(selector) to read it. `state` is now a
+//    real named export (see legacy-app.js's export list) - no bridging
+//    hack needed to reach it, unlike the vm/const-scoping workaround this
+//    replaced.
+//
+// initCrmApp() (a real export, see legacy-app.js) is called here, once,
+// immediately after import - matching how the module used to run its own
+// initialization automatically at the bottom of the file when `vm.Script`
+// executed it top to bottom. window.EVERLETTER_SEED is left undefined in
+// this harness, so initCrmApp() -> initializeCrm() just writes a "could not
+// load" message into the stubbed #viewMount and returns, same as before.
+export async function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}) {
   const elementsBySelector = new Map();
 
   function makeStubElement() {
@@ -165,17 +201,12 @@ export function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}) {
     return elementsBySelector.get(selector);
   }
 
-  const sandbox = {
-    document: { querySelector: queryDocument, querySelectorAll: () => [] },
-    window: { EVERLETTER_SEED: undefined, location: { hash: "" } },
-    console,
-    localStorage: { getItem: () => null, setItem() {} },
-    fetch: async () => ({ ok: false, json: async () => ({}) }),
-    TextEncoder,
-  };
+  globalThis.document = { querySelector: queryDocument, querySelectorAll: () => [] };
+  globalThis.window = { EVERLETTER_SEED: undefined, location: { hash: "" } };
+  globalThis.localStorage = { getItem: () => null, setItem() {} };
+  globalThis.fetch = async () => ({ ok: false, json: async () => ({}) });
 
   if (fixedNow) {
-    const RealDate = Date;
     class FixedDate extends RealDate {
       constructor(...args) {
         if (args.length === 0) super(fixedNow.getTime());
@@ -185,15 +216,17 @@ export function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}) {
         return fixedNow.getTime();
       }
     }
-    sandbox.Date = FixedDate;
+    globalThis.Date = FixedDate;
+  } else {
+    globalThis.Date = RealDate;
   }
 
-  vm.createContext(sandbox);
-  new vm.Script(source, { filename: "public/app.js" }).runInContext(sandbox);
+  const mod = await import(`${LEGACY_APP_URL}?t=${importSequence++}`);
+  mod.initCrmApp();
 
-  if (captureRenders) {
-    sandbox.state = sandbox.__appState;
-    sandbox.getCapturedHtml = (selector) => elementsBySelector.get(selector)?.innerHTML ?? "";
-  }
-  return sandbox;
+  return {
+    ...mod,
+    window: globalThis.window,
+    getCapturedHtml: (selector) => elementsBySelector.get(selector)?.innerHTML ?? "",
+  };
 }

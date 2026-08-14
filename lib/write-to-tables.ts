@@ -128,7 +128,7 @@ export interface Seed {
   exceptions: SeedException[];
 }
 
-// Matches app.js's own plannedLetterCount() (public/app.js) for the three
+// Matches app.js's own plannedLetterCount() (app/crm/legacy-app.js) for the three
 // metered plans, plus One-time - which plannedLetterCount treats as its
 // "anything else" fallback of 1. "Needs Review"/unrecognized plans are not
 // in this table on purpose: they're not a real cadence to report a count

@@ -1,5 +1,6 @@
 import Script from "next/script";
 import { auth } from "@/auth";
+import CrmApp from "./crm/CrmApp";
 
 export const metadata = {
   title: "Everletter Ops CRM",
@@ -24,8 +25,8 @@ export default async function Home() {
       {/*
         data-user-role/data-user-email: not read anywhere yet. Future
         per-feature restrictions (still pending Marcy specifying what Ashley
-        should be restricted from) can read these off the DOM from app.js
-        without another server round trip.
+        should be restricted from) can read these off the DOM from
+        app/crm/legacy-app.js without another server round trip.
       */}
       <div className="ops-shell" data-user-role={session?.role ?? ""} data-user-email={session?.user?.email ?? ""}>
         <aside className="sidebar">
@@ -107,7 +108,7 @@ export default async function Home() {
 
       <Script src="/seed-data.js" strategy="beforeInteractive" />
       <Script src="/xlsx.full.min.js" strategy="beforeInteractive" />
-      <Script src="/app.js" strategy="afterInteractive" />
+      <CrmApp />
     </>
   );
 }

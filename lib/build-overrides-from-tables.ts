@@ -6,7 +6,7 @@
  *
  *  - componentOverrides: mailing_components isn't part of the Dataset shape
  *    at all (envelope/letter/artifact/insert/qa status - written by
- *    lib/write-to-tables.ts's writeComponentStatus). public/app.js's
+ *    lib/write-to-tables.ts's writeComponentStatus). app/crm/legacy-app.js's
  *    componentStatus() does `state.componentOverrides[componentKey(mailing,
  *    field)] || defaultComponentStatus(...)` - if this object comes back
  *    empty, every component silently reverts to its default, which is a
@@ -16,7 +16,7 @@
  *    the exceptions.reviewed column (summary.exceptionCount/
  *    missingShipDateCount need to keep counting reviewed ones too - see
  *    its module comment). Reviewed-state filtering has always happened
- *    client-side, in public/app.js's isExceptionReviewed()/
+ *    client-side, in app/crm/legacy-app.js's isExceptionReviewed()/
  *    activeExceptions(), against a separate `reviewed` key list - this
  *    module supplies that list from the exceptions.reviewed column
  *    directly, without touching buildExceptions()'s contract.

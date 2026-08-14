@@ -1,11 +1,11 @@
 /**
  * Canonical spec for the subscriber/recipient/subscription/mailing ids
  * app.js generates client-side (buildSubscriberId/buildRecipientId/
- * buildSubscriptionId/buildMailingId in public/app.js). app.js is a
- * non-bundled browser script and can't import this module - its own inline
- * copies of these functions remain the actual source of truth for what the
- * browser sends. This module exists so server-side write-to-tables code
- * has a tested, parseable spec to match against, instead of re-deriving
+ * buildSubscriptionId/buildMailingId in app/crm/legacy-app.js). app.js is a
+ * real ES module now (the app.js -> ESM move, see CLAUDE.md), but doesn't
+ * import this module - its own inline copies of these functions remain the
+ * actual source of truth for what the browser sends. This module exists so
+ * server-side write-to-tables code has a tested, parseable spec to match against, instead of re-deriving
  * the format ad hoc. tests/ids.test.mjs verifies this module's output is
  * identical to app.js's real functions for the same input.
  *
@@ -44,11 +44,12 @@
  * anything this dataset's size could produce.
  *
  * sha256Hex is a pure-JS, synchronous, dependency-free implementation
- * (FIPS 180-4): app.js is a non-bundled <script> with no crypto module,
- * and Web Crypto's subtle.digest is async-only, which doesn't fit these
- * functions' inline call sites during array-building. The literal same
- * implementation is vendored in both files (see the comment in
- * public/app.js's copy) so they stay in sync; tests/ids.test.mjs checks
+ * (FIPS 180-4): app.js runs in the browser, where Node's crypto module
+ * isn't available, and Web Crypto's subtle.digest is async-only, which
+ * doesn't fit these functions' inline call sites during array-building.
+ * The literal same implementation is vendored in both files (see the
+ * comment in app/crm/legacy-app.js's copy) so they stay in sync;
+ * tests/ids.test.mjs checks
  * output parity between the two, not source-text parity, since TS needs
  * type annotations JS doesn't have.
  */

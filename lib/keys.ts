@@ -1,14 +1,15 @@
 /**
  * Canonical spec for the override-status keys app.js generates client-side
- * (mailingKey/componentKey/exceptionReviewKey in public/app.js). app.js is a
- * non-bundled browser script and can't import this module - its own inline
- * copies of these functions remain the actual source of truth for what the
- * browser sends. This module exists so server-side write-to-tables code has a
- * tested, parseable spec to match incoming override keys against, instead of
+ * (mailingKey/componentKey/exceptionReviewKey in app/crm/legacy-app.js).
+ * app.js is a real ES module now (the app.js -> ESM move, see CLAUDE.md)
+ * but doesn't import this module - its own inline copies of these
+ * functions remain the actual source of truth for what the browser sends.
+ * This module exists so server-side write-to-tables code has a tested,
+ * parseable spec to match incoming override keys against, instead of
  * re-deriving the format ad hoc. tests/keys.test.mjs verifies this module's
  * output is identical to app.js's real functions for the same input.
  *
- * Key shapes (see public/app.js):
+ * Key shapes (see app/crm/legacy-app.js):
  *   mailingKey    = `${mailingId}::${sourceRow}`
  *   componentKey  = `${mailingId}::${sourceRow}::${field}`
  *   exceptionReviewKey = `${mailingId}::${subscriberId}::${reason}::${shipDate}`

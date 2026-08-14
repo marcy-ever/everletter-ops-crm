@@ -1,8 +1,11 @@
 ﻿const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
-const initialView = viewNames.has(window.location.hash.slice(1)) ? window.location.hash.slice(1) : 'queue';
 
+// activeView/reviewed/statusOverrides/componentOverrides start as inert
+// defaults here (module evaluation must stay side-effect-free - see
+// initCrmApp() at the bottom) and are set to their real, DOM/localStorage-
+// derived values by initCrmApp() before anything renders.
 const state = {
-  activeView: initialView,
+  activeView: 'queue',
   query: '',
   statusFilter: 'Open',
   batchFilter: 'next',
@@ -19,9 +22,9 @@ const state = {
   importStatus: '',
   importBusy: false,
   importInfo: null,
-  reviewed: loadReviewedExceptions(),
-  statusOverrides: loadStatusOverrides(),
-  componentOverrides: loadComponentOverrides(),
+  reviewed: new Set(),
+  statusOverrides: {},
+  componentOverrides: {},
   seed: null,
 };
 
@@ -96,38 +99,10 @@ const driveConfig = {
   },
 };
 
-const topbarMeta = document.querySelector('#topbarMeta');
-const metrics = document.querySelector('#metrics');
-const statusStrip = document.querySelector('#statusStrip');
-const viewMount = document.querySelector('#viewMount');
-const searchInput = document.querySelector('#searchInput');
-const statusFilter = document.querySelector('#statusFilter');
-const statusFilterWrap = document.querySelector('#statusFilterWrap');
-const batchFilter = document.querySelector('#batchFilter');
-const batchFilterWrap = document.querySelector('#batchFilterWrap');
-const pastBatchFilter = document.querySelector('#pastBatchFilter');
-const pastBatchFilterWrap = document.querySelector('#pastBatchFilterWrap');
-
-const printNavButton = document.querySelector('.side-nav [data-view="print"]');
-if (printNavButton && !document.querySelector('.side-nav [data-view="qa"]')) {
-  printNavButton.insertAdjacentHTML('afterend', '<button data-view="qa" type="button"><span>QA</span> Mailing QA</button>');
-}
-const qaNavButton = document.querySelector('.side-nav [data-view="qa"]');
-if (qaNavButton && !document.querySelector('.side-nav [data-view="packet"]')) {
-  qaNavButton.insertAdjacentHTML('afterend', '<button data-view="packet" type="button"><span>B</span> Batch Packet</button>');
-}
-const packetNavButton = document.querySelector('.side-nav [data-view="packet"]');
-if (packetNavButton && !document.querySelector('.side-nav [data-view="bins"]')) {
-  packetNavButton.insertAdjacentHTML('afterend', '<button data-view="bins" type="button"><span>N</span> Ashley Bins</button>');
-}
-const binsNavButton = document.querySelector('.side-nav [data-view="bins"]');
-if (binsNavButton && !document.querySelector('.side-nav [data-view="launch"]')) {
-  binsNavButton.insertAdjacentHTML('afterend', '<button data-view="launch" type="button"><span>L</span> Launch Plan</button>');
-}
-const subscriberNavButton = document.querySelector('.side-nav [data-view="subscribers"]');
-if (subscriberNavButton && !document.querySelector('.side-nav [data-view="samples"]')) {
-  subscriberNavButton.insertAdjacentHTML('afterend', '<button data-view="samples" type="button"><span>@</span> Sample Requests</button>');
-}
+// Assigned by initCrmApp() (module evaluation must stay side-effect-free -
+// see that function at the bottom). Declared here, at module scope, because
+// every render function below closes over these same bindings by name.
+let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -314,8 +289,8 @@ function slug(value) {
     .replace(/^-|-$/g, '') || 'unknown';
 }
 
-// Pure-JS, synchronous, dependency-free SHA-256 (FIPS 180-4). app.js is a
-// non-bundled <script> - no crypto module, and Web Crypto's subtle.digest
+// Pure-JS, synchronous, dependency-free SHA-256 (FIPS 180-4). app.js runs
+// in the browser - no Node crypto module, and Web Crypto's subtle.digest
 // is async-only, which doesn't fit these functions' inline call sites. The
 // literal same implementation is vendored in lib/ids.ts so the two stay in
 // sync; tests/ids.test.mjs checks output parity, not source-text parity
@@ -3030,36 +3005,6 @@ function render() {
   renderView();
 }
 
-document.querySelectorAll('.side-nav button').forEach((button) => {
-  button.addEventListener('click', () => {
-    state.activeView = button.getAttribute('data-view');
-    window.location.hash = state.activeView;
-    renderView();
-  });
-});
-
-searchInput.addEventListener('input', (event) => {
-  state.query = event.target.value;
-  renderView();
-});
-
-statusFilter.addEventListener('change', (event) => {
-  state.statusFilter = event.target.value;
-  renderView();
-});
-
-batchFilter.addEventListener('change', (event) => {
-  state.batchFilter = event.target.value;
-  render();
-});
-
-pastBatchFilter.addEventListener('change', (event) => {
-  if (!event.target.value) return;
-  state.batchFilter = event.target.value;
-  state.statusFilter = 'All';
-  render();
-});
-
 async function initializeCrm() {
   if (window.EVERLETTER_SEED) {
     state.seed = window.EVERLETTER_SEED;
@@ -3070,4 +3015,109 @@ async function initializeCrm() {
   }
 }
 
-initializeCrm();
+// Everything below touches document/window/localStorage, so none of it can
+// run at module-evaluation time (a "use client" module is still evaluated
+// on the server during SSR, where none of those exist - see app/crm/CrmApp.tsx).
+// This is the one function callers invoke, from a browser-only effect, to
+// actually start the app; importing this module does nothing observable on
+// its own. Guarded so a second call (e.g. React StrictMode's double-invoked
+// effect in development) is a safe no-op rather than double-binding every
+// listener below and re-running the nav injection.
+let initialized = false;
+function initCrmApp() {
+  if (initialized) return;
+  initialized = true;
+
+  const hashView = window.location.hash.slice(1);
+  state.activeView = viewNames.has(hashView) ? hashView : 'queue';
+  state.reviewed = loadReviewedExceptions();
+  state.statusOverrides = loadStatusOverrides();
+  state.componentOverrides = loadComponentOverrides();
+
+  topbarMeta = document.querySelector('#topbarMeta');
+  metrics = document.querySelector('#metrics');
+  statusStrip = document.querySelector('#statusStrip');
+  viewMount = document.querySelector('#viewMount');
+  searchInput = document.querySelector('#searchInput');
+  statusFilter = document.querySelector('#statusFilter');
+  statusFilterWrap = document.querySelector('#statusFilterWrap');
+  batchFilter = document.querySelector('#batchFilter');
+  batchFilterWrap = document.querySelector('#batchFilterWrap');
+  pastBatchFilter = document.querySelector('#pastBatchFilter');
+  pastBatchFilterWrap = document.querySelector('#pastBatchFilterWrap');
+
+  const printNavButton = document.querySelector('.side-nav [data-view="print"]');
+  if (printNavButton && !document.querySelector('.side-nav [data-view="qa"]')) {
+    printNavButton.insertAdjacentHTML('afterend', '<button data-view="qa" type="button"><span>QA</span> Mailing QA</button>');
+  }
+  const qaNavButton = document.querySelector('.side-nav [data-view="qa"]');
+  if (qaNavButton && !document.querySelector('.side-nav [data-view="packet"]')) {
+    qaNavButton.insertAdjacentHTML('afterend', '<button data-view="packet" type="button"><span>B</span> Batch Packet</button>');
+  }
+  const packetNavButton = document.querySelector('.side-nav [data-view="packet"]');
+  if (packetNavButton && !document.querySelector('.side-nav [data-view="bins"]')) {
+    packetNavButton.insertAdjacentHTML('afterend', '<button data-view="bins" type="button"><span>N</span> Ashley Bins</button>');
+  }
+  const binsNavButton = document.querySelector('.side-nav [data-view="bins"]');
+  if (binsNavButton && !document.querySelector('.side-nav [data-view="launch"]')) {
+    binsNavButton.insertAdjacentHTML('afterend', '<button data-view="launch" type="button"><span>L</span> Launch Plan</button>');
+  }
+  const subscriberNavButton = document.querySelector('.side-nav [data-view="subscribers"]');
+  if (subscriberNavButton && !document.querySelector('.side-nav [data-view="samples"]')) {
+    subscriberNavButton.insertAdjacentHTML('afterend', '<button data-view="samples" type="button"><span>@</span> Sample Requests</button>');
+  }
+
+  document.querySelectorAll('.side-nav button').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.activeView = button.getAttribute('data-view');
+      window.location.hash = state.activeView;
+      renderView();
+    });
+  });
+
+  searchInput.addEventListener('input', (event) => {
+    state.query = event.target.value;
+    renderView();
+  });
+
+  statusFilter.addEventListener('change', (event) => {
+    state.statusFilter = event.target.value;
+    renderView();
+  });
+
+  batchFilter.addEventListener('change', (event) => {
+    state.batchFilter = event.target.value;
+    render();
+  });
+
+  pastBatchFilter.addEventListener('change', (event) => {
+    if (!event.target.value) return;
+    state.batchFilter = event.target.value;
+    state.statusFilter = 'All';
+    render();
+  });
+
+  initializeCrm();
+}
+
+export {
+  state,
+  initCrmApp,
+  renderView,
+  render,
+  buildSeedFromSpreadsheet,
+  isOpenStatus,
+  isOverdueMailing,
+  isDueNext14Days,
+  nearestBatchDate,
+  daysBetween,
+  monthKey,
+  todayIso,
+  mailingKey,
+  componentKey,
+  exceptionReviewKey,
+  buildSubscriberId,
+  buildRecipientId,
+  buildSubscriptionId,
+  buildMailingId,
+};

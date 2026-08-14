@@ -34,7 +34,7 @@ export async function GET() {
     // directly from the mailings table (writeMailingStatus writes there
     // directly, and that write is load-bearing, not an override), so
     // there's nothing left for a separate override map to contribute -
-    // public/app.js's effectiveMailing() falls through to mailing.status
+    // app/crm/legacy-app.js's effectiveMailing() falls through to mailing.status
     // when there's no override, which is exactly the already-current value.
     const db = getDb();
     const [dataset, componentOverrides, reviewed] = await Promise.all([
