@@ -8,63 +8,53 @@ import {
   parseComponentKey,
   parseExceptionReviewKey,
 } from "../lib/keys.ts";
-import { loadAppJsSandbox } from "./e2e-helpers.mjs";
 
-// Runs the real app/crm/legacy-app.js so its actual
-// mailingKey/componentKey/exceptionReviewKey functions can be called
-// directly - lib/keys.ts is only trustworthy as a spec if it's verified
-// against the real thing, not just eyeballed for a match. Same
-// loadAppJsSandbox() as tests/ids.test.mjs - see its own comment in
-// tests/e2e-helpers.mjs.
-const appJs = await loadAppJsSandbox();
+// Format-locking tests, not parity tests - see tests/ids.test.mjs's module
+// comment for why (same reasoning, same step 3a change: app/crm/legacy-app.js
+// now imports lib/keys.ts directly instead of keeping a mirrored copy).
+//
+// Every literal value below was captured by running the pre-refactor
+// lib/keys.ts (byte-identical to app.js's own copy at the time) over these
+// exact sample inputs, before any implementation code in this change was
+// touched.
 
-test("app.js sandbox actually exposes the real key functions (sanity check)", () => {
-  assert.equal(typeof appJs.mailingKey, "function");
-  assert.equal(typeof appJs.componentKey, "function");
-  assert.equal(typeof appJs.exceptionReviewKey, "function");
-});
-
-test("mailingKey matches app.js's real mailingKey for sample data", () => {
+test("mailingKey produces the documented mailingId::sourceRow shape for sample data", () => {
   const samples = [
-    { mailingId: "MAIL-ABC123", sourceRow: 5 },
-    { mailingId: "MAIL-XYZ-789", sourceRow: "12" },
-    { mailingId: "MAIL-EDGE", sourceRow: 0 },
+    [{ mailingId: "MAIL-ABC123", sourceRow: 5 }, "MAIL-ABC123::5"],
+    [{ mailingId: "MAIL-XYZ-789", sourceRow: "12" }, "MAIL-XYZ-789::12"],
+    [{ mailingId: "MAIL-EDGE", sourceRow: 0 }, "MAIL-EDGE::0"],
   ];
-  for (const mailing of samples) {
-    assert.equal(mailingKey(mailing), appJs.mailingKey(mailing));
+  for (const [mailing, expected] of samples) {
+    assert.equal(mailingKey(mailing), expected);
   }
 });
 
-test("componentKey matches app.js's real componentKey for sample data", () => {
+test("componentKey produces the documented mailingId::sourceRow::field shape for sample data", () => {
   const mailing = { mailingId: "MAIL-ABC123", sourceRow: 5 };
-  const fields = ["envelope", "letter", "artifact", "insert", "location", "payment", "qa"];
-  for (const field of fields) {
-    assert.equal(componentKey(mailing, field), appJs.componentKey(mailing, field));
-  }
-});
-
-test("exceptionReviewKey matches app.js's real exceptionReviewKey for sample data", () => {
   const samples = [
-    { mailingId: "MAIL-1", subscriberId: "SUB-1", reason: "Missing ship date", shipDate: "2026-01-15" },
-    { mailingId: "MAIL-2", subscriberId: "SUB-2", reason: "Missing recipient; Missing address", shipDate: "" },
-    {},
-    { mailingId: "MAIL-3" },
+    ["envelope", "MAIL-ABC123::5::envelope"],
+    ["letter", "MAIL-ABC123::5::letter"],
+    ["artifact", "MAIL-ABC123::5::artifact"],
+    ["insert", "MAIL-ABC123::5::insert"],
+    ["location", "MAIL-ABC123::5::location"],
+    ["payment", "MAIL-ABC123::5::payment"],
+    ["qa", "MAIL-ABC123::5::qa"],
   ];
-  for (const item of samples) {
-    assert.equal(exceptionReviewKey(item), appJs.exceptionReviewKey(item));
+  for (const [field, expected] of samples) {
+    assert.equal(componentKey(mailing, field), expected);
   }
 });
 
-test("mailingKey produces the documented mailingId::sourceRow shape", () => {
-  assert.equal(mailingKey({ mailingId: "MAIL-A", sourceRow: 7 }), "MAIL-A::7");
-});
-
-test("componentKey produces the documented mailingId::sourceRow::field shape", () => {
-  assert.equal(componentKey({ mailingId: "MAIL-A", sourceRow: 7 }, "envelope"), "MAIL-A::7::envelope");
-});
-
-test("exceptionReviewKey falls back to placeholder strings for missing fields", () => {
-  assert.equal(exceptionReviewKey({}), "unknown-mailing::unknown-subscriber::unknown-reason::no-ship-date");
+test("exceptionReviewKey produces the documented shape, including placeholder fallbacks, for sample data", () => {
+  const samples = [
+    [{ mailingId: "MAIL-1", subscriberId: "SUB-1", reason: "Missing ship date", shipDate: "2026-01-15" }, "MAIL-1::SUB-1::Missing ship date::2026-01-15"],
+    [{ mailingId: "MAIL-2", subscriberId: "SUB-2", reason: "Missing recipient; Missing address", shipDate: "" }, "MAIL-2::SUB-2::Missing recipient; Missing address::no-ship-date"],
+    [{}, "unknown-mailing::unknown-subscriber::unknown-reason::no-ship-date"],
+    [{ mailingId: "MAIL-3" }, "MAIL-3::unknown-subscriber::unknown-reason::no-ship-date"],
+  ];
+  for (const [item, expected] of samples) {
+    assert.equal(exceptionReviewKey(item), expected);
+  }
 });
 
 test("parseMailingKey round-trips a well-formed key", () => {

@@ -1,4 +1,16 @@
-﻿const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
+﻿// Single shared implementation of id/key generation and mailing business
+// rules, also used server-side (lib/write-to-tables.ts,
+// lib/build-dataset-from-tables.ts) - see each module's own header. Step 3a
+// of the app.js decomposition plan (CLAUDE.md); these used to be mirrored,
+// hand-synced inline copies, kept honest only by tests that booted the app
+// in a sandbox and diffed its output against the lib/ versions. That's gone
+// now that this file can import real TypeScript modules (the app.js -> ESM
+// move, step 2) - one implementation, imported here instead of duplicated.
+import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from '@/lib/ids';
+import { mailingKey, componentKey, exceptionReviewKey } from '@/lib/keys';
+import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from '@/lib/mailing-rules';
+
+const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
 
 // activeView/reviewed/statusOverrides/componentOverrides start as inert
 // defaults here (module evaluation must stay side-effect-free - see
@@ -28,27 +40,7 @@ const state = {
   seed: null,
 };
 
-const openStatuses = new Set(['To Prepare', 'Printing', 'Assembling', 'Ready to Mail']);
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
-
-// Shared with lib/mailing-rules.ts (tests/mailing-rules.test.mjs verifies
-// that copy matches these real functions exactly - see the comment there
-// for why app.js can't import it directly). Extracted so this logic has one
-// definition instead of being reimplemented ad hoc anywhere else that needs
-// it - the same reasoning behind extracting buildSubscriberId/mailingKey/etc.
-function isOpenStatus(status) {
-  return openStatuses.has(status);
-}
-
-function isOverdueMailing(mailing, today) {
-  return mailing.activeState === 'Active' && isOpenStatus(mailing.status) && !!mailing.shipDate && mailing.shipDate < today;
-}
-
-function isDueNext14Days(mailing, today) {
-  if (mailing.activeState !== 'Active' || !isOpenStatus(mailing.status) || !mailing.shipDate) return false;
-  const delta = daysBetween(today, mailing.shipDate);
-  return delta >= 0 && delta <= 14;
-}
 const qaFields = [
   { key: 'payment', label: 'Payment', options: ['Active', 'Needs Check', 'CC Failed', 'Paused'] },
   { key: 'envelope', label: 'Envelope', options: ['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'] },
@@ -221,29 +213,12 @@ function saveReviewedExceptions() {
   localStorage.setItem('everletterReviewedExceptions', JSON.stringify(Array.from(state.reviewed)));
 }
 
-function mailingKey(mailing) {
-  return `${mailing.mailingId}::${mailing.sourceRow}`;
-}
-
-function exceptionReviewKey(item) {
-  return [
-    item.mailingId || 'unknown-mailing',
-    item.subscriberId || 'unknown-subscriber',
-    item.reason || 'unknown-reason',
-    item.shipDate || 'no-ship-date',
-  ].join('::');
-}
-
 function isExceptionReviewed(item) {
   return state.reviewed.has(exceptionReviewKey(item)) || state.reviewed.has(item.exceptionId);
 }
 
 function activeExceptions() {
   return state.seed.exceptions.filter((item) => !isExceptionReviewed(item));
-}
-
-function componentKey(mailing, field) {
-  return `${mailingKey(mailing)}::${field}`;
 }
 
 function effectiveMailing(mailing) {
@@ -278,122 +253,6 @@ function mailingMonthKey(mailing) {
 
 function envelopeQuantityForMailing(mailing) {
   return mailing.plan === 'Month-to-month' ? 2 : 1;
-}
-
-function slug(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || 'unknown';
-}
-
-// Pure-JS, synchronous, dependency-free SHA-256 (FIPS 180-4). app.js runs
-// in the browser - no Node crypto module, and Web Crypto's subtle.digest
-// is async-only, which doesn't fit these functions' inline call sites. The
-// literal same implementation is vendored in lib/ids.ts so the two stay in
-// sync; tests/ids.test.mjs checks output parity, not source-text parity
-// (TS needs type annotations JS doesn't have), so this copy is the actual
-// source of truth for what ships to the browser. Verified against Node's
-// crypto.createHash('sha256') for empty/short/block-boundary (55-65 byte)/
-// long/unicode inputs before being embedded here.
-function sha256Hex(message) {
-  const bytes = new TextEncoder().encode(message);
-
-  const K = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-  ];
-
-  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
-  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
-
-  const bitLen = bytes.length * 8;
-  const withOne = bytes.length + 1;
-  const padLen = ((withOne + 8 + 63) & ~63) - withOne - 8;
-  const total = withOne + padLen + 8;
-  const buf = new Uint8Array(total);
-  buf.set(bytes);
-  buf[bytes.length] = 0x80;
-  const hi = Math.floor(bitLen / 0x100000000);
-  const lo = bitLen >>> 0;
-  buf[total - 8] = (hi >>> 24) & 0xff;
-  buf[total - 7] = (hi >>> 16) & 0xff;
-  buf[total - 6] = (hi >>> 8) & 0xff;
-  buf[total - 5] = hi & 0xff;
-  buf[total - 4] = (lo >>> 24) & 0xff;
-  buf[total - 3] = (lo >>> 16) & 0xff;
-  buf[total - 2] = (lo >>> 8) & 0xff;
-  buf[total - 1] = lo & 0xff;
-
-  const w = new Uint32Array(64);
-  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
-
-  for (let offset = 0; offset < total; offset += 64) {
-    for (let i = 0; i < 16; i++) {
-      const j = offset + i * 4;
-      w[i] = (buf[j] << 24) | (buf[j + 1] << 16) | (buf[j + 2] << 8) | buf[j + 3];
-    }
-    for (let i = 16; i < 64; i++) {
-      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
-      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
-      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
-    }
-
-    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
-    for (let i = 0; i < 64; i++) {
-      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-      const ch = (e & f) ^ (~e & g);
-      const temp1 = (h + S1 + ch + K[i] + w[i]) | 0;
-      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-      const maj = (a & b) ^ (a & c) ^ (b & c);
-      const temp2 = (S0 + maj) | 0;
-      h = g; g = f; f = e; e = (d + temp1) | 0;
-      d = c; c = b; b = a; a = (temp1 + temp2) | 0;
-    }
-
-    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
-    h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + h) | 0;
-  }
-
-  const toHex = (n) => (n >>> 0).toString(16).padStart(8, '0');
-  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4) + toHex(h5) + toHex(h6) + toHex(h7);
-}
-
-const ID_HASH_LENGTH = 24;
-
-// Identity for subscribers/recipients/subscriptions/mailings, shared with
-// lib/ids.ts (tests/ids.test.mjs verifies that copy matches these real
-// functions exactly - see the history comment there for why these hash
-// their inputs instead of embedding them raw, and why app.js can't import
-// lib/ids.ts directly). Each combines the exact same fields as before -
-// only the encoding of the result changed, from raw slugged text to a
-// truncated SHA-256 hex digest of that same text, so grouping/dedup
-// behavior (case-insensitive, diacritic-insensitive, same fields) is
-// unchanged.
-function buildSubscriberId({ email, recipientName, address }) {
-  const subscriberKey = email || `${slug(recipientName)}-${slug(address)}`;
-  return `SUB-${sha256Hex(slug(subscriberKey)).slice(0, ID_HASH_LENGTH).toUpperCase()}`;
-}
-
-function buildRecipientId({ subscriberId, recipientName, address }) {
-  const recipientKey = `${subscriberId}-${slug(recipientName)}-${slug(address)}`;
-  return `REC-${sha256Hex(slug(recipientKey)).slice(0, ID_HASH_LENGTH).toUpperCase()}`;
-}
-
-function buildSubscriptionId({ recipientId, character, plan }) {
-  return `PLAN-${sha256Hex(slug(`${recipientId}-${character}-${plan}`)).slice(0, ID_HASH_LENGTH).toUpperCase()}`;
-}
-
-function buildMailingId({ orderId, recipientId, character, letterNumber, sourceRow }) {
-  return `MAIL-${sha256Hex(slug(`${orderId}-${recipientId}-${character}-${letterNumber || sourceRow}`)).slice(0, ID_HASH_LENGTH).toUpperCase()}`;
 }
 
 function compactOrderNumber(value) {
@@ -507,32 +366,6 @@ function normalizeStatus(value) {
   return raw;
 }
 
-function monthKey(dateValue) {
-  return dateValue ? String(dateValue).slice(0, 7) : '';
-}
-
-function nearestBatchDate(dateValue) {
-  if (!dateValue) return '';
-  const date = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return '';
-  const day = date.getDate();
-  if (day === 1 || day === 15) return dateValue;
-  if (day < 8) date.setDate(1);
-  else if (day < 23) date.setDate(15);
-  else {
-    date.setMonth(date.getMonth() + 1);
-    date.setDate(1);
-  }
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
-
-function daysBetween(startIso, endIso) {
-  const start = new Date(`${startIso}T00:00:00`);
-  const end = new Date(`${endIso}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  return Math.round((end.getTime() - start.getTime()) / 86400000);
-}
-
 function defaultAutomationRules() {
   return window.EVERLETTER_SEED?.automationRules || state.seed?.automationRules || [];
 }
@@ -549,7 +382,7 @@ function spreadsheetExceptionReasons(row, activeState) {
     const day = Number(row.shipDate.slice(-2));
     if (![1, 15].includes(day)) reasons.push('Ship date is not a 1st/15th batch');
   }
-  if (activeState === 'Active' && row.status === 'Mailed' && row.shipDate && row.shipDate > todayIso()) {
+  if (activeState === 'Active' && row.status === 'Mailed' && row.shipDate && row.shipDate > todayIso(new Date())) {
     reasons.push('Future mailing already marked mailed');
   }
   return reasons;
@@ -591,7 +424,7 @@ function buildSeedFromSpreadsheet(rows, sourceName) {
   const subscriptions = new Map();
   const mailings = [];
   const exceptions = [];
-  const today = todayIso();
+  const today = todayIso(new Date());
 
   normalizedRows.forEach((row) => {
     const subscriberId = buildSubscriberId({ email: row.email, recipientName: row.recipientName, address: row.address });
@@ -780,14 +613,8 @@ function updateEnvelopeStatus(mailing, status) {
   monthlyEnvelopeTargets(mailing).forEach((target) => updateComponentStatus(target, 'envelope', status));
 }
 
-function todayIso() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
-
 function availableBatchDates() {
-  const today = todayIso();
+  const today = todayIso(new Date());
   const dates = Array.from(new Set(
     effectiveMailings()
       .filter((mailing) => mailing.activeState === 'Active' && isOpenStatus(mailing.status) && mailing.shipDate && mailing.shipDate >= today)
@@ -797,7 +624,7 @@ function availableBatchDates() {
 }
 
 function pastBatchDates() {
-  const today = todayIso();
+  const today = todayIso(new Date());
   return Array.from(new Set(
     effectiveMailings()
       .filter((mailing) => mailing.activeState === 'Active' && mailing.shipDate && mailing.shipDate < today)
@@ -806,7 +633,7 @@ function pastBatchDates() {
 }
 
 function nextBatchDate() {
-  const today = todayIso();
+  const today = todayIso(new Date());
   const upcoming = availableBatchDates().find((date) => date >= today);
   return upcoming || availableBatchDates()[0] || '';
 }
@@ -2561,7 +2388,7 @@ function binMobileCard(mailing) {
 }
 
 function renderLaunch() {
-  const today = todayIso();
+  const today = todayIso(new Date());
   const batchDate = nextBatchDate();
   const rows = packetRows();
   const problemRows = packetProblemRows(rows);
@@ -3106,18 +2933,4 @@ export {
   renderView,
   render,
   buildSeedFromSpreadsheet,
-  isOpenStatus,
-  isOverdueMailing,
-  isDueNext14Days,
-  nearestBatchDate,
-  daysBetween,
-  monthKey,
-  todayIso,
-  mailingKey,
-  componentKey,
-  exceptionReviewKey,
-  buildSubscriberId,
-  buildRecipientId,
-  buildSubscriptionId,
-  buildMailingId,
 };

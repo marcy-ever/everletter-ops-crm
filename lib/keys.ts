@@ -1,15 +1,17 @@
 /**
- * Canonical spec for the override-status keys app.js generates client-side
- * (mailingKey/componentKey/exceptionReviewKey in app/crm/legacy-app.js).
- * app.js is a real ES module now (the app.js -> ESM move, see CLAUDE.md)
- * but doesn't import this module - its own inline copies of these
- * functions remain the actual source of truth for what the browser sends.
- * This module exists so server-side write-to-tables code has a tested,
- * parseable spec to match incoming override keys against, instead of
- * re-deriving the format ad hoc. tests/keys.test.mjs verifies this module's
- * output is identical to app.js's real functions for the same input.
+ * Generates and parses the override-status keys (mailingKey/componentKey/
+ * exceptionReviewKey) that key mailingStatus/componentStatus/
+ * reviewedException overrides. The single implementation, imported both
+ * client-side (app/crm/legacy-app.js, which generates these keys) and
+ * server-side (lib/write-to-tables.ts, which parses incoming keys to match
+ * them against normalized rows - the generating side has no need for the
+ * parse* functions below, so it only imports the generators).
+ * tests/keys.test.mjs locks the exact key format for a fixed set of sample
+ * inputs - a drifted format here would orphan real override rows already
+ * keyed by the old format, so that test asserts literal values, not just
+ * "looks reasonable."
  *
- * Key shapes (see app/crm/legacy-app.js):
+ * Key shapes:
  *   mailingKey    = `${mailingId}::${sourceRow}`
  *   componentKey  = `${mailingId}::${sourceRow}::${field}`
  *   exceptionReviewKey = `${mailingId}::${subscriberId}::${reason}::${shipDate}`

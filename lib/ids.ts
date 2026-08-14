@@ -1,13 +1,13 @@
 /**
- * Canonical spec for the subscriber/recipient/subscription/mailing ids
- * app.js generates client-side (buildSubscriberId/buildRecipientId/
- * buildSubscriptionId/buildMailingId in app/crm/legacy-app.js). app.js is a
- * real ES module now (the app.js -> ESM move, see CLAUDE.md), but doesn't
- * import this module - its own inline copies of these functions remain the
- * actual source of truth for what the browser sends. This module exists so
- * server-side write-to-tables code has a tested, parseable spec to match against, instead of re-deriving
- * the format ad hoc. tests/ids.test.mjs verifies this module's output is
- * identical to app.js's real functions for the same input.
+ * Generates the subscriber/recipient/subscription/mailing ids
+ * (buildSubscriberId/buildRecipientId/buildSubscriptionId/buildMailingId).
+ * The single implementation, imported both client-side
+ * (app/crm/legacy-app.js, where these ids are first generated from an
+ * uploaded spreadsheet) and server-side (lib/write-to-tables.ts, to derive
+ * the same ids when writing normalized rows). tests/ids.test.mjs locks the
+ * exact output format for a fixed set of sample inputs - a drifted format
+ * here would orphan real override rows already keyed by the old format, so
+ * that test asserts literal values, not just "looks reasonable."
  *
  * Each id is a hash of its input, not the raw input text, and each layer's
  * id is built from a hash of the layer below rather than re-embedding that
@@ -44,14 +44,11 @@
  * anything this dataset's size could produce.
  *
  * sha256Hex is a pure-JS, synchronous, dependency-free implementation
- * (FIPS 180-4): app.js runs in the browser, where Node's crypto module
- * isn't available, and Web Crypto's subtle.digest is async-only, which
- * doesn't fit these functions' inline call sites during array-building.
- * The literal same implementation is vendored in both files (see the
- * comment in app/crm/legacy-app.js's copy) so they stay in sync;
- * tests/ids.test.mjs checks
- * output parity between the two, not source-text parity, since TS needs
- * type annotations JS doesn't have.
+ * (FIPS 180-4), not Node's crypto module or Web Crypto's subtle.digest:
+ * this module runs in the browser (via app/crm/legacy-app.js) as well as
+ * on the server, where Node's crypto module isn't available, and
+ * subtle.digest is async-only, which doesn't fit these functions' inline
+ * call sites during array-building.
  */
 
 function slug(value: string | null | undefined): string {
