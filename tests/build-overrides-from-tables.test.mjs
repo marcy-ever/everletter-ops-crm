@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildComponentOverrides, buildReviewedExceptionKeys } from "../lib/build-overrides-from-tables.ts";
-import { componentKey, exceptionReviewKey } from "../lib/keys.ts";
+import { componentKey, exceptionReviewKey } from "../lib/domain/keys.ts";
 
 test("buildComponentOverrides: keys each row using the real componentKey() format (mailingId::sourceRow::field)", () => {
   const rows = [

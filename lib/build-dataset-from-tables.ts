@@ -90,8 +90,8 @@ import { subscriptions } from "../db/schema/subscriptions";
 import { orders } from "../db/schema/orders";
 import { mailings } from "../db/schema/mailings";
 import { exceptions } from "../db/schema/exceptions";
-import { buildRecipientId } from "./ids";
-import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from "./mailing-rules";
+import { buildRecipientId } from "./domain/ids";
+import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from "./domain/mailing-rules";
 
 export type SubscriberRow = typeof subscribers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;

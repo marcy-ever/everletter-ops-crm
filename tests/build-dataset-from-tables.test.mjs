@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildRecipientId } from "../lib/ids.ts";
+import { buildRecipientId } from "../lib/domain/ids.ts";
 import {
   buildMailings,
   buildRecipients,

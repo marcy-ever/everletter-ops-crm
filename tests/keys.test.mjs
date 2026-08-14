@@ -7,7 +7,7 @@ import {
   parseMailingKey,
   parseComponentKey,
   parseExceptionReviewKey,
-} from "../lib/keys.ts";
+} from "../lib/domain/keys.ts";
 
 // Format-locking tests, not parity tests - see tests/ids.test.mjs's module
 // comment for why (same reasoning, same step 3a change: app/crm/legacy-app.js

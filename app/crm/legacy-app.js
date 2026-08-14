@@ -6,9 +6,9 @@
 // in a sandbox and diffed its output against the lib/ versions. That's gone
 // now that this file can import real TypeScript modules (the app.js -> ESM
 // move, step 2) - one implementation, imported here instead of duplicated.
-import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from '@/lib/ids';
-import { mailingKey, componentKey, exceptionReviewKey } from '@/lib/keys';
-import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from '@/lib/mailing-rules';
+import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from '@/lib/domain/ids';
+import { mailingKey, componentKey, exceptionReviewKey } from '@/lib/domain/keys';
+import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from '@/lib/domain/mailing-rules';
 
 const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
 

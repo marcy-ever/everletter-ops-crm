@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from "../lib/ids.ts";
+import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from "../lib/domain/ids.ts";
 
 // Format-locking tests, not parity tests. Until step 3a of the app.js
 // decomposition plan, this file booted a sandboxed app.js and diffed its
