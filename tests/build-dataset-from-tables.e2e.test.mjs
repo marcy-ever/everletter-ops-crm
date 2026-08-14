@@ -15,8 +15,8 @@
 //
 // Flow: parse the real spreadsheet through the REAL public/app.js
 // (sandboxed vm, same technique as tests/ids.test.mjs) to get the
-// client-computed seed -> write it through the REAL lib/dual-write.ts
-// dualWriteImport() into the real normalized tables -> call the REAL
+// client-computed seed -> write it through the REAL lib/write-to-tables.ts
+// writeImport() into the real normalized tables -> call the REAL
 // buildDatasetFromTables() to reconstruct a seed from those tables ->
 // deep-compare every field of every record in both, reporting every
 // discrepancy, not just the first.
@@ -33,7 +33,7 @@ import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables
 
 // Deep, key-based comparison rather than blind positional comparison: some
 // entities legitimately have fewer records in the reconstruction than in
-// app.js's original seed (rows lib/dual-write.ts skips - unrecognized
+// app.js's original seed (rows lib/write-to-tables.ts skips - unrecognized
 // plan, missing ship date, ambiguous stable id - see its module docstring
 // and lib/build-dataset-from-tables.ts's gap list). Positional comparison
 // would misreport every record after the first gap as "different" instead
@@ -88,12 +88,12 @@ function compareSummary(expected, actual, discrepancies) {
 // the full explanation of each) - none are guesses. Two real causes
 // produce nearly all of them:
 //  (a) 2 subscriptions have a blank/unrecognized Plan cell ("Needs
-//      Review"), which lib/dual-write.ts deliberately skips writing (it's
+//      Review"), which lib/write-to-tables.ts deliberately skips writing (it's
 //      already flagged by app.js's own exceptions) - cascades to 18
 //      ORD-MISSING-* orders, 18 mailings, and (newly found) 2 recipients
 //      whose only subscription was one of these two.
 //  (b) order ORD-2858 has letter number 4 entered on three separate rows
-//      - a genuine spreadsheet duplicate, not a bug - lib/dual-write.ts
+//      - a genuine spreadsheet duplicate, not a bug - lib/write-to-tables.ts
 //      correctly refuses to guess which one is real and skips all three.
 // notes, endDate, and mailings.activeState were closed (see
 // db/schema/mailings.ts's active/notes columns and
@@ -123,7 +123,7 @@ function isAllowedDiscrepancy(d) {
 }
 
 test("buildDatasetFromTables reconstructs the real spreadsheet identically to app.js's client-side seed", { skip: e2eSkipReason() }, async (t) => {
-  const { dualWriteImport } = await import("../lib/dual-write");
+  const { writeImport } = await import("../lib/write-to-tables");
   const { buildDatasetFromTables } = await import("../lib/build-dataset-from-tables");
   const { getDb } = await import("../db");
 
@@ -141,7 +141,7 @@ test("buildDatasetFromTables reconstructs the real spreadsheet identically to ap
   const clientSeed = appJs.buildSeedFromSpreadsheet(rows, sourceFile);
 
   await truncateAllTables(db);
-  await dualWriteImport(clientSeed, db);
+  await writeImport(clientSeed, db);
 
   const reconstructed = await buildDatasetFromTables(fixedNow, sourceFile);
 

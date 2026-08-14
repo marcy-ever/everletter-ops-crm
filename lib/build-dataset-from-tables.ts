@@ -8,7 +8,7 @@
  * are gone entirely - see docs/schema-design.md's Phase 2 notes for the
  * full history.
  *
- * lib/dual-write.ts writes every import into these tables; this module is
+ * lib/write-to-tables.ts writes every import into these tables; this module is
  * what reads them back. Composed from one
  * small, independently-testable builder function per output entity
  * (buildSubscribers/buildRecipients/buildOrders/buildSubscriptions/
@@ -30,13 +30,13 @@
  * Known, documented gaps - fields app.js's original seed has that the
  * normalized schema doesn't currently persist, or can only partially
  * recover. None of these are bugs in this module; each would need a
- * lib/dual-write.ts (write-path) change to close, which is explicitly out
+ * lib/write-to-tables.ts (write-path) change to close, which is explicitly out
  * of scope for this pass.
  *
  * (Previously this list also included subscriptions[].endDate,
  * mailings[].notes, and mailings[].activeState - all three were closed by
  * adding subscriptions.ended_at / mailings.active / mailings.notes columns
- * and having lib/dual-write.ts populate them, once this module's e2e
+ * and having lib/write-to-tables.ts populate them, once this module's e2e
  * parity test flagged mailings[].activeState as a real, if narrow,
  * correctness gap - see git history for that change.)
  *
@@ -48,7 +48,7 @@
  *    Would need a real column (e.g. on ingestion_events, which exists in
  *    the schema but nothing writes to yet) to close.
  *  - mailings[].orderDate: "" for a mailing whose order was skipped by
- *    lib/dual-write.ts (no resolvable/kept subscription at import time -
+ *    lib/write-to-tables.ts (no resolvable/kept subscription at import time -
  *    see runImport's orders loop). Doesn't manifest for orders backed by a
  *    kept subscription, which is the overwhelming common case.
  *  - subscribers[].status / subscribers[].firstOrderDate: app.js freezes
@@ -62,7 +62,7 @@
  *    app.js's frozen value when the source spreadsheet isn't ordered
  *    chronologically per subscriber - a real, if narrow, edge case.
  *  - exceptions[] for the "subscription-only fallback" case (the
- *    exception's mailing itself was skipped by lib/dual-write.ts, e.g. for
+ *    exception's mailing itself was skipped by lib/write-to-tables.ts, e.g. for
  *    a missing ship date - see docs/schema-design.md's dual-write notes):
  *    mailingId, shipDate, suggestedShipDate, status, and sourceRow can't
  *    be recovered (nothing links back to app.js's original mailingId for
@@ -73,10 +73,10 @@
  *    recoverable for this case (via subscriptionId) and are populated
  *    normally.
  *  - recipients[] omits any recipient whose EVERY subscription has an
- *    unrecognized plan (see LETTERS_BY_PLAN in lib/dual-write.ts) - since
+ *    unrecognized plan (see LETTERS_BY_PLAN in lib/write-to-tables.ts) - since
  *    recipients are derived by grouping the `subscriptions` table (there's
  *    no separate recipients table - see docs/schema-design.md), and
- *    lib/dual-write.ts never writes a subscription row for an
+ *    lib/write-to-tables.ts never writes a subscription row for an
  *    unrecognized plan at all, that recipient has nothing left to group
  *    from. app.js's own recipients list has no such gap - it's built per
  *    row regardless of plan validity, before any skip logic applies.
@@ -428,7 +428,7 @@ export function buildExceptions(
       }
 
       // Subscription-only fallback: the exception's mailing was skipped by
-      // lib/dual-write.ts, so mailingId/shipDate/suggestedShipDate/status/
+      // lib/write-to-tables.ts, so mailingId/shipDate/suggestedShipDate/status/
       // sourceRow can't be recovered - see module comment.
       return {
         exceptionId: `EX-DB-${e.id}`,

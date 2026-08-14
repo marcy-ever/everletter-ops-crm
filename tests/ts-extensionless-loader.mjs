@@ -6,7 +6,7 @@
 // type error there without allowImportingTsExtensions, which isn't and
 // shouldn't be enabled just to satisfy a test runner). This loader hook
 // bridges the two so tests can import real application .ts files (e.g.
-// lib/dual-write.ts, lib/build-dataset-from-tables.ts) directly instead of
+// lib/write-to-tables.ts, lib/build-dataset-from-tables.ts) directly instead of
 // needing a throwaway scratch copy with rewritten imports:
 //  - "@/x" is remapped to the repo root, same as tsconfig.json's paths.
 //  - a relative or remapped specifier with no extension that doesn't

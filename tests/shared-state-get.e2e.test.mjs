@@ -31,7 +31,7 @@ import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables
 
 test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status all round-trip correctly through the real POST/GET handlers", { skip: e2eSkipReason() }, async () => {
   const { POST, GET } = await import("../app/api/shared-state/route");
-  const { dualWriteImport } = await import("../lib/dual-write");
+  const { writeImport } = await import("../lib/write-to-tables");
   const { getDb } = await import("../db");
 
   const db = getDb();
@@ -41,7 +41,7 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   const appJs = loadAppJsSandbox();
   const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx");
 
-  await dualWriteImport(clientSeed, db);
+  await writeImport(clientSeed, db);
 
   async function post(body) {
     const response = await POST(new Request("http://localhost/api/shared-state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
@@ -54,7 +54,7 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   }
 
   // Two known, already-documented categories of mailing never survive
-  // dual-write (an unrecognized/"Needs Review" Plan cell, or the genuine
+  // write-to-tables (an unrecognized/"Needs Review" Plan cell, or the genuine
   // ORD-2858 spreadsheet duplicate - see lib/build-dataset-from-tables.ts's
   // module comment) - picking a target mailing at random risks landing on
   // one of those and testing a mailing GET can never see. Restrict to
@@ -69,8 +69,8 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
 
   // --- 2. reviewed exception ---
   // Same reasoning as survivingMailings above: an exception whose mailing
-  // didn't survive dual-write can never be matched by
-  // dualWriteReviewedException (it joins through mailings.app_mailing_id),
+  // didn't survive write-to-tables can never be matched by
+  // writeReviewedException (it joins through mailings.app_mailing_id),
   // so exceptions.reviewed would never actually get set - pick one backed
   // by a surviving mailing so this test exercises a real, matchable case.
   const survivingMailingIds = new Set(survivingMailings.map((m) => m.mailingId));

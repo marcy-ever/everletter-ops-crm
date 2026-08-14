@@ -1,10 +1,10 @@
 import { getDb } from "@/db";
 import {
-  dualWriteComponentStatus,
-  dualWriteImport,
-  dualWriteMailingStatus,
-  dualWriteReviewedException,
-} from "@/lib/dual-write";
+  writeComponentStatus,
+  writeImport,
+  writeMailingStatus,
+  writeReviewedException,
+} from "@/lib/write-to-tables";
 import { buildDatasetFromTables } from "@/lib/build-dataset-from-tables";
 import { fetchComponentOverrides, fetchReviewedExceptionKeys } from "@/lib/build-overrides-from-tables";
 
@@ -33,7 +33,7 @@ export async function GET() {
     // lib/build-overrides-from-tables.ts's module comment) and are fetched
     // separately. statusOverrides is always {} now: buildMailings() already
     // reads each mailing's live, current status directly from the mailings
-    // table (dualWriteMailingStatus writes there directly and is
+    // table (writeMailingStatus writes there directly and is
     // load-bearing as of the transactional-write-path change), so there's
     // nothing left for a separate override map to contribute -
     // public/app.js's effectiveMailing() falls through to mailing.status
@@ -76,23 +76,23 @@ export async function POST(request: Request) {
 
     // Option B Phase 2: crm_state is gone - table and write both, GET and
     // POST no longer reference it at all (see docs/schema-design.md's
-    // Phase 2 notes for the full history). The dual-write dispatch still
+    // Phase 2 notes for the full history). The write-to-tables dispatch still
     // runs inside a transaction (still using `tx`, not `db`, even though
     // it's now the only thing in it) so a real failure (as opposed to the
-    // dualWrite* functions' own expected skip-and-log cases) still rolls
+    // write* functions' own expected skip-and-log cases) still rolls
     // back cleanly and propagates to the outer try/catch below, which
     // turns it into a real 500.
     const db = getDb();
     await db.transaction(async (tx) => {
       if (kind === "crmDataset" && key === "current") {
         const parsed = JSON.parse(value) as { seed?: unknown };
-        if (parsed.seed) await dualWriteImport(parsed.seed as Parameters<typeof dualWriteImport>[0], tx);
+        if (parsed.seed) await writeImport(parsed.seed as Parameters<typeof writeImport>[0], tx);
       } else if (kind === "mailingStatus") {
-        await dualWriteMailingStatus(key, value, tx);
+        await writeMailingStatus(key, value, tx);
       } else if (kind === "componentStatus") {
-        await dualWriteComponentStatus(key, value, tx);
+        await writeComponentStatus(key, value, tx);
       } else if (kind === "reviewedException") {
-        await dualWriteReviewedException(key, tx);
+        await writeReviewedException(key, tx);
       }
     });
 

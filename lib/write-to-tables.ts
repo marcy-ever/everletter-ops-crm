@@ -145,7 +145,7 @@ const LETTERS_BY_PLAN: Record<string, number> = {
 };
 
 function log(...args: unknown[]) {
-  console.error("[dual-write]", ...args);
+  console.error("[write-to-tables]", ...args);
 }
 
 function toDateOrNull(value: string | null | undefined): Date | null {
@@ -171,7 +171,7 @@ function stableMailingId(orderId: string, character: string, letterNumber: numbe
   return `${orderId}::${character}::${letterNumber ?? ""}`;
 }
 
-export async function dualWriteImport(seed: Seed, db: Db): Promise<void> {
+export async function writeImport(seed: Seed, db: Db): Promise<void> {
   await runImport(seed, db);
 }
 
@@ -401,7 +401,7 @@ async function runImport(seed: Seed, db: Db) {
 
   // --- reconcile removals, children before parents ---
   // mailing_components isn't written during import at all (it's populated
-  // reactively by dualWriteComponentStatus, see below) - but it still has
+  // reactively by writeComponentStatus, see below) - but it still has
   // a NOT NULL FK to mailings.id, so any component rows belonging to a
   // mailing that's about to be removed must go first or the mailings
   // delete below fails with a FK violation.
@@ -451,7 +451,7 @@ async function findMailingByAppKey(mailingId: string, sourceRow: string, db: Db)
   return rows[0];
 }
 
-export async function dualWriteMailingStatus(key: string, status: string, db: Db): Promise<void> {
+export async function writeMailingStatus(key: string, status: string, db: Db): Promise<void> {
   const parsed = parseMailingKey(key);
   if (!parsed) {
     log("mailingStatus: could not parse key, skipping:", key);
@@ -462,7 +462,7 @@ export async function dualWriteMailingStatus(key: string, status: string, db: Db
   await db.update(mailings).set({ status }).where(eq(mailings.id, match.id));
 }
 
-export async function dualWriteComponentStatus(key: string, status: string, db: Db): Promise<void> {
+export async function writeComponentStatus(key: string, status: string, db: Db): Promise<void> {
   const parsed = parseComponentKey(key);
   if (!parsed) {
     log("componentStatus: could not parse key, skipping:", key);
@@ -486,7 +486,7 @@ export async function dualWriteComponentStatus(key: string, status: string, db: 
   }
 }
 
-export async function dualWriteReviewedException(key: string, db: Db): Promise<void> {
+export async function writeReviewedException(key: string, db: Db): Promise<void> {
   const parsed = parseExceptionReviewKey(key);
   if (!parsed) {
     log("reviewedException: could not parse key, skipping:", key);

@@ -6,7 +6,7 @@
  *
  *  - componentOverrides: mailing_components isn't part of the Dataset shape
  *    at all (envelope/letter/artifact/insert/qa status - written by
- *    lib/dual-write.ts's dualWriteComponentStatus). public/app.js's
+ *    lib/write-to-tables.ts's writeComponentStatus). public/app.js's
  *    componentStatus() does `state.componentOverrides[componentKey(mailing,
  *    field)] || defaultComponentStatus(...)` - if this object comes back
  *    empty, every component silently reverts to its default, which is a
@@ -22,7 +22,7 @@
  *    directly, without touching buildExceptions()'s contract.
  *
  * Both reuse lib/keys.ts's real componentKey()/exceptionReviewKey() - the
- * same tested, canonical spec dual-write's own matching logic uses -
+ * same tested, canonical spec write-to-tables's own matching logic uses -
  * rather than re-deriving either key format here.
  *
  * Same shape as lib/build-dataset-from-tables.ts: a pure function per
@@ -88,7 +88,7 @@ export interface ReviewedExceptionRow {
 // built from placeholders would not match the real key app.js's client
 // computed for that item, so it's worse than useless here: it would silently
 // never match, or (in an unlucky coincidence) match the wrong item. This
-// happens for exceptions whose mailing was skipped by lib/dual-write.ts
+// happens for exceptions whose mailing was skipped by lib/write-to-tables.ts
 // (the same "subscription-only fallback" case documented in
 // lib/build-dataset-from-tables.ts's module comment) - if one of those was
 // already reviewed, this module can't reconstruct its key, so it stays

@@ -126,7 +126,7 @@ test("buildMailings: joins subscription/subscriber/order, computes suggestedShip
   });
 });
 
-test("buildMailings: missing order (skipped by dual-write) leaves orderDate empty instead of throwing", () => {
+test("buildMailings: missing order (skipped by write-to-tables) leaves orderDate empty instead of throwing", () => {
   const subscriptionsById = new Map([
     ["SUBSCRIPTION-1", { id: "SUBSCRIPTION-1", subscriberId: "SUB-1", character: "Oliver", termType: "One-time", status: "Active", startedAt: null, endedAt: null, totalLettersExpected: 1, recipientName: "Bob", addressLine1: null, addressLine2: null, city: null, state: null, zip: null }],
   ]);

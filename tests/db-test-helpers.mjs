@@ -1,6 +1,6 @@
 // Small, single-purpose helper for tests/*.e2e.test.mjs files that need to
 // assert on how many rows currently exist in a table - used by
-// tests/dual-write-transactional.e2e.test.mjs's rollback assertions.
+// tests/write-to-tables-transactional.e2e.test.mjs's rollback assertions.
 //
 // The original convention here was that every e2e file stays fully
 // self-contained, and this module was the one deliberate, narrow exception
