@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeCharacter, driveCharacterKey, letterNumberKey } from "../lib/domain/characters.ts";
+import { normalizeCharacter, driveCharacterKey, letterNumberKey, envelopeStockForCharacter } from "../lib/domain/characters.ts";
 
 // New coverage from step 3b's extraction (lib/domain/characters.ts didn't
 // exist before this) - not a re-assertion of what the render snapshots
-// already cover.
+// already cover. envelopeStockForCharacter added in step 3c, when it
+// moved here from app/crm/legacy-app.js.
 
 test("normalizeCharacter recognizes a known character embedded in longer spreadsheet text", () => {
   assert.equal(normalizeCharacter("Marley"), "Marley");
@@ -54,4 +55,23 @@ test("letterNumberKey treats '' and null as the number 0, not as missing - a rea
 test("letterNumberKey returns an empty string for undefined or non-numeric text", () => {
   assert.equal(letterNumberKey(undefined), "");
   assert.equal(letterNumberKey("abc"), "");
+});
+
+test("envelopeStockForCharacter gives each kid character its own colored envelope", () => {
+  assert.equal(envelopeStockForCharacter("Marley"), "Marley color envelope");
+  assert.equal(envelopeStockForCharacter("Ringo"), "Ringo color envelope");
+  assert.equal(envelopeStockForCharacter("Oliver"), "Oliver color envelope");
+  assert.equal(envelopeStockForCharacter("Harper"), "Harper color envelope");
+});
+
+test("envelopeStockForCharacter falls back to the shared adult standard stock for every non-kid character", () => {
+  assert.equal(envelopeStockForCharacter("Penelope"), "Adult standard envelope");
+  assert.equal(envelopeStockForCharacter("Seraphine"), "Adult standard envelope");
+  assert.equal(envelopeStockForCharacter("Legends"), "Adult standard envelope");
+  assert.equal(envelopeStockForCharacter("Marigold"), "Adult standard envelope");
+  assert.equal(envelopeStockForCharacter(""), "Adult standard envelope");
+});
+
+test("envelopeStockForCharacter groups Old Marley with Marley (via driveCharacterKey's new/old stripping), not as its own stock", () => {
+  assert.equal(envelopeStockForCharacter("Old Marley"), "Marley color envelope");
 });

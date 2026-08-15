@@ -20,9 +20,15 @@ import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // spreadsheetExceptionReasons, which now live in
 // lib/domain/spreadsheet/build-seed.ts and import these themselves.
 import { plannedLetterCount, printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
-import { driveCharacterKey, letterNumberKey } from '@/lib/domain/characters';
-import { batchDatesForOrder } from '@/lib/domain/batch-dates';
-import { escapeHtml, formatDate, includesText, statusClass, number, titleCase } from './format';
+import { driveCharacterKey, letterNumberKey, envelopeStockForCharacter } from '@/lib/domain/characters';
+import { batchDatesForOrder, storageBinForMailing } from '@/lib/domain/batch-dates';
+// formatDate/titleCase moved to lib/domain/format.ts (step 3c) once
+// storageBinForMailing/envelopeStockForCharacter, which depend on them,
+// turned out to be real domain logic rather than display chrome - see
+// that module's header. escapeHtml/includesText/statusClass/number stay
+// view-only, in app/crm/format.ts.
+import { formatDate, titleCase } from '@/lib/domain/format';
+import { escapeHtml, includesText, statusClass, number } from './format';
 // buildSeedFromSpreadsheet (the 206-line seed builder) and
 // spreadsheetExceptionReasons (the exception-reason checks it calls) are
 // commit 3's extraction - the highest-risk single move in step 3b, kept
@@ -737,18 +743,6 @@ function getRecipientName(recipientId) {
 
 function getRecipient(recipientId) {
   return state.seed.recipients.find((item) => item.recipientId === recipientId) || null;
-}
-
-function envelopeStockForCharacter(character) {
-  const key = driveCharacterKey(character);
-  const kidCharacters = new Set(['harper', 'marley', 'oliver', 'ringo']);
-  if (kidCharacters.has(key)) return `${titleCase(key)} color envelope`;
-  return 'Adult standard envelope';
-}
-
-function storageBinForMailing(mailing) {
-  if (!mailing.shipDate) return 'Needs date';
-  return `Ashley / ${formatDate(mailing.shipDate)} bin`;
 }
 
 function characterFolderUrl(mailing) {

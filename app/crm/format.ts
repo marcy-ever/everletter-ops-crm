@@ -1,11 +1,17 @@
 /**
- * Display formatting used only by views - escaping, date/number
- * formatting, CSS-class-safe status strings, title-casing, and search
- * matching. Pure, but the server has no use for "how this looks," so this
- * stays out of lib/domain/ deliberately: escapeHtml in particular is
- * transitional and disappears entirely once views become React and
- * escaping is automatic, which would be a strange thing to ship
- * server-side as "domain" logic.
+ * Display formatting used only by views - escaping, CSS-class-safe status
+ * strings, number formatting, and search matching. Pure, but the server
+ * has no use for any of these, so they stay out of lib/domain/
+ * deliberately: escapeHtml in particular is transitional and disappears
+ * entirely once views become React and escaping is automatic, which would
+ * be a strange thing to ship server-side as "domain" logic.
+ *
+ * formatDate/titleCase are NOT here - they moved to lib/domain/format.ts
+ * once storageBinForMailing/envelopeStockForCharacter (which depend on
+ * them) turned out to be real domain logic, not display chrome - see that
+ * module's header. includesText stays here rather than following: it's
+ * search matching, arguably a domain rule too, but nothing in lib/domain/
+ * actually needs it (nothing server-side searches).
  */
 
 export function escapeHtml(value: unknown): string {
@@ -15,12 +21,6 @@ export function escapeHtml(value: unknown): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-}
-
-export function formatDate(value: string | null | undefined): string {
-  if (!value) return "Needs date";
-  const date = new Date(`${value}T00:00:00`);
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
 export function includesText(values: unknown[], query: string): boolean {
@@ -35,12 +35,4 @@ export function statusClass(status: unknown): string {
 
 export function number(value: unknown): string {
   return Number(value || 0).toLocaleString();
-}
-
-export function titleCase(value: unknown): string {
-  return String(value || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
-    .join(" ");
 }
