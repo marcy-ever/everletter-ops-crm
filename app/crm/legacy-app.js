@@ -61,8 +61,6 @@ import {
   selectedBatchDate as selectSelectedBatchDate,
 } from '@/lib/client/selectors';
 
-const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
-
 // activeView/reviewed/statusOverrides/componentOverrides start as inert
 // defaults here (createCrmState() - module evaluation must stay
 // side-effect-free, see initCrmApp() at the bottom) and are set to their
@@ -2316,14 +2314,14 @@ async function initializeCrm() {
 // actually start the app; importing this module does nothing observable on
 // its own. Guarded so a second call (e.g. React StrictMode's double-invoked
 // effect in development) is a safe no-op rather than double-binding every
-// listener below and re-running the nav injection.
+// listener below.
 let initialized = false;
 function initCrmApp() {
   if (initialized) return;
   initialized = true;
 
   const hashView = window.location.hash.slice(1);
-  state.activeView = viewNames.has(hashView) ? hashView : 'queue';
+  state.activeView = Object.hasOwn(VIEW_REGISTRY, hashView) ? hashView : 'queue';
   state.reviewed = loadReviewedExceptions();
   state.statusOverrides = loadStatusOverrides();
   state.componentOverrides = loadComponentOverrides();
