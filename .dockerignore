@@ -4,9 +4,7 @@ node_modules
 .gitignore
 .env
 .env.*
-.wrangler
 devops
-examples
 tests
 *.log
 npm-debug.log*
