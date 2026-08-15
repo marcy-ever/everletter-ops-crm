@@ -3,7 +3,11 @@
  * buildSeedFromSpreadsheet output) by querying the normalized tables
  * (db/schema/) directly. app/api/shared-state/route.ts's GET handler calls
  * buildDatasetFromTables() for this; there is no other read path and
- * nothing is cached in between.
+ * nothing is cached in between. The Dataset/DatasetX types themselves live
+ * in lib/domain/dataset.ts - the canonical shape both this module and
+ * buildSeedFromSpreadsheet (lib/domain/spreadsheet/build-seed.ts) return,
+ * enforced by the type system instead of two independently-maintained
+ * interface sets.
  *
  * lib/write-to-tables.ts writes every import into these tables; this
  * module is what reads them back. Composed from one small,
@@ -96,121 +100,13 @@ import { mailings } from "../db/schema/mailings";
 import { exceptions } from "../db/schema/exceptions";
 import { buildRecipientId } from "./domain/ids";
 import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from "./domain/mailing-rules";
+import type { Dataset, DatasetSubscriber, DatasetRecipient, DatasetOrder, DatasetSubscription, DatasetMailing, DatasetException, DatasetSummary } from "./domain/dataset";
 
 export type SubscriberRow = typeof subscribers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type OrderRow = typeof orders.$inferSelect;
 export type MailingRow = typeof mailings.$inferSelect;
 export type ExceptionRow = typeof exceptions.$inferSelect;
-
-export interface DatasetMailing {
-  mailingId: string;
-  subscriberId: string;
-  recipientId: string;
-  orderId: string;
-  orderDate: string;
-  subscriptionId: string;
-  recipientName: string;
-  email: string;
-  character: string;
-  plan: string;
-  letterNumber: string;
-  shipDate: string;
-  suggestedShipDate: string;
-  status: string;
-  activeState: string;
-  notes: string;
-  overdue: boolean;
-  dueNext14Days: boolean;
-  sourceRow: number;
-}
-
-export interface DatasetSubscriber {
-  subscriberId: string;
-  email: string;
-  displayName: string;
-  status: string;
-  firstOrderDate: string;
-  openMailings: number;
-  totalMailings: number;
-  nextShipDate: string;
-  issueCount: number;
-}
-
-export interface DatasetRecipient {
-  recipientId: string;
-  subscriberId: string;
-  name: string;
-  address: string;
-  characters: string[];
-  totalMailings: number;
-  nextShipDate: string;
-}
-
-export interface DatasetOrder {
-  orderId: string;
-  subscriberId: string;
-  sourceOrderNumber: string;
-  createdOn: string;
-  billingMonth: string;
-  plan: string;
-  status: string;
-  amount: string;
-}
-
-export interface DatasetSubscription {
-  subscriptionId: string;
-  subscriberId: string;
-  recipientId: string;
-  plan: string;
-  character: string;
-  startDate: string;
-  endDate: string;
-  activeState: string;
-  generatedMailings: number;
-}
-
-export interface DatasetException {
-  exceptionId: string;
-  severity: "High" | "Low";
-  reason: string;
-  mailingId: string;
-  subscriberId: string;
-  recipientName: string;
-  shipDate: string;
-  suggestedShipDate: string;
-  status: string;
-  sourceRow: number | null;
-}
-
-export interface DatasetSummary {
-  asOf: string;
-  sourceFile: string;
-  subscriberCount: number;
-  activeSubscriberCount: number;
-  archivedSubscriberCount: number;
-  recipientCount: number;
-  orderCount: number;
-  subscriptionCount: number;
-  mailingCount: number;
-  openMailingCount: number;
-  archivedMailingCount: number;
-  overdueCount: number;
-  dueNext14Count: number;
-  exceptionCount: number;
-  missingShipDateCount: number;
-}
-
-export interface Dataset {
-  summary: DatasetSummary;
-  subscribers: DatasetSubscriber[];
-  recipients: DatasetRecipient[];
-  orders: DatasetOrder[];
-  subscriptions: DatasetSubscription[];
-  mailings: DatasetMailing[];
-  exceptions: DatasetException[];
-  automationRules: unknown[];
-}
 
 function toIsoDateOrEmpty(value: Date | string | null | undefined): string {
   if (!value) return "";
