@@ -284,7 +284,7 @@ test("buildExceptions: subscription-only fallback case (mailing was skipped) rec
     shipDate: "",
     suggestedShipDate: "",
     status: "",
-    sourceRow: "",
+    sourceRow: null,
   });
 });
 

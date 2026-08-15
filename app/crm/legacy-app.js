@@ -516,6 +516,12 @@ function exceptionRow(item) {
   const suggested = item.suggestedShipDate
     ? `<div class="suggested-date"><span>Suggested ship date</span><strong>${formatDate(item.suggestedShipDate)}</strong></div>`
     : '';
+  // sourceRow is null for the server-reconstructed "subscription-only
+  // fallback" case (lib/build-dataset-from-tables.ts's buildExceptions())
+  // - the row number is genuinely unrecoverable there, not just blank, so
+  // the span is omitted entirely rather than showing "Sheet row" with
+  // nothing after it.
+  const sheetRow = item.sourceRow == null ? '' : `<span>Sheet row ${escapeHtml(item.sourceRow)}</span>`;
   return `
     <article class="exception-row">
       <div class="severity severity-${escapeHtml(item.severity.toLowerCase())}">${escapeHtml(item.severity)}</div>
@@ -526,7 +532,7 @@ function exceptionRow(item) {
         <div class="row-meta">
           <span>${formatDate(item.shipDate)}</span>
           <span>${escapeHtml(item.status)}</span>
-          <span>Sheet row ${escapeHtml(item.sourceRow)}</span>
+          ${sheetRow}
           <span class="mono">${escapeHtml(item.mailingId)}</span>
         </div>
       </div>
