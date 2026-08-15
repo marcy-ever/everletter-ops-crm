@@ -270,6 +270,25 @@ for (const [snapshotName, activeView, overrides] of CASES) {
   });
 }
 
+// Re-runs every CASES entry in the opposite order, step 4's own required
+// verification (see CLAUDE.md/this step's PR description): step 4 moved
+// `state` out of app/crm/legacy-app.js into lib/client/crm-state.ts's
+// createCrmState() factory, and the hazard that step was built around is
+// state leaking between cases if that factory were ever called at
+// lib/client/crm-state.ts's own module scope instead of inside
+// legacy-app.js. renderCase() still gives every case a fresh sandbox via
+// loadAppJsSandbox() regardless of iteration order, so if isolation ever
+// regressed, walking CASES backwards - last case first, first case last -
+// is exactly what would surface a case's output depending on what ran
+// before it. Same assertions, same committed snapshots as the suite above,
+// just backwards.
+for (const [snapshotName, activeView, overrides] of [...CASES].reverse()) {
+  test(`renders ${snapshotName} deterministically in reverse iteration order too`, async () => {
+    const html = await renderCase(activeView, overrides);
+    compareOrUpdateSnapshot(snapshotName, html);
+  });
+}
+
 // The task this harness was built for assumed Ashley Bins renders both
 // desktop rows and mobile cards into the same HTML, with an explicit
 // instruction to confirm rather than assume it. Checking found the

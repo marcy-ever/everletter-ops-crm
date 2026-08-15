@@ -1,0 +1,253 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  activeExceptions,
+  availableBatchDates,
+  componentStatus,
+  defaultComponentStatus,
+  effectiveMailing,
+  effectiveMailings,
+  exceptionsForMailing,
+  findSubscriptionMailings,
+  getRecipient,
+  getRecipientName,
+  getSubscriberSubscriptions,
+  isExceptionReviewed,
+  nextBatchDate,
+  pastBatchDates,
+  selectedBatchDate,
+} from "../lib/client/selectors.ts";
+import { exceptionReviewKey, mailingKey } from "../lib/domain/keys.ts";
+
+// New coverage from step 4 of the app.js decomposition (lib/client/selectors.ts
+// didn't exist before this - extracted from app/crm/legacy-app.js, see that
+// module's own header and this step's PR description). These functions are
+// pure now, taking every input explicitly, which is what makes them testable
+// here instead of only indirectly through the render-snapshot suite.
+
+function mailing(overrides = {}) {
+  return {
+    mailingId: "m1",
+    subscriberId: "sub1",
+    recipientId: "rec1",
+    orderId: "o1",
+    orderDate: "2026-07-01",
+    subscriptionId: "sn1",
+    recipientName: "Ava Example",
+    email: "ava@example.test",
+    character: "Marley",
+    plan: "Month-to-month",
+    letterNumber: "1",
+    shipDate: "2026-08-15",
+    suggestedShipDate: "2026-08-15",
+    status: "To Prepare",
+    activeState: "Active",
+    notes: "",
+    overdue: false,
+    dueNext14Days: false,
+    sourceRow: 2,
+    ...overrides,
+  };
+}
+
+function exception(overrides = {}) {
+  return {
+    exceptionId: "e1",
+    severity: "High",
+    reason: "Missing email",
+    mailingId: "m1",
+    subscriberId: "sub1",
+    recipientName: "Ava Example",
+    shipDate: "2026-08-15",
+    suggestedShipDate: "2026-08-15",
+    status: "To Prepare",
+    sourceRow: 2,
+    ...overrides,
+  };
+}
+
+function seedWith({ mailings = [], exceptions = [], subscriptions = [], recipients = [] } = {}) {
+  return {
+    summary: {
+      asOf: "2026-08-12",
+      sourceFile: "test",
+      subscriberCount: 0,
+      activeSubscriberCount: 0,
+      archivedSubscriberCount: 0,
+      recipientCount: 0,
+      orderCount: 0,
+      subscriptionCount: 0,
+      mailingCount: mailings.length,
+      openMailingCount: 0,
+      archivedMailingCount: 0,
+      overdueCount: 0,
+      dueNext14Count: 0,
+      exceptionCount: exceptions.length,
+      missingShipDateCount: 0,
+    },
+    subscribers: [],
+    recipients,
+    orders: [],
+    subscriptions,
+    mailings,
+    exceptions,
+    automationRules: [],
+  };
+}
+
+test("effectiveMailing falls through to the mailing's own status when no override exists, and to the override when one does", () => {
+  const m = mailing({ status: "To Prepare" });
+  const noOverride = effectiveMailing(m, {});
+  assert.equal(noOverride.status, "To Prepare");
+  assert.equal(noOverride.originalStatus, "To Prepare");
+
+  const withOverride = effectiveMailing(m, { [mailingKey(m)]: "Mailed" });
+  assert.equal(withOverride.status, "Mailed");
+  assert.equal(withOverride.originalStatus, "To Prepare", "originalStatus always reflects the mailing's own status, override or not");
+});
+
+test("effectiveMailings maps effectiveMailing over every mailing in the seed", () => {
+  const m1 = mailing({ mailingId: "m1", sourceRow: 2, status: "To Prepare" });
+  const m2 = mailing({ mailingId: "m2", sourceRow: 3, status: "Printing" });
+  const seed = seedWith({ mailings: [m1, m2] });
+  const result = effectiveMailings(seed, { [mailingKey(m2)]: "Mailed" });
+  assert.equal(result[0].status, "To Prepare");
+  assert.equal(result[1].status, "Mailed");
+});
+
+test("isExceptionReviewed matches either by exceptionReviewKey or by raw exceptionId", () => {
+  const item = exception();
+  assert.equal(isExceptionReviewed(item, new Set()), false);
+  assert.equal(isExceptionReviewed(item, new Set([exceptionReviewKey(item)])), true);
+  assert.equal(isExceptionReviewed(item, new Set([item.exceptionId])), true);
+  assert.equal(isExceptionReviewed(item, new Set(["something-else"])), false);
+});
+
+test("activeExceptions filters out reviewed exceptions, by either matching mechanism", () => {
+  const reviewedByKey = exception({ exceptionId: "e1", reason: "Missing email" });
+  const reviewedById = exception({ exceptionId: "e2", mailingId: "m2", reason: "Missing address" });
+  const unreviewed = exception({ exceptionId: "e3", mailingId: "m3", reason: "Missing recipient" });
+  const seed = seedWith({ exceptions: [reviewedByKey, reviewedById, unreviewed] });
+  const reviewed = new Set([exceptionReviewKey(reviewedByKey), "e2"]);
+  assert.deepEqual(activeExceptions(seed, reviewed), [unreviewed]);
+});
+
+test("exceptionsForMailing returns only active exceptions matching the given mailing's id", () => {
+  const forM1 = exception({ exceptionId: "e1", mailingId: "m1" });
+  const forM2 = exception({ exceptionId: "e2", mailingId: "m2" });
+  const seed = seedWith({ exceptions: [forM1, forM2] });
+  assert.deepEqual(exceptionsForMailing({ mailingId: "m1" }, seed, new Set()), [forM1]);
+});
+
+test("defaultComponentStatus: 'payment'/'qa' depend on whether the mailing has an active High-severity exception", () => {
+  const m = mailing({ mailingId: "m1", plan: "Month-to-month" });
+  const highIssue = exception({ mailingId: "m1", severity: "High" });
+  const seedClean = seedWith({ mailings: [m], exceptions: [] });
+  const seedWithIssue = seedWith({ mailings: [m], exceptions: [highIssue] });
+
+  assert.equal(defaultComponentStatus(m, "payment", seedClean, new Set()), "Active");
+  assert.equal(defaultComponentStatus(m, "payment", seedWithIssue, new Set()), "Needs Check");
+  assert.equal(defaultComponentStatus(m, "qa", seedClean, new Set()), "Open");
+  assert.equal(defaultComponentStatus(m, "qa", seedWithIssue, new Set()), "Problem");
+});
+
+test("defaultComponentStatus: 'envelope'/'letter'/'location' depend on whether the plan is prepaid bulk (6/12-month)", () => {
+  const monthly = mailing({ plan: "Month-to-month" });
+  const prepaid = mailing({ plan: "12-month" });
+  const seed = seedWith({ mailings: [monthly, prepaid] });
+
+  assert.equal(defaultComponentStatus(monthly, "envelope", seed, new Set()), "Need Print");
+  assert.equal(defaultComponentStatus(prepaid, "envelope", seed, new Set()), "In Ashley Box");
+  assert.equal(defaultComponentStatus(monthly, "letter", seed, new Set()), "Need Print");
+  assert.equal(defaultComponentStatus(prepaid, "letter", seed, new Set()), "Stuffed");
+  assert.equal(defaultComponentStatus(monthly, "location", seed, new Set()), "Marcy");
+  assert.equal(defaultComponentStatus(prepaid, "location", seed, new Set()), "Ashley");
+});
+
+test("defaultComponentStatus: 'insert' only applies to marley/oliver, everything else is Not Needed", () => {
+  const seed = seedWith();
+  assert.equal(defaultComponentStatus(mailing({ character: "Marley" }), "insert", seed, new Set()), "Need Check");
+  assert.equal(defaultComponentStatus(mailing({ character: "Oliver" }), "insert", seed, new Set()), "Need Check");
+  assert.equal(defaultComponentStatus(mailing({ character: "Ringo" }), "insert", seed, new Set()), "Not Needed");
+});
+
+test("componentStatus: an explicit override wins over the computed default", () => {
+  const m = mailing({ mailingId: "m1", sourceRow: 2, plan: "Month-to-month" });
+  const seed = seedWith({ mailings: [m] });
+  assert.equal(componentStatus(m, "envelope", seed, new Set(), {}), "Need Print");
+  const key = `${m.mailingId}::${m.sourceRow}::envelope`;
+  assert.equal(componentStatus(m, "envelope", seed, new Set(), { [key]: "Printed" }), "Printed");
+});
+
+test("componentStatus depends on more than componentOverrides alone: a High exception changes the default it falls back to, with no override set at all", () => {
+  const m = mailing({ mailingId: "m1", plan: "Month-to-month" });
+  const clean = seedWith({ mailings: [m], exceptions: [] });
+  const flagged = seedWith({ mailings: [m], exceptions: [exception({ mailingId: "m1", severity: "High" })] });
+  assert.equal(componentStatus(m, "payment", clean, new Set(), {}), "Active");
+  assert.equal(componentStatus(m, "payment", flagged, new Set(), {}), "Needs Check");
+});
+
+test("availableBatchDates only includes Active, open-status mailings with a real ship date on or after today, sorted ascending", () => {
+  const mailings = [
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-09-01" },
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-08-15" },
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-07-01" }, // past
+    { activeState: "Active", status: "Mailed", shipDate: "2026-08-15" }, // not open
+    { activeState: "Archived", status: "To Prepare", shipDate: "2026-08-15" }, // not active
+    { activeState: "Active", status: "To Prepare", shipDate: "" }, // no ship date
+  ];
+  assert.deepEqual(availableBatchDates(mailings, "2026-08-01"), ["2026-08-15", "2026-09-01"]);
+});
+
+test("pastBatchDates only includes Active mailings with a ship date before today, sorted descending", () => {
+  const mailings = [
+    { activeState: "Active", status: "Mailed", shipDate: "2026-07-01" },
+    { activeState: "Active", status: "Mailed", shipDate: "2026-06-15" },
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-09-01" }, // future
+    { activeState: "Archived", status: "Mailed", shipDate: "2026-07-01" }, // not active
+  ];
+  assert.deepEqual(pastBatchDates(mailings, "2026-08-01"), ["2026-07-01", "2026-06-15"]);
+});
+
+test("nextBatchDate picks the earliest available date on/after today", () => {
+  const mailings = [
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-09-01" },
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-08-15" },
+  ];
+  assert.equal(nextBatchDate(mailings, "2026-08-01"), "2026-08-15");
+});
+
+test("nextBatchDate returns '' when today is later than every available date - availableBatchDates() already excludes anything before today, so there is nothing left to fall back to", () => {
+  const mailings = [
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-09-01" },
+    { activeState: "Active", status: "To Prepare", shipDate: "2026-08-15" },
+  ];
+  assert.equal(nextBatchDate(mailings, "2026-10-01"), "");
+});
+
+test("nextBatchDate returns '' when there are no available batch dates at all", () => {
+  assert.equal(nextBatchDate([], "2026-08-01"), "");
+});
+
+test("selectedBatchDate: 'next' resolves via nextBatchDate, 'all' means no filter, anything else passes through as a literal date", () => {
+  const mailings = [{ activeState: "Active", status: "To Prepare", shipDate: "2026-08-15" }];
+  assert.equal(selectedBatchDate("next", mailings, "2026-08-01"), "2026-08-15");
+  assert.equal(selectedBatchDate("all", mailings, "2026-08-01"), "");
+  assert.equal(selectedBatchDate("2026-09-01", mailings, "2026-08-01"), "2026-09-01");
+});
+
+test("findSubscriptionMailings/getSubscriberSubscriptions/getRecipientName/getRecipient look up by id within the given seed", () => {
+  const m1 = mailing({ mailingId: "m1", subscriptionId: "sn1" });
+  const m2 = mailing({ mailingId: "m2", subscriptionId: "sn2" });
+  const subA = { subscriptionId: "sn1", subscriberId: "sub1", recipientId: "rec1", plan: "Month-to-month", character: "Marley", startDate: "", endDate: "", activeState: "Active", generatedMailings: 1 };
+  const subB = { subscriptionId: "sn2", subscriberId: "sub1", recipientId: "rec1", plan: "6-month", character: "Ringo", startDate: "", endDate: "", activeState: "Active", generatedMailings: 1 };
+  const recipient = { recipientId: "rec1", subscriberId: "sub1", name: "Ava Example", address: "1 Main St", characters: ["Marley"], totalMailings: 1, nextShipDate: "2026-08-15" };
+  const seed = seedWith({ mailings: [m1, m2], subscriptions: [subA, subB], recipients: [recipient] });
+
+  assert.deepEqual(findSubscriptionMailings("sn1", seed), [m1]);
+  assert.equal(getSubscriberSubscriptions("sub1", seed).length, 2);
+  assert.equal(getRecipientName("rec1", seed), "Ava Example");
+  assert.equal(getRecipient("rec1", seed), recipient);
+  assert.equal(getRecipientName("nope", seed), "Unknown recipient");
+  assert.equal(getRecipient("nope", seed), null);
+});
