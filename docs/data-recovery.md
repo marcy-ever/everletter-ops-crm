@@ -38,10 +38,16 @@ first:
 ```
 Recent imports (most recent first). Re-run with an id to restore from it:
 
-  #42  2026-08-15T09:12:03.000Z  [success]  1218 mailings, 109 subscribers, 44 exceptions - Import_20260815.xlsx
-  #41  2026-08-14T18:03:11.000Z  [success]  1201 mailings, 108 subscribers, 41 exceptions - Import_20260814.xlsx
+  #43  2026-08-16T08:02:11.000Z  [restore/success]  Restored from ingestion_events #41 (1201 mailings, 108 subscribers, 41 exceptions - Import_20260814.xlsx)
+  #42  2026-08-15T09:12:03.000Z  [manual_spreadsheet/success]  1218 mailings, 109 subscribers, 44 exceptions - Import_20260815.xlsx
+  #41  2026-08-14T18:03:11.000Z  [manual_spreadsheet/success]  1201 mailings, 108 subscribers, 41 exceptions - Import_20260814.xlsx
   ...
 ```
+
+`source` (the first half of the bracketed pair) distinguishes a real
+spreadsheet import (`manual_spreadsheet`) from a restore
+(`restore` - see "Restoring" below) at a glance, without having to read
+into `summary`.
 
 You can also query `ingestion_events` directly (e.g. via `psql` or any
 Postgres client) if you need more than the last 20, or want to inspect a

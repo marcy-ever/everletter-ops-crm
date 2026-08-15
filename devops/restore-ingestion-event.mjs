@@ -40,7 +40,7 @@ async function main() {
 
   if (!idArg) {
     const recent = await db
-      .select({ id: ingestionEvents.id, occurredAt: ingestionEvents.occurredAt, status: ingestionEvents.status, summary: ingestionEvents.summary })
+      .select({ id: ingestionEvents.id, occurredAt: ingestionEvents.occurredAt, source: ingestionEvents.source, status: ingestionEvents.status, summary: ingestionEvents.summary })
       .from(ingestionEvents)
       .orderBy(desc(ingestionEvents.id))
       .limit(20);
@@ -50,7 +50,7 @@ async function main() {
     }
     console.log("Recent imports (most recent first). Re-run with an id to restore from it:\n");
     for (const row of recent) {
-      console.log(`  #${row.id}  ${row.occurredAt.toISOString()}  [${row.status}]  ${row.summary}`);
+      console.log(`  #${row.id}  ${row.occurredAt.toISOString()}  [${row.source}/${row.status}]  ${row.summary}`);
     }
     return;
   }
@@ -76,10 +76,24 @@ async function main() {
   }
 
   console.log(`Restoring from ingestion_events #${id} (${event.occurredAt.toISOString()}, ${event.summary})...`);
+  const seed = event.rawPayload.seed;
+  const summary = `Restored from ingestion_events #${id} (${event.summary})`;
   await db.transaction(async (tx) => {
-    await writeImport(event.rawPayload.seed, tx);
+    await writeImport(seed, tx);
+    // Same transaction as the write, for the same reason every crmDataset
+    // import does this (app/api/shared-state/route.ts): an event
+    // recording a restore that rolled back would be worse than no event.
+    // source: "restore" (not "manual_spreadsheet") so the history reads
+    // correctly - a restore is a distinct, traceable kind of import, not
+    // indistinguishable from a real reimport of the spreadsheet.
+    await tx.insert(ingestionEvents).values({
+      source: "restore",
+      rawPayload: event.rawPayload,
+      status: "success",
+      summary,
+    });
   });
-  console.log(`Restored. Tables now match ingestion_events #${id}'s import exactly.`);
+  console.log(`Restored. Tables now match ingestion_events #${id}'s import exactly. This restore itself is now an ingestion_events row - it's restorable-from in turn, same as any other import.`);
 }
 
 main().catch((error) => {
