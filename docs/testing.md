@@ -16,10 +16,13 @@ all of them and fails the way a release gate should.
 
 ## Running the scripts
 
-- **`pnpm test:unit`** - the six unit test files (`allowlist`, `ids`,
-  `keys`, `mailing-rules`, `build-dataset-from-tables`,
-  `build-overrides-from-tables`). Pure functions and hand-built fixtures, no
-  external services. Safe to run anytime, runs in parallel.
+- **`pnpm test:unit`** - the unit test files (see `package.json`'s
+  `test:unit` script for the current list - not repeated here since it
+  grows with every module `lib/domain/`/`lib/client/` gains, and a hardcoded
+  count/list here would just go stale the same way CLAUDE.md's line-number
+  citations did). Pure functions, hand-built fixtures, and the golden-HTML
+  render snapshots - no external services. Safe to run anytime, runs in
+  parallel.
 - **`pnpm test:e2e`** - the three end-to-end files
   (`build-dataset-from-tables.e2e`, `write-to-tables-transactional.e2e`,
   `shared-state-get.e2e`). Needs real local Postgres and, for two of the
@@ -182,7 +185,7 @@ and a real bug (the ENOENT crash above). One definition now provides:
   is optional: pass it to pin the sandbox's `Date` to an exact instant
   (needed by `build-dataset-from-tables.e2e`, which compares client-side and
   server-reconstructed "now"-dependent fields and would otherwise be flaky
-  across a real day boundary - see `lib/mailing-rules.ts`'s module comment);
+  across a real day boundary - see `lib/domain/mailing-rules.ts`'s module comment);
   omit it to get the real clock.
 
 `tests/db-test-helpers.mjs` is a separate, smaller module (`countRows()`)
