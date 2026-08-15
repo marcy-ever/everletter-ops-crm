@@ -45,4 +45,57 @@ else
     $COMPOSE up -d app
 fi
 
-success "Everletter deploy completed!"
+# `up -d` returning zero only means Docker accepted the container, not
+# that Next booted or can reach Postgres - devops/docker-compose.app.yml's
+# healthcheck (app/api/health/route.ts) is the actual proof, so wait for
+# it before ever logging SUCCESS.
+#
+# Resolved via `$COMPOSE ps -q app` rather than a hardcoded container
+# name (unlike devops/backup.sh's `everletter-ops-crm_postgres_1`,
+# deliberately not copied here) - compose v1/v2 name containers
+# differently, and this way the script works under either.
+#
+# Every command that can fail inside this loop is deliberately guarded
+# (`|| true`, `|| echo ...`) so a transient/expected non-healthy read
+# doesn't trip `set -e` and abort the script before the timeout is
+# actually reached - only the final, real failure at the bottom is meant
+# to do that.
+HEALTH_TIMEOUT_SECONDS=120
+HEALTH_POLL_INTERVAL_SECONDS=5
+elapsed=0
+health_status="unknown"
+app_healthy=0
+
+log "Waiting up to ${HEALTH_TIMEOUT_SECONDS}s for the app container to report healthy..."
+while [ "$elapsed" -lt "$HEALTH_TIMEOUT_SECONDS" ]; do
+    app_container="$($COMPOSE ps -q app || true)"
+    if [ -n "$app_container" ]; then
+        health_status="$(docker inspect --format='{{.State.Health.Status}}' "$app_container" 2>/dev/null || echo "unknown")"
+        if [ "$health_status" = "healthy" ]; then
+            app_healthy=1
+            break
+        fi
+        if [ "$health_status" = "unhealthy" ]; then
+            log "App container reported unhealthy after ${elapsed}s - not waiting out the rest of the timeout."
+            break
+        fi
+    fi
+    sleep "$HEALTH_POLL_INTERVAL_SECONDS"
+    elapsed=$((elapsed + HEALTH_POLL_INTERVAL_SECONDS))
+done
+
+if [ "$app_healthy" -ne 1 ]; then
+    log "App container did not become healthy (last status: ${health_status}, waited ${elapsed}s) - capturing logs before failing..."
+    # --tail must come before the service name - docker-compose 1.29.2
+    # (verified directly against the version this was tested with)
+    # rejects `logs app --tail=50` as "No such service: --tail=50" if the
+    # flag comes after the service argument.
+    $COMPOSE logs --tail=50 app >> "$LOGFILE" 2>&1 || true
+    # A real command failure, not a bare `exit 1` - this is what makes
+    # the existing `trap ... ERR` above fire failure() with its usual
+    # message, the same mechanism every other failure in this script
+    # already relies on, instead of a second, inconsistent failure path.
+    false
+fi
+
+success "Everletter deploy completed! App container is healthy."

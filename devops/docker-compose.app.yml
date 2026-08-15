@@ -45,3 +45,31 @@ services:
       ALLOWED_USERS: ${ALLOWED_USERS:?ALLOWED_USERS must be set}
     ports:
       - "3100:3000"
+    # Proves the app actually came up - `up -d` returning zero only means
+    # Docker accepted the container, not that Next booted or can reach
+    # Postgres. Hits app/api/health/route.ts, which itself does a real
+    # `SELECT 1`. node's own fetch, not curl: the runner image
+    # (node:22-alpine, devops/app.Dockerfile) doesn't have curl and this
+    # isn't worth adding a package for.
+    #
+    # Timing, chosen deliberately:
+    #  - start_period: 40s. depends_on above already waits for Postgres's
+    #    own healthcheck (up to ~50s: 5s interval * 10 retries, see
+    #    devops/docker-compose.yml) before this container even starts, so
+    #    this only needs to cover Next's own cold boot on the NAS's
+    #    weaker CPU - generous headroom without letting a genuinely
+    #    crashed container hide behind the grace period for too long.
+    #  - interval: 10s, timeout: 5s - a local health check should return
+    #    near-instantly; 5s is generous slack for a loaded system, not a
+    #    real expectation of taking that long.
+    #  - retries: 3. Combined with interval, a real failure surfaces as
+    #    "unhealthy" at most ~30s after start_period ends (worst case
+    #    ~70s from container start) - close enough to "immediately" for
+    #    devops/deploy.sh's own timeout (120s) to still have comfortable
+    #    margin, not so twitchy that one slow request flips the status.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
