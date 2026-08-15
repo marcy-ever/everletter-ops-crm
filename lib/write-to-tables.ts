@@ -167,8 +167,9 @@ function stableMailingId(orderId: string, character: string, letterNumber: numbe
   return `${orderId}::${character}::${letterNumber ?? ""}`;
 }
 
-// A conservative approximation of which mailings.id values this import
-// would keep, used only by app/api/shared-state/route.ts's
+// An approximation - permissive, not conservative, see the note below -
+// of which mailings.id values this import would keep, used only by
+// app/api/shared-state/route.ts's
 // catastrophic-deletion guard (lib/validate-shared-state.ts) BEFORE
 // runImport() runs - nothing has been written yet when this is called.
 // Mirrors the two runImport() checks that matter most for a
@@ -182,6 +183,14 @@ function stableMailingId(orderId: string, character: string, letterNumber: numbe
 // actually needs to catch: a truncated or corrupted upload. The real
 // per-row skip/keep decisions during the actual write remain exactly
 // runImport()'s own logic below, entirely untouched by this function.
+// Direction of the error, spelled out: this over-counts "kept" (treating
+// a colliding pair as both kept when runImport() would discard both),
+// which under-counts deletions, which makes the catastrophic-deletion
+// guard marginally more likely to let an import through than to block
+// one wrongly - permissive, not conservative-toward-blocking. Fine given
+// how self-limiting the skipped case is today; worth re-checking if a
+// future change ever widens the gap between this and runImport()'s real
+// logic.
 export function estimateKeptMailingIds(seed: Seed): Set<string> {
   const recipientsById = new Map(seed.recipients.map((r) => [r.recipientId, r]));
   const keepSubscriptionIds = new Set<string>();
