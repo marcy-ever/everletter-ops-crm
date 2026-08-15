@@ -6,7 +6,7 @@
 // in a sandbox and diffed its output against the lib/ versions. That's gone
 // now that this file can import real TypeScript modules (the app.js -> ESM
 // move, step 2) - one implementation, imported here instead of duplicated.
-import { mailingKey, componentKey, exceptionReviewKey } from '@/lib/domain/keys';
+import { mailingKey, exceptionReviewKey } from '@/lib/domain/keys';
 import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // Step 3b: pure business logic extracted into lib/domain/ (shared with the
 // server, same reasoning as the imports above) and app/crm/format.ts
@@ -36,36 +36,41 @@ import { escapeHtml, includesText, statusClass, number } from './format';
 // threaded in explicitly at the one real call site (readWorkbookFile,
 // below) instead of read internally, same reasoning as todayIso(now).
 import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
+// Step 4: the state store, shared-state HTTP client, localStorage override
+// caches, and cross-view selectors extracted into lib/client/ - see each
+// module's own header and this step's PR description. createCrmState() is a
+// factory (not a module-level singleton) specifically so a fresh import of
+// this module still produces a fresh, isolated state object every time -
+// see lib/client/crm-state.ts's header for why that matters to
+// tests/e2e-helpers.mjs's loadAppJsSandbox().
+import { loadComponentOverrides, loadReviewedExceptions, loadStatusOverrides, saveReviewedExceptions } from '@/lib/client/local-overrides';
+import { loadSharedState, saveSharedDataset, saveSharedState } from '@/lib/client/shared-state-client';
+import { createCrmState } from '@/lib/client/crm-state';
+import {
+  activeExceptions as selectActiveExceptions,
+  availableBatchDates as selectAvailableBatchDates,
+  componentStatus as selectComponentStatus,
+  effectiveMailings as selectEffectiveMailings,
+  exceptionsForMailing as selectExceptionsForMailing,
+  findSubscriptionMailings as selectFindSubscriptionMailings,
+  getRecipient as selectGetRecipient,
+  getRecipientName as selectGetRecipientName,
+  getSubscriberSubscriptions as selectGetSubscriberSubscriptions,
+  nextBatchDate as selectNextBatchDate,
+  pastBatchDates as selectPastBatchDates,
+  selectedBatchDate as selectSelectedBatchDate,
+} from '@/lib/client/selectors';
 
 const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
 
 // activeView/reviewed/statusOverrides/componentOverrides start as inert
-// defaults here (module evaluation must stay side-effect-free - see
-// initCrmApp() at the bottom) and are set to their real, DOM/localStorage-
-// derived values by initCrmApp() before anything renders.
-const state = {
-  activeView: 'queue',
-  query: '',
-  statusFilter: 'Open',
-  batchFilter: 'next',
-  printScope: 'monthly',
-  printStockFilter: 'all',
-  packetScope: 'all',
-  syncSubscriberId: '',
-  syncSubscriptionId: '',
-  syncPlan: 'Month-to-month',
-  syncOrderDate: '2026-07-12',
-  sampleType: 'Kid',
-  selectedSubscriberId: '',
-  importPreview: null,
-  importStatus: '',
-  importBusy: false,
-  importInfo: null,
-  reviewed: new Set(),
-  statusOverrides: {},
-  componentOverrides: {},
-  seed: null,
-};
+// defaults here (createCrmState() - module evaluation must stay
+// side-effect-free, see initCrmApp() at the bottom) and are set to their
+// real, DOM/localStorage-derived values by initCrmApp() before anything
+// renders. Calling the factory here, at this module's own top level, is
+// what keeps state isolated per test sandbox - see the import comment above
+// for why.
+const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus } = createCrmState();
 
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
 const qaFields = [
@@ -123,130 +128,12 @@ const driveConfig = {
 // every render function below closes over these same bindings by name.
 let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap;
 
-function loadStatusOverrides() {
-  try {
-    return JSON.parse(localStorage.getItem('everletterStatusOverrides') || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function saveStatusOverrides() {
-  localStorage.setItem('everletterStatusOverrides', JSON.stringify(state.statusOverrides));
-}
-
-function saveSharedState(kind, key, value) {
-  fetch('/api/shared-state', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, key, value }),
-  }).catch(() => {
-    // Keep local changes usable if the shared endpoint is briefly unavailable.
-  });
-}
-
-async function saveSharedDataset(seed, sourceName) {
-  const payload = {
-    seed,
-    sourceName,
-    uploadedAt: new Date().toISOString(),
-    summary: seed.summary,
-  };
-  const response = await fetch('/api/shared-state', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind: 'crmDataset', key: 'current', value: JSON.stringify(payload) }),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Could not save the imported spreadsheet.');
-  }
-  state.importInfo = payload;
-  return payload;
-}
-
-async function loadSharedState() {
-  const response = await fetch('/api/shared-state', { cache: 'no-store' });
-  if (!response.ok) return;
-
-  const shared = await response.json();
-  if (shared.dataset?.summary) {
-    state.seed = shared.dataset;
-  }
-  if (shared.statusOverrides && typeof shared.statusOverrides === 'object') {
-    state.statusOverrides = { ...state.statusOverrides, ...shared.statusOverrides };
-    saveStatusOverrides();
-  }
-  if (shared.componentOverrides && typeof shared.componentOverrides === 'object') {
-    state.componentOverrides = { ...state.componentOverrides, ...shared.componentOverrides };
-    saveComponentOverrides();
-  }
-  if (Array.isArray(shared.reviewed)) {
-    shared.reviewed.forEach((key) => state.reviewed.add(key));
-    saveReviewedExceptions();
-  }
-}
-
-function loadComponentOverrides() {
-  try {
-    return JSON.parse(localStorage.getItem('everletterComponentOverrides') || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function saveComponentOverrides() {
-  localStorage.setItem('everletterComponentOverrides', JSON.stringify(state.componentOverrides));
-}
-
-function loadReviewedExceptions() {
-  try {
-    return new Set(JSON.parse(localStorage.getItem('everletterReviewedExceptions') || '[]'));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveReviewedExceptions() {
-  localStorage.setItem('everletterReviewedExceptions', JSON.stringify(Array.from(state.reviewed)));
-}
-
-function isExceptionReviewed(item) {
-  return state.reviewed.has(exceptionReviewKey(item)) || state.reviewed.has(item.exceptionId);
-}
-
 function activeExceptions() {
-  return state.seed.exceptions.filter((item) => !isExceptionReviewed(item));
-}
-
-function effectiveMailing(mailing) {
-  return {
-    ...mailing,
-    originalStatus: mailing.status,
-    status: state.statusOverrides[mailingKey(mailing)] || mailing.status,
-  };
+  return selectActiveExceptions(state.seed, state.reviewed);
 }
 
 function effectiveMailings() {
-  return state.seed.mailings.map(effectiveMailing);
-}
-
-function updateMailingStatus(mailing, status) {
-  const key = mailingKey(mailing);
-  state.statusOverrides[key] = status;
-  saveStatusOverrides();
-  saveSharedState('mailingStatus', key, status);
-}
-
-function updateComponentStatus(mailing, field, status) {
-  const key = componentKey(mailing, field);
-  state.componentOverrides[key] = status;
-  saveComponentOverrides();
-  saveSharedState('componentStatus', key, status);
-}
-
-function mailingMonthKey(mailing) {
-  return String(mailing.shipDate || '').slice(0, 7);
+  return selectEffectiveMailings(state.seed, state.statusOverrides);
 }
 
 function defaultAutomationRules() {
@@ -273,50 +160,27 @@ function printedEnvelopeStatusForMailing(mailing) {
   return envelopeQuantityForMailing(mailing) > 1 ? 'Both Printed' : 'Printed';
 }
 
-function monthlyEnvelopeTargets(mailing) {
-  if (mailing.plan !== 'Month-to-month' || !mailing.subscriptionId || !mailing.shipDate) return [mailing];
-  const monthKey = mailingMonthKey(mailing);
-  const targets = effectiveMailings().filter((item) => (
-    item.plan === 'Month-to-month'
-    && item.subscriptionId === mailing.subscriptionId
-    && mailingMonthKey(item) === monthKey
-  ));
-  return targets.length ? targets : [mailing];
-}
-
-function updateEnvelopeStatus(mailing, status) {
-  monthlyEnvelopeTargets(mailing).forEach((target) => updateComponentStatus(target, 'envelope', status));
-}
-
+// Adapters, not architecture: these pass app.js's own `state` into the pure
+// lib/client/selectors.ts functions so every existing call site below
+// (effectiveMailings(), componentStatus(mailing, field), etc.) keeps
+// working unchanged. A deliberate exception to step 3b's "no wrapper
+// functions" rule (see this step's PR description) - each one disappears
+// when its view migrates to React in Phase 1 and calls the pure selector
+// directly instead.
 function availableBatchDates() {
-  const today = todayIso(new Date());
-  const dates = Array.from(new Set(
-    effectiveMailings()
-      .filter((mailing) => mailing.activeState === 'Active' && isOpenStatus(mailing.status) && mailing.shipDate && mailing.shipDate >= today)
-      .map((mailing) => mailing.shipDate),
-  )).sort();
-  return dates;
+  return selectAvailableBatchDates(effectiveMailings(), todayIso(new Date()));
 }
 
 function pastBatchDates() {
-  const today = todayIso(new Date());
-  return Array.from(new Set(
-    effectiveMailings()
-      .filter((mailing) => mailing.activeState === 'Active' && mailing.shipDate && mailing.shipDate < today)
-      .map((mailing) => mailing.shipDate),
-  )).sort().reverse();
+  return selectPastBatchDates(effectiveMailings(), todayIso(new Date()));
 }
 
 function nextBatchDate() {
-  const today = todayIso(new Date());
-  const upcoming = availableBatchDates().find((date) => date >= today);
-  return upcoming || availableBatchDates()[0] || '';
+  return selectNextBatchDate(effectiveMailings(), todayIso(new Date()));
 }
 
 function selectedBatchDate() {
-  if (state.batchFilter === 'next') return nextBatchDate();
-  if (state.batchFilter === 'all') return '';
-  return state.batchFilter;
+  return selectSelectedBatchDate(state.batchFilter, effectiveMailings(), todayIso(new Date()));
 }
 
 function renderBatchFilter() {
@@ -511,7 +375,7 @@ function renderExceptions() {
     button.addEventListener('click', () => {
       const key = button.getAttribute('data-review');
       state.reviewed.add(key);
-      saveReviewedExceptions();
+      saveReviewedExceptions(state.reviewed);
       saveSharedState('reviewedException', key, '1');
       render();
     });
@@ -725,24 +589,19 @@ function profileMailingCard(mailing) {
 }
 
 function findSubscriptionMailings(subscriptionId) {
-  return state.seed.mailings.filter((mailing) => (
-    mailing.subscriptionId === subscriptionId
-  ));
+  return selectFindSubscriptionMailings(subscriptionId, state.seed);
 }
 
 function getSubscriberSubscriptions(subscriberId) {
-  return state.seed.subscriptions
-    .filter((subscription) => subscription.subscriberId === subscriberId)
-    .sort((a, b) => `${a.character}-${a.plan}`.localeCompare(`${b.character}-${b.plan}`));
+  return selectGetSubscriberSubscriptions(subscriberId, state.seed);
 }
 
 function getRecipientName(recipientId) {
-  const recipient = state.seed.recipients.find((item) => item.recipientId === recipientId);
-  return recipient?.name || 'Unknown recipient';
+  return selectGetRecipientName(recipientId, state.seed);
 }
 
 function getRecipient(recipientId) {
-  return state.seed.recipients.find((item) => item.recipientId === recipientId) || null;
+  return selectGetRecipient(recipientId, state.seed);
 }
 
 function characterFolderUrl(mailing) {
@@ -1059,7 +918,7 @@ function renderImport() {
     state.importStatus = 'Publishing spreadsheet to the shared CRM...';
     renderImport();
     try {
-      await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName);
+      state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName);
       state.seed = state.importPreview.seed;
       state.importPreview = null;
       state.importBusy = false;
@@ -1318,26 +1177,11 @@ function qaRows() {
 }
 
 function exceptionsForMailing(mailing) {
-  return activeExceptions().filter((item) => item.mailingId === mailing.mailingId);
-}
-
-function defaultComponentStatus(mailing, field) {
-  const issues = exceptionsForMailing(mailing);
-  const hasHighIssue = issues.some((item) => item.severity === 'High');
-  const isPrepaid = printModeForPlan(mailing.plan) === 'Prepaid bulk';
-
-  if (field === 'payment') return hasHighIssue ? 'Needs Check' : 'Active';
-  if (field === 'envelope') return isPrepaid ? 'In Ashley Box' : 'Need Print';
-  if (field === 'letter') return isPrepaid ? 'Stuffed' : 'Need Print';
-  if (field === 'artifact') return 'Need Check';
-  if (field === 'insert') return ['marley', 'oliver'].includes(driveCharacterKey(mailing.character)) ? 'Need Check' : 'Not Needed';
-  if (field === 'location') return isPrepaid ? 'Ashley' : 'Marcy';
-  if (field === 'qa') return hasHighIssue ? 'Problem' : 'Open';
-  return '';
+  return selectExceptionsForMailing(mailing, state.seed, state.reviewed);
 }
 
 function componentStatus(mailing, field) {
-  return state.componentOverrides[componentKey(mailing, field)] || defaultComponentStatus(mailing, field);
+  return selectComponentStatus(mailing, field, state.seed, state.reviewed, state.componentOverrides);
 }
 
 function qaIsReady(mailing) {
@@ -2444,7 +2288,7 @@ function render() {
 async function initializeCrm() {
   if (window.EVERLETTER_SEED) {
     state.seed = window.EVERLETTER_SEED;
-    await loadSharedState().catch(() => {});
+    await loadSharedState(state).catch(() => {});
     render();
   } else {
     viewMount.innerHTML = '<section class="data-panel"><div class="empty-state">Could not load Everletter seed data.</div></section>';
