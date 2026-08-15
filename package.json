@@ -10,15 +10,16 @@
     "build": "next build",
     "start": "next start",
     "test": "pnpm test:unit && pnpm test:e2e",
-    "test:unit": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test tests/allowlist.test.mjs tests/ids.test.mjs tests/keys.test.mjs tests/mailing-rules.test.mjs tests/plans.test.mjs tests/characters.test.mjs tests/batch-dates.test.mjs tests/spreadsheet-normalize.test.mjs tests/spreadsheet-exceptions.test.mjs tests/build-seed.test.mjs tests/format.test.mjs tests/domain-format.test.mjs tests/build-dataset-from-tables.test.mjs tests/build-overrides-from-tables.test.mjs tests/selectors.test.mjs tests/crm-state-isolation.test.mjs tests/nav-items.test.mjs tests/render-snapshots.test.mjs",
-    "test:e2e": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test --test-concurrency=1 tests/build-dataset-from-tables.e2e.test.mjs tests/write-to-tables-transactional.e2e.test.mjs tests/shared-state-get.e2e.test.mjs",
+    "test:unit": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test tests/allowlist.test.mjs tests/ids.test.mjs tests/keys.test.mjs tests/mailing-rules.test.mjs tests/plans.test.mjs tests/characters.test.mjs tests/batch-dates.test.mjs tests/spreadsheet-normalize.test.mjs tests/spreadsheet-exceptions.test.mjs tests/build-seed.test.mjs tests/format.test.mjs tests/domain-format.test.mjs tests/build-dataset-from-tables.test.mjs tests/build-overrides-from-tables.test.mjs tests/selectors.test.mjs tests/crm-state-isolation.test.mjs tests/nav-items.test.mjs tests/validate-shared-state.test.mjs tests/render-snapshots.test.mjs",
+    "test:e2e": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs --test --test-concurrency=1 tests/build-dataset-from-tables.e2e.test.mjs tests/write-to-tables-transactional.e2e.test.mjs tests/shared-state-get.e2e.test.mjs tests/shared-state-validation.e2e.test.mjs tests/ingestion-events-restore.e2e.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "docker:up": "docker-compose -f devops/docker-compose.yml -p everletter-ops-crm --project-directory . --env-file .env.local up -d",
     "docker:up:full": "docker-compose -f devops/docker-compose.yml -f devops/docker-compose.app.yml -p everletter-ops-crm --project-directory . --env-file .env.local up -d --build",
-    "docker:down": "docker-compose -f devops/docker-compose.yml -f devops/docker-compose.app.yml -p everletter-ops-crm --project-directory . --env-file .env.local down"
+    "docker:down": "docker-compose -f devops/docker-compose.yml -f devops/docker-compose.app.yml -p everletter-ops-crm --project-directory . --env-file .env.local down",
+    "restore:import": "node --experimental-strip-types --experimental-loader=./tests/ts-extensionless-loader.mjs devops/restore-ingestion-event.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
