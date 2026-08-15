@@ -26,6 +26,16 @@ export function isOpenStatus(status: string | null | undefined): boolean {
   return OPEN_STATUSES.has(status ?? "");
 }
 
+// Every valid mailing status, open or not - matches app/crm/legacy-app.js's
+// own `statusOrder` array exactly (OPEN_STATUSES plus the one closed
+// status, "Mailed"). Added for POST /api/shared-state's mailingStatus
+// validation (lib/validate-shared-state.ts) - a status this doesn't
+// recognize is rejected before it reaches a write, rather than silently
+// stored. Not imported by app/crm/legacy-app.js itself (yet) - that's a
+// deliberate scope decision for the server-validation task that added
+// this, not an oversight; see that task's PR for why.
+export const MAILING_STATUSES = [...OPEN_STATUSES, "Mailed"];
+
 // The LOCAL calendar date of `now`, as "YYYY-MM-DD". The
 // getTimezoneOffset() round-trip is deliberate (see the git history behind
 // PR #3, "Fix spreadsheet import date shifting back a day in western

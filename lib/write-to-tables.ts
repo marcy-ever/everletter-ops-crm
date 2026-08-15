@@ -167,6 +167,47 @@ function stableMailingId(orderId: string, character: string, letterNumber: numbe
   return `${orderId}::${character}::${letterNumber ?? ""}`;
 }
 
+// An approximation - permissive, not conservative, see the note below -
+// of which mailings.id values this import would keep, used only by
+// app/api/shared-state/route.ts's
+// catastrophic-deletion guard (lib/validate-shared-state.ts) BEFORE
+// runImport() runs - nothing has been written yet when this is called.
+// Mirrors the two runImport() checks that matter most for a
+// bulk-deletion estimate (subscription keepability, ship-date presence)
+// but deliberately skips the rarer ambiguous-stable-id cross-check (two
+// mailings landing on the same order+character+letterNumber, see
+// runImport()'s own mailings loop) - that case is self-limiting (it
+// discards only the colliding pair, never a large share of the dataset),
+// so skipping it here only makes this estimate marginally more
+// permissive in a rare edge case, never less safe for what this guard
+// actually needs to catch: a truncated or corrupted upload. The real
+// per-row skip/keep decisions during the actual write remain exactly
+// runImport()'s own logic below, entirely untouched by this function.
+// Direction of the error, spelled out: this over-counts "kept" (treating
+// a colliding pair as both kept when runImport() would discard both),
+// which under-counts deletions, which makes the catastrophic-deletion
+// guard marginally more likely to let an import through than to block
+// one wrongly - permissive, not conservative-toward-blocking. Fine given
+// how self-limiting the skipped case is today; worth re-checking if a
+// future change ever widens the gap between this and runImport()'s real
+// logic.
+export function estimateKeptMailingIds(seed: Seed): Set<string> {
+  const recipientsById = new Map(seed.recipients.map((r) => [r.recipientId, r]));
+  const keepSubscriptionIds = new Set<string>();
+  for (const s of seed.subscriptions) {
+    if (LETTERS_BY_PLAN[s.plan] === undefined) continue;
+    if (!recipientsById.has(s.recipientId)) continue;
+    keepSubscriptionIds.add(s.subscriptionId);
+  }
+  const keep = new Set<string>();
+  for (const m of seed.mailings) {
+    if (!m.shipDate) continue;
+    if (!keepSubscriptionIds.has(m.subscriptionId)) continue;
+    keep.add(stableMailingId(m.orderId, m.character, normalizeLetterNumber(m.letterNumber)));
+  }
+  return keep;
+}
+
 export async function writeImport(seed: Seed, db: Db): Promise<void> {
   await runImport(seed, db);
 }

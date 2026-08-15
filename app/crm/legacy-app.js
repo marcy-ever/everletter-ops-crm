@@ -2381,4 +2381,10 @@ export {
   // object's keys are the exact same set as app/crm/shell/nav-items.ts's
   // ids - not consumed by any runtime caller.
   VIEW_REGISTRY,
+  // Exported only for tests/component-fields-parity.test.mjs, which
+  // asserts these still match lib/domain/mailing-rules.ts's
+  // MAILING_STATUSES and lib/domain/component-fields.ts's
+  // COMPONENT_FIELD_OPTIONS exactly - not consumed by any runtime caller.
+  statusOrder,
+  qaFields,
 };
