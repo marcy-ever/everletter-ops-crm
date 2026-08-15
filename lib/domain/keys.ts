@@ -104,13 +104,14 @@ export interface ParsedExceptionReviewKey {
  * its parts. Returns null for anything that doesn't have exactly the 4
  * segments a real exceptionReviewKey always has.
  *
- * Known structural limitation (see docs/schema-design.md): the normalized
- * exceptions table only stores mailing_id/subscription_id/type - it has no
- * column for subscriberId, reason, or shipDate. So subscriberId/reason/
- * shipDate can be parsed out of the key here, but the server-side matcher
- * cannot cross-check them against stored columns; it matches on mailing_id
- * alone. That's a schema limit, not something a smarter parser here could
- * fix.
+ * The normalized exceptions table stores mailing_id/type directly, plus
+ * (as of db/schema/exceptions.ts's review_key_subscriber_id/
+ * review_key_ship_date columns) a snapshot of this key's remaining two
+ * segments - so the server-side matcher (writeReviewedException,
+ * lib/write-to-tables.ts) now cross-checks all four of mailingId/
+ * subscriberId/reason/shipDate against stored columns, not mailingId/reason
+ * alone. See docs/schema-design.md for why those two columns didn't exist
+ * originally and what closed the gap.
  */
 export function parseExceptionReviewKey(key: string): ParsedExceptionReviewKey | null {
   if (typeof key !== "string") return null;

@@ -43,12 +43,30 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/domain/ids";
  *    small fixed set of categories, so forcing one here would just be a
  *    different kind of guess.
  *  - reviewedException override keys are matched to an exceptions row via
- *    mailings.app_mailing_id (joined through exceptions.mailing_id) plus
- *    exceptions.type == the key's reason segment; the table has no column
- *    for the key's subscriberId/shipDate segments to cross-check against.
+ *    mailings.app_mailing_id (joined through exceptions.mailing_id),
+ *    exceptions.type == the key's reason segment, and (as of the
+ *    review_key_subscriber_id/review_key_ship_date columns - see
+ *    db/schema/exceptions.ts) the key's subscriberId/shipDate segments too -
+ *    all four segments of exceptionReviewKey (lib/domain/keys.ts) are now
+ *    cross-checked, closing what used to be a real, documented gap (two
+ *    exceptions sharing a mailing and a reason string were previously
+ *    indistinguishable).
  *  - mailings.id is NOT app.js's own generated mailingId - see the column
  *    comment in db/schema/mailings.ts for why (it collides routinely for
  *    the most common subscription pattern) and what's used instead.
+ *
+ * Every write* function below returns a WriteOutcome (previousValue/
+ * newValue) on an actual write, or null when it soft-skipped (unparseable
+ * key, no matching row, etc.) - app/api/shared-state/route.ts uses this to
+ * decide whether to write an audit_events row, so a skip-and-log case
+ * (nothing changed) never produces one. Returning the outcome rather than
+ * writing the audit row here keeps this file focused on writing the
+ * normalized tables; the route is the single audit choke point (it already
+ * resolves the actor via auth()) and both halves stay independently
+ * testable. previousValue is read via a SELECT immediately before each
+ * UPDATE/INSERT, inside the same transaction the caller is already in - no
+ * new race introduced beyond what every other read-then-write in this file
+ * already does.
  */
 
 // The db handle every exported function here takes - either the real
@@ -126,6 +144,15 @@ export interface Seed {
   subscriptions: SeedSubscription[];
   mailings: SeedMailing[];
   exceptions: SeedException[];
+}
+
+// What a write* function actually changed - see the module comment above
+// for why this is returned rather than written to audit_events here.
+// previousValue is null for a first-ever write to a key (an insert, not an
+// update) - there's genuinely no prior to report, not an unknown one.
+export interface WriteOutcome {
+  previousValue: string | null;
+  newValue: string;
 }
 
 // Matches app.js's own plannedLetterCount() (app/crm/legacy-app.js) for the three
@@ -386,7 +413,7 @@ async function runImport(seed: Seed, db: Db) {
   // subscription_id only, with no reviewed-state preservation - see the
   // module docstring and docs/schema-design.md.
   const keptMailingExceptionIds = new Set<string>();
-  const subscriptionOnlyExceptions: Array<{ subscriptionId: string; type: string }> = [];
+  const subscriptionOnlyExceptions: Array<{ subscriptionId: string; type: string; reviewKeySubscriberId: string | null; reviewKeyShipDate: string | null }> = [];
 
   for (const e of seed.exceptions) {
     const entry = mailingByAppKey.get(appMailingKey(e));
@@ -395,6 +422,13 @@ async function runImport(seed: Seed, db: Db) {
     const stableMailingIdForException = mailingResolvable ? entry!.stableId : null;
     const subscriptionResolvable = !!candidateSubscriptionId && keepSubscriptionIds.has(candidateSubscriptionId);
     const type = e.reason || "";
+    // Snapshots of exceptionReviewKey's other two segments (see
+    // db/schema/exceptions.ts's column comment) - null, not "", for an
+    // absent value, matching parseExceptionReviewKey's "unknown-subscriber"
+    // / "no-ship-date" fallbacks being treated as null at match time
+    // (writeReviewedException below).
+    const reviewKeySubscriberId = e.subscriberId || null;
+    const reviewKeyShipDate = e.shipDate || null;
 
     if (!mailingResolvable && !subscriptionResolvable) {
       log("skipping exception, neither mailing nor subscription resolved:", e.exceptionId);
@@ -408,15 +442,15 @@ async function runImport(seed: Seed, db: Db) {
         .where(eq(exceptions.mailingId, stableMailingIdForException!));
       const subscriptionId = subscriptionResolvable ? candidateSubscriptionId! : null;
       if (existing.length === 0) {
-        await db.insert(exceptions).values({ mailingId: stableMailingIdForException, subscriptionId, type });
+        await db.insert(exceptions).values({ mailingId: stableMailingIdForException, subscriptionId, type, reviewKeySubscriberId, reviewKeyShipDate });
       } else if (existing.length === 1) {
-        await db.update(exceptions).set({ subscriptionId, type }).where(eq(exceptions.id, existing[0].id));
+        await db.update(exceptions).set({ subscriptionId, type, reviewKeySubscriberId, reviewKeyShipDate }).where(eq(exceptions.id, existing[0].id));
       } else {
         log("skipping exception update, multiple existing rows for mailing_id (unexpected):", stableMailingIdForException);
       }
       keptMailingExceptionIds.add(stableMailingIdForException!);
     } else {
-      subscriptionOnlyExceptions.push({ subscriptionId: candidateSubscriptionId!, type });
+      subscriptionOnlyExceptions.push({ subscriptionId: candidateSubscriptionId!, type, reviewKeySubscriberId, reviewKeyShipDate });
     }
   }
 
@@ -488,62 +522,88 @@ async function findMailingByAppKey(mailingId: string, sourceRow: string, db: Db)
   return rows[0];
 }
 
-export async function writeMailingStatus(key: string, status: string, db: Db): Promise<void> {
+export async function writeMailingStatus(key: string, status: string, db: Db): Promise<WriteOutcome | null> {
   const parsed = parseMailingKey(key);
   if (!parsed) {
     log("mailingStatus: could not parse key, skipping:", key);
-    return;
+    return null;
   }
   const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow, db);
-  if (!match) return;
+  if (!match) return null;
+  const existing = await db.select({ status: mailings.status }).from(mailings).where(eq(mailings.id, match.id));
+  const previousValue = existing[0]?.status ?? null;
   await db.update(mailings).set({ status }).where(eq(mailings.id, match.id));
+  return { previousValue, newValue: status };
 }
 
-export async function writeComponentStatus(key: string, status: string, db: Db): Promise<void> {
+export async function writeComponentStatus(key: string, status: string, db: Db): Promise<WriteOutcome | null> {
   const parsed = parseComponentKey(key);
   if (!parsed) {
     log("componentStatus: could not parse key, skipping:", key);
-    return;
+    return null;
   }
   const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow, db);
-  if (!match) return;
+  if (!match) return null;
   const existing = await db
-    .select({ id: mailingComponents.id })
+    .select({ id: mailingComponents.id, status: mailingComponents.status })
     .from(mailingComponents)
     .where(and(eq(mailingComponents.mailingId, match.id), eq(mailingComponents.componentType, parsed.field)));
   if (existing.length === 0) {
     await db.insert(mailingComponents).values({ mailingId: match.id, componentType: parsed.field, status });
+    return { previousValue: null, newValue: status };
   } else if (existing.length === 1) {
+    const previousValue = existing[0].status;
     await db
       .update(mailingComponents)
       .set({ status, updatedAt: sql`now()` })
       .where(eq(mailingComponents.id, existing[0].id));
+    return { previousValue, newValue: status };
   } else {
     log("componentStatus: multiple existing rows for mailing+field (unexpected), skipping:", parsed);
+    return null;
   }
 }
 
-export async function writeReviewedException(key: string, db: Db): Promise<void> {
+export async function writeReviewedException(key: string, db: Db): Promise<WriteOutcome | null> {
   const parsed = parseExceptionReviewKey(key);
   if (!parsed) {
     log("reviewedException: could not parse key, skipping:", key);
-    return;
+    return null;
   }
   // exceptionReviewKey carries no sourceRow, so exceptions can't be
   // disambiguated the same way mailings are - matched instead by joining
-  // through to mailings.appMailingId plus exceptions.type (which this
-  // module always writes as the exact reason string, so it doubles as a
-  // real second signal here - see the module docstring). Subscription-only
-  // fallback exceptions (mailing_id null) are never reachable this way;
-  // that's an accepted, documented limitation.
+  // through to mailings.appMailingId, exceptions.type (which this module
+  // always writes as the exact reason string, so it doubles as a real
+  // second signal here - see the module docstring), and now (via
+  // review_key_subscriber_id/review_key_ship_date - db/schema/exceptions.ts)
+  // the key's remaining two segments too - all four of exceptionReviewKey's
+  // segments are cross-checked as of this change, closing what used to be a
+  // documented gap. "unknown-subscriber"/"no-ship-date" (parseExceptionReviewKey's
+  // fallbacks for an absent segment) are treated as null here, matching how
+  // runImport() stores an absent value as null rather than that literal
+  // string - IS NOT DISTINCT FROM handles the null-vs-null case a plain
+  // eq() would miss. Subscription-only fallback exceptions (mailing_id
+  // null) are never reachable this way; that's an accepted, documented
+  // limitation, unchanged by this.
+  const expectedSubscriberId = parsed.subscriberId === "unknown-subscriber" ? null : parsed.subscriberId;
+  const expectedShipDate = parsed.shipDate === "no-ship-date" ? null : parsed.shipDate;
   const rows = await db
-    .select({ id: exceptions.id })
+    .select({ id: exceptions.id, reviewed: exceptions.reviewed })
     .from(exceptions)
     .innerJoin(mailings, eq(exceptions.mailingId, mailings.id))
-    .where(and(eq(mailings.appMailingId, parsed.mailingId), eq(exceptions.type, parsed.reason)));
+    .where(
+      and(
+        eq(mailings.appMailingId, parsed.mailingId),
+        eq(exceptions.type, parsed.reason),
+        sql`${exceptions.reviewKeySubscriberId} IS NOT DISTINCT FROM ${expectedSubscriberId}`,
+        sql`${exceptions.reviewKeyShipDate} IS NOT DISTINCT FROM ${expectedShipDate}`,
+      ),
+    );
   if (rows.length !== 1) {
     log(`reviewedException: expected exactly one matching exception, found ${rows.length}, skipping:`, parsed);
-    return;
+    return null;
   }
+  const previousValue = String(rows[0].reviewed);
   await db.update(exceptions).set({ reviewed: true, reviewedAt: sql`now()` }).where(eq(exceptions.id, rows[0].id));
+  return { previousValue, newValue: "true" };
 }
