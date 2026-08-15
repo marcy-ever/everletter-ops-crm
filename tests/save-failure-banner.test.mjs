@@ -12,12 +12,15 @@ import { loadAppJsSandbox } from "./e2e-helpers.mjs";
 // mechanism tests/render-snapshots.test.mjs already trusts for #viewMount).
 //
 // globalThis.fetch is stubbed unconditionally by loadAppJsSandbox() to
-// `async () => ({ ok: false, json: async () => ({}) })` - every save in
-// this file therefore fails, which is exactly the path under test. There's
-// no way to drive a *successful* save through this sandbox (see that
-// module's own comment), so "a successful save leaves the banner empty" is
-// asserted directly against saveFailures/renderSaveFailureBanner instead of
-// through a real fetch - see the last test below.
+// `async () => ({ ok: false, json: async () => ({}) })` - every save
+// driven through updateMailingStatus in this file therefore fails via the
+// HTTP (resolved, not-ok) path specifically, never the network (rejected
+// fetch) path - the stub resolves, it never throws. That covers the "http"
+// cause directly and thoroughly; the "network" cause and a genuinely
+// successful save are both exercised by calling saveFailures'
+// recordSaveFailure/recordSaveSuccess directly instead (same technique the
+// load-failure tests below already use), since this sandbox's fetch can't
+// produce either outcome.
 //
 // saveSharedState's fetch chain resolves asynchronously (a .then off the
 // fetch promise, itself awaiting response.json() inside readErrorMessage),
@@ -39,7 +42,7 @@ test("no failures: the banner renders nothing", async () => {
   assert.equal(sandbox.getCapturedHtml("#saveFailureBanner"), "");
 });
 
-test("a single failed save: singular wording, counted as one, includes the server's message", async () => {
+test("a single failed save: singular wording, counted as one, includes the server's message, and gives HTTP-rejection guidance (not connectivity advice)", async () => {
   const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
   sandbox.updateMailingStatus(mailing(1), "Mailed");
   await flush();
@@ -53,9 +56,14 @@ test("a single failed save: singular wording, counted as one, includes the serve
   assert.match(html, /It only exists on this device/);
   assert.match(html, /reloading this page will lose it/);
   assert.doesNotMatch(html, /changes couldn.{1,8}t be saved/, "must use singular \"change\", not plural, for a count of one");
+  // The sandbox's stubbed fetch resolves ok:false (an HTTP rejection, not a
+  // dropped connection) - the guidance sentence must say so, not tell the
+  // user to wait for connectivity, which would be wrong for this failure.
+  assert.match(html, /The server refused it/);
+  assert.doesNotMatch(html, /once you.{1,8}re back online/, "an HTTP rejection must not get network-outage guidance");
 });
 
-test("many failed saves (bulk-action shape): plural wording, one counted message, not enumerated", async () => {
+test("many failed saves (bulk-action shape): plural wording, one counted message, not enumerated, HTTP-rejection guidance", async () => {
   const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
   for (let i = 0; i < 120; i += 1) {
     sandbox.updateMailingStatus(mailing(i), "Mailed");
@@ -66,9 +74,25 @@ test("many failed saves (bulk-action shape): plural wording, one counted message
   assert.match(html, /120 changes couldn.{1,8}t be saved/);
   assert.match(html, /They only exist on this device/);
   assert.match(html, /reloading this page will lose them/);
+  assert.match(html, /The server refused the most recent one/);
+  assert.doesNotMatch(html, /once you.{1,8}re back online/, "an HTTP rejection must not get network-outage guidance");
   // Counted, not enumerated: exactly one <p> for the save-failure message,
   // not one per failed call.
   assert.equal((html.match(/<p>/g) || []).length, 1);
+});
+
+test("a network failure (as opposed to an HTTP rejection) gets connectivity guidance, not \"the server refused it\"", async () => {
+  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  // The sandbox's stubbed fetch always resolves (ok:false), never rejects,
+  // so a genuine network failure can't be driven through updateMailingStatus
+  // here - recorded directly against the store instead, same technique the
+  // load-failure tests below use.
+  sandbox.saveFailures.recordSaveFailure("mailingStatus", "MAIL-1::2", "Could not reach the server - check your connection.", "network");
+
+  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  assert.match(html, /1 change couldn.{1,8}t be saved/);
+  assert.match(html, /Re-apply it once you.{1,8}re back online/);
+  assert.doesNotMatch(html, /The server refused/, "a network failure must not get HTTP-rejection guidance");
 });
 
 test("a later successful save does not clear an existing failure banner", async () => {
@@ -116,6 +140,7 @@ test("a clean store (no failures recorded at all) renders nothing, confirming th
   assert.deepEqual(snapshot, {
     failedSaveCount: 0,
     lastFailureMessage: null,
+    lastFailureCause: null,
     loadFailed: false,
     loadFailureMessage: null,
   });

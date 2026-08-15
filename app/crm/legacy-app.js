@@ -226,6 +226,14 @@ function renderBatchFilter() {
 // Counted, not enumerated: failedSaveCount is a running total across
 // possibly many failures (a bulk action can fail dozens of times in one
 // click), not a list of each one.
+//
+// The closing guidance sentence branches on lastFailureCause because "wait
+// for connectivity and retry" is only true for a dropped connection - for
+// an HTTP rejection (a 409 from the catastrophic-deletion guard, a 400 for
+// an invalid status) the user isn't offline and retrying fails again for
+// the exact same reason, which the appended server message already names.
+// Telling them to wait for connectivity in that case is confidently wrong
+// in a way that costs real time.
 function renderSaveFailureBanner() {
   const snapshot = saveFailures.getSnapshot();
   const messages = [];
@@ -236,7 +244,11 @@ function renderSaveFailureBanner() {
     const pronoun = n === 1 ? 'it' : 'them';
     const subject = n === 1 ? 'It' : 'They';
     const verb = n === 1 ? 'exists' : 'exist';
-    let text = `${number(n)} ${changeNoun} couldn't be saved. ${subject} only ${verb} on this device - the shared database doesn't have ${pronoun}, and reloading this page will lose ${pronoun}. Re-apply ${pronoun} once you're back online.`;
+    const guidance =
+      snapshot.lastFailureCause === 'http'
+        ? `The server refused ${n === 1 ? 'it' : 'the most recent one'} - re-applying ${pronoun} won't help until that's fixed.`
+        : `Re-apply ${pronoun} once you're back online.`;
+    let text = `${number(n)} ${changeNoun} couldn't be saved. ${subject} only ${verb} on this device - the shared database doesn't have ${pronoun}, and reloading this page will lose ${pronoun}. ${guidance}`;
     if (snapshot.lastFailureMessage) {
       text += ` Most recent error: ${snapshot.lastFailureMessage}`;
     }

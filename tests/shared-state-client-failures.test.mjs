@@ -44,6 +44,7 @@ test("saveSharedState records a save failure with the server's error message on 
   const snapshot = store.getSnapshot();
   assert.equal(snapshot.failedSaveCount, 1);
   assert.equal(snapshot.lastFailureMessage, '"Not A Real Status" is not a valid mailing status.');
+  assert.equal(snapshot.lastFailureCause, "http");
 });
 
 test("saveSharedState records a save failure with the server's 409 message (catastrophic-deletion guard)", async () => {
@@ -53,6 +54,7 @@ test("saveSharedState records a save failure with the server's 409 message (cata
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(store.getSnapshot().lastFailureMessage, "This import contains 118 mailings and would remove 1,100 of 1,218 existing ones (90%), over the 60% threshold - refused.");
+  assert.equal(store.getSnapshot().lastFailureCause, "http");
 });
 
 test("saveSharedState falls back to a generic message when the error response has no usable body", async () => {
@@ -62,6 +64,7 @@ test("saveSharedState falls back to a generic message when the error response ha
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.match(store.getSnapshot().lastFailureMessage, /HTTP 500/);
+  assert.equal(store.getSnapshot().lastFailureCause, "http");
 });
 
 test("saveSharedState records a save failure on a network error, distinct wording from an HTTP failure", async () => {
@@ -75,6 +78,7 @@ test("saveSharedState records a save failure on a network error, distinct wordin
   const snapshot = store.getSnapshot();
   assert.equal(snapshot.failedSaveCount, 1);
   assert.match(snapshot.lastFailureMessage, /reach the server/i);
+  assert.equal(snapshot.lastFailureCause, "network", "distinct cause from an HTTP failure - the banner's guidance sentence branches on this");
 });
 
 test("saveSharedState records a success and does not increment the failure count", async () => {

@@ -67,14 +67,17 @@ export function saveSharedState(kind: string, key: string, value: string, failur
         return;
       }
       const message = await readErrorMessage(response, `The server rejected this save (HTTP ${response.status}).`);
-      failureStore.recordSaveFailure(kind, key, message);
+      failureStore.recordSaveFailure(kind, key, message, "http");
     })
     .catch(() => {
       // Keep local changes usable if the shared endpoint is briefly
       // unavailable - preserved exactly (no throw, no revert). The
       // failure itself is no longer silent, though: recorded so the UI
-      // can say so, distinct from a resolved-but-rejected response.
-      failureStore.recordSaveFailure(kind, key, "Could not reach the server - check your connection.");
+      // can say so, distinct from a resolved-but-rejected response. The
+      // "network" cause (as opposed to "http" above) is what lets the
+      // banner's guidance sentence tell the two apart - "wait for
+      // connectivity" is right here and wrong for a rejected request.
+      failureStore.recordSaveFailure(kind, key, "Could not reach the server - check your connection.", "network");
     });
 }
 

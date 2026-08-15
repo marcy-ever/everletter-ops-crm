@@ -40,18 +40,31 @@
  * optimistically to lose) - it's the app not having the real data at
  * all, which needs different wording and shouldn't inflate a "changes
  * couldn't be saved" count.
+ *
+ * lastFailureCause exists because "network" and "http" failures need
+ * different advice, not just different messages: telling someone to wait
+ * for connectivity and retry is correct for a dropped connection and
+ * actively wrong for a 409 the catastrophic-deletion guard just refused -
+ * retrying that one fails again, identically, for a reason that has
+ * nothing to do with being online. Recorded per most-recent-failure (same
+ * "last one wins" shape as lastFailureMessage, not enumerated) so the
+ * UI's guidance sentence can branch on it instead of guessing from the
+ * message text.
  */
+
+export type SaveFailureCause = "network" | "http";
 
 export interface SaveFailureSnapshot {
   failedSaveCount: number;
   lastFailureMessage: string | null;
+  lastFailureCause: SaveFailureCause | null;
   loadFailed: boolean;
   loadFailureMessage: string | null;
 }
 
 export interface SaveFailureStore {
   getSnapshot(): SaveFailureSnapshot;
-  recordSaveFailure(kind: string, key: string, message: string): void;
+  recordSaveFailure(kind: string, key: string, message: string, cause: SaveFailureCause): void;
   recordSaveSuccess(kind: string, key: string): void;
   recordLoadFailure(message: string): void;
   recordLoadSuccess(): void;
@@ -61,6 +74,7 @@ export interface SaveFailureStore {
 export function createSaveFailureStore(): SaveFailureStore {
   let failedSaveCount = 0;
   let lastFailureMessage: string | null = null;
+  let lastFailureCause: SaveFailureCause | null = null;
   let loadFailed = false;
   // Kept separate from lastFailureMessage (save-specific) rather than
   // reused for both - a load failure and a later save failure are
@@ -75,16 +89,17 @@ export function createSaveFailureStore(): SaveFailureStore {
 
   return {
     getSnapshot() {
-      return { failedSaveCount, lastFailureMessage, loadFailed, loadFailureMessage };
+      return { failedSaveCount, lastFailureMessage, lastFailureCause, loadFailed, loadFailureMessage };
     },
 
     // kind/key aren't part of the exposed snapshot (see the module
     // comment on counting vs. enumerating) - accepted here so call sites
     // already have the right shape ready for when a retry queue needs
     // them, and so this function's signature mirrors recordSaveSuccess's.
-    recordSaveFailure(_kind, _key, message) {
+    recordSaveFailure(_kind, _key, message, cause) {
       failedSaveCount += 1;
       lastFailureMessage = message;
+      lastFailureCause = cause;
       notify();
     },
 
