@@ -97,7 +97,7 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 
 - `app/` - App Router UI shell, global CSS, auth helper, and API routes.
 - `app/api/shared-state/route.ts` - GET/POST API for the CRM dataset and shared overrides. GET reconstructs `app.js`'s dataset shape from the normalized tables (`lib/build-dataset-from-tables.ts` + `lib/build-overrides-from-tables.ts`); POST dispatches through `lib/write-to-tables.ts` inside one Postgres transaction. See "Current data flow" below and `docs/schema-design.md` — don't restate that doc's history here, it stays current on its own.
-- `app/page.tsx` - Static CRM shell, sidebar navigation, filters, and script/module loading: `seed-data.js` → `xlsx.full.min.js` (both still plain `beforeInteractive` `<Script>` tags) → `<CrmApp />` (mounts and initializes `app/crm/legacy-app.js`, replacing the old `afterInteractive` `<Script src="/app.js">` tag as of the app.js → ESM move, §9).
+- `app/page.tsx` - Static CRM shell: renders `<Sidebar />` (`app/crm/shell/`), the topbar/metric/filter markup, and script/module loading: `seed-data.js` → `xlsx.full.min.js` (both still plain `beforeInteractive` `<Script>` tags) → `<CrmApp />` (mounts and initializes `app/crm/legacy-app.js`).
 - `app/layout.tsx` - Root HTML layout and metadata.
 - `app/globals.css` - All CRM, responsive, mobile, and print-related styling (~2,400 lines — see Known Issues).
 - `app/access-denied/page.tsx` - Plain page shown to authenticated users whose email isn't on the `ALLOWED_USERS` allowlist.
@@ -105,14 +105,36 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 - `auth.ts` (repo root) - Auth.js config: Google provider, jwt/session callbacks that attach the resolved role (or `null`) to the session via `lib/allowlist.ts`.
 - `proxy.ts` (repo root) - Route protection for the whole app (Next 16 renamed `middleware.ts` to `proxy.ts`; see the Authentication section under §4).
 - `lib/allowlist.ts` - Parses `ALLOWED_USERS` (`email:role` pairs) and resolves a role for a given email. Pure/testable; see `docs/auth.md`.
-- `lib/ids.ts` - Deterministic, hashed ID generation for subscribers/recipients/subscriptions/mailings. Mirrored (not imported — `app/crm/legacy-app.js` is a real ES module now, but importing this directly is deliberately left for a later decomposition step rather than folded into the ESM move itself, §9) by an identical implementation inline in `app.js`; kept in sync by tests that run the real module in a sandbox and diff its output against this module.
-- `lib/keys.ts` - `mailingKey`/`componentKey`/`exceptionReviewKey` generation and parsing. Same mirrored/tested-in-sync relationship with `app.js` as `lib/ids.ts`. Existing overrides depend on these staying stable across refactors.
-- `lib/mailing-rules.ts` - Cadence/status rules (open status, overdue, due-within-14-days, nearest batch date). Same mirrored relationship with `app.js`.
+
+**`lib/domain/`** - pure business rules with no DOM/state/window/localStorage/clock dependency, imported directly by both the browser bundle (`app/crm/legacy-app.js`) and server code. This is what the app.js decomposition (§9) has been extracting into, one step at a time:
+
+- `lib/domain/ids.ts` - Deterministic, hashed ID generation for subscribers/recipients/subscriptions/mailings.
+- `lib/domain/keys.ts` - `mailingKey`/`componentKey`/`exceptionReviewKey` generation and parsing. Existing overrides depend on these staying stable across refactors.
+- `lib/domain/mailing-rules.ts` - Cadence/status rules (open status, overdue, due-within-14-days, nearest batch date).
+- `lib/domain/plans.ts` - Plan normalization and everything derived from a plan (letter count, print mode, envelope quantity).
+- `lib/domain/characters.ts` - Character normalization, Drive-config lookup keys, and envelope stock selection.
+- `lib/domain/batch-dates.ts` - Per-order batch date generation and Ashley-bin storage labeling.
+- `lib/domain/dataset.ts` - The canonical `Dataset`/`DatasetSubscriber`/`DatasetRecipient`/`DatasetOrder`/`DatasetSubscription`/`DatasetMailing`/`DatasetException`/`DatasetSummary` interfaces - the one shape both `buildSeedFromSpreadsheet` (client) and `buildDatasetFromTables` (server) produce.
+- `lib/domain/format.ts` - `formatDate`/`titleCase`, used by domain logic (`batch-dates.ts`, `characters.ts`) as well as views.
+- `lib/domain/spreadsheet/` - `normalize.ts` (per-cell normalizers), `build-seed.ts` (`buildSeedFromSpreadsheet`, the full client-side seed builder), `exceptions.ts` (`spreadsheetExceptionReasons`).
+
+**`lib/client/`** - browser-only services and derivations (no DOM dependency) that `app/crm/legacy-app.js` composes into its rendering; may import `lib/domain/`. Extracted from `legacy-app.js` in decomposition step 4:
+
+- `lib/client/crm-state.ts` - `createCrmState()`, a factory (deliberately not a module-level singleton - see its header) producing the CRM's client-side state plus its write-through mutators, `updateMailingStatus`/`updateComponentStatus`/`updateEnvelopeStatus`.
+- `lib/client/local-overrides.ts` - localStorage load/save for the three override caches (`everletterStatusOverrides`, `everletterComponentOverrides`, `everletterReviewedExceptions`).
+- `lib/client/shared-state-client.ts` - `saveSharedState`/`loadSharedState`/`saveSharedDataset`, the `/api/shared-state` HTTP client.
+- `lib/client/selectors.ts` - Pure cross-view selectors (`effectiveMailing(s)`, `activeExceptions`, `componentStatus`, the batch-date family, subscriber/recipient lookups) taking their inputs explicitly rather than reading a global - the shape the eventual React views need too.
+
+**Import direction is a rule every future decomposition step depends on, not just a convention:** `app/` and server-side `lib/` modules (`lib/write-to-tables.ts`, `lib/build-dataset-from-tables.ts`, etc.) may import `lib/domain/`; `lib/client/` may also import `lib/domain/`. `lib/domain/` imports nothing from `app/` or `lib/client/` - no DOM, state, window, or clock dependency, which is what lets the same implementation run in the browser bundle and on the server.
+
 - `lib/write-to-tables.ts` - Writes a POSTed import or status change into the normalized tables, transactionally.
 - `lib/build-dataset-from-tables.ts` - Reconstructs the full CRM dataset shape `app.js` expects, by querying the normalized tables directly. The only thing GET reads from now.
 - `lib/build-overrides-from-tables.ts` - Reconstructs `componentOverrides` and reviewed-exception keys for GET, since neither has an equivalent field in the dataset shape itself.
-- `app/crm/legacy-app.js` - Main application (~3,000 lines). Owns state, views, spreadsheet parsing, validation, mailing calculations, status changes, profiles, envelope HTML generation, QA, packet/bin workflows, simulators, and DOM event binding. A real ES module as of the app.js → ESM move (§9) — importable/exportable, but still an untyped vanilla-JS monolith otherwise; no rendering logic changed by that move.
+- `app/crm/legacy-app.js` - Main application (~2,400 lines, down from ~3,000 before the decomposition - see §9). Owns rendering, spreadsheet parsing, validation, mailing calculations, profiles, envelope HTML generation, QA, packet/bin workflows, and simulators. State, the shared-state HTTP client, localStorage caches, and cross-view selectors moved to `lib/client/` (step 4); the twelve-view sidebar is now static (`app/crm/shell/`) and `renderView()` dispatches through a `VIEW_REGISTRY` map instead of an if-chain (step 5). A real ES module - importable/exportable - but still an untyped vanilla-JS monolith otherwise.
 - `app/crm/CrmApp.tsx` - `"use client"` component that calls `legacy-app.js`'s exported `initCrmApp()` from a mount effect (browser-only, guarded against double-invocation). Rendered from `app/page.tsx`; the only thing that ever imports `legacy-app.js`.
+- `app/crm/format.ts` - View-only display formatting (`escapeHtml`, `includesText`, `statusClass`, `number`) with no server use, so it stays out of `lib/domain/` deliberately - see that module's header.
+- `app/crm/shell/nav-items.ts` - The sidebar's single source of truth: all twelve views' `data-view` id, badge, and label, in display order.
+- `app/crm/shell/Sidebar.tsx` - Renders `nav-items.ts`; `app/page.tsx` mounts it in place of hand-written nav markup. `app/crm/legacy-app.js`'s `VIEW_REGISTRY` (in the same file as `renderView()`) is kept in agreement with this list's ids by `tests/nav-items.test.mjs` - no nav button without a renderer, no renderer without a button.
 - `public/everletterSeed.json` and `public/seed-data.js` - Sanitized empty fallback dataset, loaded synchronously before the real dataset arrives from `/api/shared-state`. Never replace these with production customer data in Git.
 - `public/assets/` - Everletter logo, wax seal, character art, envelope corner art, and sample-letter images.
 - `db/schema/` - Drizzle table definitions, one file per entity (`subscribers.ts`, `subscriptions.ts`, `orders.ts`, `mailings.ts`, `mailing_components.ts`, `exceptions.ts`, `ingestion_events.ts`, `staging_locations.ts`), plus `relations.ts` and a barrel `index.ts`. Full design rationale: `docs/schema-design.md`.
@@ -120,7 +142,6 @@ The non-obvious architectural choice is deliberate but transitional: the React/T
 - `drizzle/` - Generated Postgres migrations (six as of this writing, `0000`-`0005`) and Drizzle metadata.
 - `tests/` - The real unit and end-to-end test suite, wired into `pnpm test`. See §6 and `docs/testing.md`.
 - `devops/` - Docker Compose files (`docker-compose.yml` for Postgres, `docker-compose.app.yml` for the app service), the app's `Dockerfile`, the NAS deploy script, and backup/maintenance scripts. See §4/§7.
-- `examples/d1/` - Leftover Cloudflare D1 starter template code, not used by the CRM and not wired into anything. Safe to remove; hasn't been yet.
 
 ### Current data flow
 
@@ -140,7 +161,7 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 - Mailing cadence is the 1st and 15th. A roughly three-day cutoff determines whether a new order can join the imminent batch.
 - Month-to-month customers receive two letters per payment and normally need two envelopes printed together. Six- and twelve-month orders receive 12 and 24 letters respectively and are usually prepared in advance.
 - Character changes restart the letter number at 1 and should remain a Needs Review event because the envelope/bin workflow changes.
-- Preserve stable mailing/component key generation when refactoring; existing overrides depend on those keys (`lib/keys.ts` is the canonical spec).
+- Preserve stable mailing/component key generation when refactoring; existing overrides depend on those keys (`lib/domain/keys.ts` is the canonical spec).
 - Keep customer-data configuration out of static/public assets. Use server-side secrets/config or normalized database records.
 
 ## 4. Infrastructure & Services
@@ -317,7 +338,7 @@ Only run `pnpm db:generate` after intentionally changing something under `db/sch
 ### Tests
 
 ```bash
-pnpm test:unit   # six unit test files, no external services needed, runs in parallel
+pnpm test:unit   # unit tests + golden-HTML render snapshots, no external services needed, runs in parallel
 pnpm test:e2e    # three end-to-end files, need local Postgres, deliberately serialized
 pnpm test        # test:unit then test:e2e - the real release gate
 ```
@@ -351,18 +372,17 @@ Highest priority:
 
 - **No live-update mechanism between users.** The app uses plain HTTP GET/POST for `/api/shared-state` — there's no websocket or push mechanism, so if Marcy and Ashley are both using the CRM at the same time, one person's changes (status updates, imports, reviewed exceptions) won't appear for the other until they manually refresh the page. This risks someone acting on stale data without realizing it. TODO for whoever picks this up next (likely Codex): at minimum, a lightweight "this page may be stale, refresh to see recent changes" indicator would prevent acting on outdated information — doesn't require full realtime sync, just a signal. A full live-update experience (websockets or polling-based) would be a bigger undertaking to consider once that minimal version is in place.
 - **Re-importing a spreadsheet still overwrites current data with no history, versioned rollback, or user-facing export/restore flow.** This survived the migration off the JSON blob — `lib/write-to-tables.ts`'s `writeImport()` still deletes any subscriber/subscription/order/mailing/exception row not present in the new import (verified directly: `db.delete(...).where(notInArray(...))` for each entity), the same "current import replaces everything" behavior the blob had, just now expressed as real deletes across normalized tables instead of overwriting one JSON value. This is a distinct problem from the dataset-loss risk the NAS backups (see §4) now cover — daily `pg_dump` snapshots protect against losing the database entirely, not against undoing one bad reimport or reviewing what an import actually changed.
-- **Status/component-status saves are asynchronous and optimistic, with no retry or user-visible failure indicator.** `saveSharedState()` (`app/crm/legacy-app.js:148-156`) fires the POST and silently swallows any failure (`.catch(() => {})`, "keep local changes usable if the shared endpoint is briefly unavailable") — a failed save looks identical to a successful one from the UI, and there's no retry queue.
-- **Two separate sets of unguarded bulk-action buttons apply a status change to every currently-shown row with a single click and no confirmation dialog.** Each row fires an independent, fire-and-forget POST (`saveSharedState`, `app/crm/legacy-app.js:148-156`) — no batching, no undo, no confirmation step:
-  - Production Queue's "Update shown rows" status buttons (`app/crm/legacy-app.js:910-917` for the buttons, `949-955` for the click handler that loops every shown row through `updateMailingStatus`, `261-266`).
-  - Ashley Bins' "Update shown rows" mark-ready/mark-needs-check buttons (`app/crm/legacy-app.js:2408-2413` for the buttons, `2460-2476` for the click handler, which fires three `updateComponentStatus` calls per row).
+- **Status/component-status saves are asynchronous and optimistic, with no retry or user-visible failure indicator.** `saveSharedState()` (`lib/client/shared-state-client.ts`) fires the POST and silently swallows any failure (`.catch(() => {})`, "keep local changes usable if the shared endpoint is briefly unavailable") — a failed save looks identical to a successful one from the UI, and there's no retry queue.
+- **Two separate sets of unguarded bulk-action buttons apply a status change to every currently-shown row with a single click and no confirmation dialog.** Each row fires an independent, fire-and-forget `saveSharedState()` call (`lib/client/shared-state-client.ts`) — no batching, no undo, no confirmation step:
+  - Production Queue: `renderQueue()`'s `[data-bulk-status]` buttons and click handler (`app/crm/legacy-app.js`), which loops every shown row through `updateMailingStatus` (`lib/client/crm-state.ts`).
+  - Ashley Bins: `renderBins()`'s `[data-bin-mark]` buttons and click handler (`app/crm/legacy-app.js`), which fires three `updateComponentStatus` calls per row (`lib/client/crm-state.ts`).
 
   A single accidental click — or a click by someone who doesn't realize what the button does — can silently overwrite the status of every currently-shown mailing at once. This already happened with the Production Queue buttons: Marcy confirmed she clicked them believing they were status *filters*, not bulk-rewrite actions — the pill-button styling doesn't visually distinguish them from the filter controls elsewhere in the UI. The Ashley Bins instance has the identical shape and hasn't been reported as misclicked yet, but nothing about it is actually safer. TODO for whoever picks this up next (likely Codex): add a confirmation step before either fires (e.g. "Set status to X for the N mailings currently shown?"), and consider restyling both so they're not visually confusable with filters — especially before real operational data is being tracked day to day, a misclick currently has no safety net at all.
-- Stable keys (`mailingKey`/`componentKey`/`exceptionReviewKey`) are derived in browser code, mirrored (not imported - `app.js` is a real ES module now, but this is deliberately still a separate copy rather than an import, same as `lib/ids.ts` above) by `lib/keys.ts` for the server side. A key-generation change on either side that isn't kept in sync can orphan existing overrides.
+- **A future edit to `spreadsheetExceptionReasons`' reason text could silently change exception severity.** Severity (`lib/domain/spreadsheet/build-seed.ts`) is decided by `reason.includes('Missing') || reason.includes('ship date')` — case-sensitively. `"Ship date is not a 1st/15th batch"` and `"Future mailing already marked mailed"` are Low severity only because of their capital letters; lowercasing either string for readability would silently promote it to High, which pulls its mailings out of Production Queue, Batch Print, and Ashley Bins via `highExceptionMailingIds`. `tests/spreadsheet-exceptions.test.mjs` pins the current behavior (a change here fails those tests first), and the classifier itself now carries a comment explaining the trap.
 - Ashley's own Google sign-in specifically hasn't been verified yet (see Decided Direction's risk list, above).
 - No per-feature/per-role restrictions exist yet, even though the resolved role is available (`session.role`, and `data-user-role` on the page shell for `app/crm/legacy-app.js`). Pending Marcy specifying what Ashley should be restricted from. See `docs/auth.md`.
 - Private Google Drive folder IDs aren't in this repository at all, so Drive buttons remain incomplete everywhere the app now runs — unlike under the old Sites deployment, there's no separately-configured "live" version anymore that could differ from this source; the NAS deploy builds directly from this same git history.
-- The `exceptions` table has no columns to fully verify a `reviewedException` override key. The client's key (`exceptionReviewKey`, `app/crm/legacy-app.js`) encodes `mailingId`/`subscriberId`/`reason`/`shipDate`, but server-side matching only cross-checks `mailingId` and `reason` — there's no column for `subscriberId`/`shipDate`. This is a known, documented schema limit (see `docs/schema-design.md`'s dual-write notes), not a shortcut anyone's forgotten about. TODO for whoever picks this up next (likely Codex): decide whether to add `subscriberId`/`shipDate` snapshot columns to `exceptions`, or explicitly accept this as a permanent limitation of `reviewedException` matching.
-- `devops/clear_db.sh` truncates a `crm_state` table that no longer exists (dropped along with the rest of the JSON-blob storage — see `docs/schema-design.md`) — it will fail as committed. Verified directly against the current schema; not yet fixed.
+- The `exceptions` table has no columns to fully verify a `reviewedException` override key. The client's key (`exceptionReviewKey`, `lib/domain/keys.ts`) encodes `mailingId`/`subscriberId`/`reason`/`shipDate`, but server-side matching only cross-checks `mailingId` and `reason` — there's no column for `subscriberId`/`shipDate`. This is a known, documented schema limit (see `docs/schema-design.md`'s dual-write notes), not a shortcut anyone's forgotten about. TODO for whoever picks this up next (likely Codex): decide whether to add `subscriberId`/`shipDate` snapshot columns to `exceptions`, or explicitly accept this as a permanent limitation of `reviewedException` matching.
 
 Integrations not built:
 
@@ -375,9 +395,9 @@ Integrations not built:
 
 Code quality/maintenance:
 
-- `app/crm/legacy-app.js` is a very large monolithic script (~3,000 lines) with untyped state and direct DOM rendering.
+- `app/crm/legacy-app.js` is still a large monolithic script (~2,400 lines, down from ~3,000 before the app.js decomposition's Phase 0 - see §9) with untyped rendering and direct DOM manipulation. State, HTTP, localStorage caches, and cross-view selectors moved to `lib/domain/`/`lib/client/`; the twelve render functions themselves haven't moved yet - that's Phase 1, next.
 - `app/globals.css` is similarly large (~2,400 lines) and should be decomposed carefully.
-- `examples/d1/` remains — leftover Cloudflare D1 starter template code, unused by the CRM.
+- `lib/build-dataset-from-tables.ts`'s `buildMailings()` computes `sourceRow: Number(row.lastSourceRow)` on a nullable column, where `Number(null) === 0`. Investigated directly and found not currently reachable (every write path derives `lastSourceRow` from a real number) - not a live bug, but a real latent gap if that ever changes. See the comment at that line for the full trace.
 - Some source strings show mojibake such as `Â·`; normalize encoding while preserving intended display.
 - Google Fonts load over the network in generated print windows. Printing before fonts finish loading may use fallback fonts.
 - Envelope output needs physical-printer QA for feed orientation, scaling at 100%, A7 paper size, margins, and each character's colored stock.
@@ -397,6 +417,8 @@ Operational caveats:
 
 Most recent completed work:
 
+- **The app.js decomposition, Phase 0 (extraction), is complete** — five steps: a golden-HTML snapshot harness covering all twelve views, the safety net every later step verifies output against (`tests/render-snapshots.test.mjs`); the app.js → ESM move (`public/app.js` → `app/crm/legacy-app.js`, a real ES module, mounted via `app/crm/CrmApp.tsx`); id/key/mailing-rule unification plus the full pure-business-logic extraction into `lib/domain/`; the state store, shared-state HTTP client, localStorage caches, and cross-view selectors extracted into `lib/client/`; and static nav declaration (`app/crm/shell/`) plus a `VIEW_REGISTRY` dispatch map replacing `renderView()`'s if-chain. `app/crm/legacy-app.js` went from ~2,936 lines to ~2,384 across the whole phase. See §3's directory list for what actually lives where now.
+- Dead code and stale documentation left behind by that phase were cleaned up in one pass: removed `examples/d1/`, fixed `devops/clear_db.sh` (it truncated a table dropped mid-migration), dropped `.gitignore`/`.dockerignore` entries for removed Cloudflare tooling, and brought this file's directory list, code citations, and Known Issues back in line with the current tree.
 - The full normalized-schema migration: designed (`docs/schema-design.md`), dual-written alongside the old blob, validated, promoted to the live read/write path, and the old `crm_state` table dropped entirely. Self-hosted Postgres on the NAS replaced Cloudflare D1.
 - Cloudflare Workers, Vinext, Vite, Wrangler, and OpenAI Sites were removed from the tree; hosting moved to self-hosted Docker Compose on the NAS.
 - CI/CD stood up: GitHub Actions builds and pushes a GHCR image and deploys it to the NAS automatically on every merge to `main`.
@@ -407,17 +429,17 @@ Most recent completed work:
 
 Logical next steps, roughly in order:
 
-1. **Confirm Ashley's own sign-in** against the real deployment — the one remaining piece of the auth rollout.
-2. **Fix the unguarded bulk-action buttons** (Production Queue and Ashley Bins, both described in §8) — add a confirmation step and visually distinguish them from filter controls. One of the two has already caused a real mistake.
-3. **Add the "page may be stale" signal** described in §8, as a lightweight first step toward real live-update between Marcy and Ashley.
-4. **Decide the `exceptions` reviewedException key-verification gap** — add the missing snapshot columns, or explicitly accept the current limitation as permanent (§8).
-5. **Fix or remove `devops/clear_db.sh`** — it references a dropped table and will fail as committed.
+1. **Begin Phase 1 of the app.js decomposition: the twelve per-view migration branches.** Move each render function out of `app/crm/legacy-app.js` into a typed React component, one at a time, keeping mailing-day behavior stable throughout - not a scheduled rewrite. Step 6 is next: the Automation view, paired with building the `CrmApp.tsx` React-hosting seam the plan deliberately deferred out of step 5 (see that step's PR) until it had one real, tiny consumer to design against instead of zero.
+2. **Confirm Ashley's own sign-in** against the real deployment — the one remaining piece of the auth rollout.
+3. **Fix the unguarded bulk-action buttons** (Production Queue and Ashley Bins, both described in §8) — add a confirmation step and visually distinguish them from filter controls. One of the two has already caused a real mistake.
+4. **Add the "page may be stale" signal** described in §8, as a lightweight first step toward real live-update between Marcy and Ashley.
+5. **Decide the `exceptions` reviewedException key-verification gap** — add the missing snapshot columns, or explicitly accept the current limitation as permanent (§8).
 6. **Harden the API and import path**: add real input validation and a payload-size limit to `/api/shared-state` (§8), and give reimports at least a minimal history/rollback story instead of the current delete-and-replace behavior — the NAS backups (§4) cover total data loss, not undoing one bad import.
 7. **Build native manual entry/editing** so spreadsheet upload can eventually be retired as the system of record.
 8. **Move private Drive folder configuration server-side**, and connect the Drive integration for real.
 9. **Connect Squarespace**: idempotent ingestion, raw-payload preservation, subscription identity independent of order numbers, multiple subscriptions per email, mailing schedules created only after successful payment.
 10. **Add Mailchimp sample automation**: capture requests, tag Kid/Adult, send samples, record consent/source/time, match later purchases.
 11. **Add observability and operational safeguards**: monitoring/error reporting, an audit log, failed-save retry visibility (§8), and a verified restore drill against the now-real backups.
-12. **Incrementally migrate `app/crm/legacy-app.js` and decompose `app/globals.css`** into typed modules/components, one touched workflow at a time — not a scheduled rewrite, per the Decided Direction section above.
+12. **Decompose `app/globals.css`** into smaller, workflow-scoped stylesheets as each view it styles gets migrated in Phase 1 - not a separate up-front project.
 
 Do not begin by rewriting the UI. The working operational rules encoded in `app/crm/legacy-app.js` are valuable and are already covered by the real test suite (`docs/testing.md`) at the level that suite tests. Migrate one workflow at a time into typed modules while keeping mailing-day behavior stable.

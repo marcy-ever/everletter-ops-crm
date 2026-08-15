@@ -6,7 +6,7 @@ Private operations CRM for Everletter mailing production.
 
 - Next.js/React shell in `app/`
 - Main browser CRM logic in `app/crm/legacy-app.js`
-- Shared state API in `app/api/shared-state/route.ts`, backed by self-hosted Postgres via Drizzle (`db/schema.ts`)
+- Shared state API in `app/api/shared-state/route.ts`, backed by self-hosted Postgres via Drizzle (`db/schema/`)
 - Styling in `app/globals.css`
 - Static brand and character assets in `public/assets/`
 

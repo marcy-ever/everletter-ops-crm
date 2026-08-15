@@ -126,8 +126,8 @@ const session = await auth();
 Nothing in `app/crm/legacy-app.js` reads these yet. To read them from `app.js`,
 follow the same inline-ternary-in-template-literal pattern already used
 throughout the file for conditional rendering (e.g. the disabled/label
-toggle on the publish button in the Import Sheet view,
-`app/crm/legacy-app.js:1585`: `${state.importBusy ? 'disabled' : ''}`). Something
+toggle on the publish button in `renderImport()`'s Import Sheet markup:
+`${state.importBusy ? 'disabled' : ''}`). Something
 like:
 
 ```js

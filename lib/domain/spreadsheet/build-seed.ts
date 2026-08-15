@@ -183,6 +183,16 @@ export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], source
       subscriber.issueCount += 1;
       exceptions.push({
         exceptionId: `EX-${row.sourceRow}`,
+        // Case-sensitive on purpose, but a trap for a future edit: this is
+        // the *only* thing keeping "Ship date is not a 1st/15th batch" and
+        // "Future mailing already marked mailed" at Low severity - both
+        // avoid matching only because of the capital S/F. Lowercase either
+        // string for readability someday and it silently becomes High,
+        // which pulls its mailings out of Production Queue, Batch Print,
+        // and Ashley Bins via highExceptionMailingIds. Pinned by
+        // tests/spreadsheet-exceptions.test.mjs's severity-classifier tests
+        // - a change here should fail those first, not surprise someone in
+        // the UI.
         severity: reasons.some((reason) => reason.includes('Missing') || reason.includes('ship date')) ? 'High' : 'Low',
         reason: reasons.join('; '),
         mailingId: mailing.mailingId,

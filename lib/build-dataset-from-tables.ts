@@ -163,6 +163,16 @@ export function buildMailings(
       notes: row.notes ?? "",
       overdue: isOverdueMailing({ activeState, status, shipDate }, today),
       dueNext14Days: isDueNext14Days({ activeState, status, shipDate }, today),
+      // lastSourceRow is a nullable text column, and Number(null) === 0 -
+      // a null value here would silently produce mailingKey "MAIL-XXXX::0",
+      // matching no real stored override. Investigated directly (not just
+      // reasoned about): every current write path (lib/write-to-tables.ts's
+      // one `.insert(mailings)`) always derives lastSourceRow from the
+      // client seed's sourceRow, which is always a real number by
+      // construction - so this isn't reachable through any current
+      // application code path. A real latent gap if that ever changes, not
+      // a currently-live bug; recorded here rather than only in a PR
+      // description so the next reader who touches this column sees it.
       sourceRow: Number(row.lastSourceRow),
     });
   }
