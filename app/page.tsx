@@ -1,6 +1,7 @@
 import Script from "next/script";
 import { auth } from "@/auth";
 import CrmApp from "./crm/CrmApp";
+import Sidebar from "./crm/shell/Sidebar";
 
 export const metadata = {
   title: "Everletter Ops CRM",
@@ -47,15 +48,7 @@ export default async function Home() {
             </div>
           </div>
 
-          <nav className="side-nav" aria-label="Views">
-            <button className="active" data-view="queue" type="button"><span>Q</span> Production Queue</button>
-            <button data-view="exceptions" type="button"><span>!</span> Needs Review</button>
-            <button data-view="subscribers" type="button"><span>S</span> Subscribers</button>
-            <button data-view="import" type="button"><span>U</span> Import Sheet</button>
-            <button data-view="print" type="button"><span>P</span> Batch Print</button>
-            <button data-view="sync" type="button"><span>Y</span> Sync Simulator</button>
-            <button data-view="automation" type="button"><span>A</span> Automation Map</button>
-          </nav>
+          <Sidebar />
 
           <div className="sidebar-note">
             <img src="/assets/everletter-wax-seal.png" alt="" aria-hidden="true" />
