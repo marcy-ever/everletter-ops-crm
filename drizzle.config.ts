@@ -20,6 +20,7 @@ export default defineConfig({
     "./db/schema/mailing_components.ts",
     "./db/schema/exceptions.ts",
     "./db/schema/ingestion_events.ts",
+    "./db/schema/audit_events.ts",
     "./db/schema/staging_locations.ts",
   ],
   dialect: "postgresql",
