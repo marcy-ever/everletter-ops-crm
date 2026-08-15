@@ -27,7 +27,7 @@ export async function resolve(specifier, context, nextResolve) {
     candidateSpecifier = `./${specifier.slice(2)}`;
     base = REPO_ROOT;
   } else if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
-    return nextResolve(specifier, context);
+    return resolveBareSpecifier(specifier, context, nextResolve);
   }
 
   const hasExtension = /\.[a-zA-Z0-9]+$/.test(candidateSpecifier);
@@ -40,4 +40,29 @@ export async function resolve(specifier, context, nextResolve) {
     }
   }
   return nextResolve(new URL(candidateSpecifier, base).href, { ...context, parentURL: base });
+}
+
+// Surfaced by auth.ts becoming reachable from app/api/shared-state/route.ts
+// (the audit-log task's actor capture) - next-auth's own package imports
+// "next/server" with no extension (next-auth/lib/env.js), which only
+// resolves under Next's own bundler (webpack/turbopack, under `next dev`/
+// `next build`), not under plain Node ESM resolution: `next`'s
+// package.json has no "exports" map, and Node's ESM resolver (unlike
+// CJS require()) never guesses an extension on a bare specifier. The real
+// file is one extension away (Node's own error names it: "Did you mean to
+// import next/server.js?"), so that's retried here before giving up -
+// narrowly scoped to bare subpath specifiers (must contain "/", so a
+// package's own root entry point, which resolves via "main"/"exports"
+// normally, is untouched) so this can't mask a genuinely missing module.
+async function resolveBareSpecifier(specifier, context, nextResolve) {
+  try {
+    return await nextResolve(specifier, context);
+  } catch (error) {
+    const isModuleNotFound = error && typeof error === "object" && "code" in error && error.code === "ERR_MODULE_NOT_FOUND";
+    const isExtensionlessSubpath = specifier.includes("/") && !/\.[a-zA-Z0-9]+$/.test(specifier);
+    if (isModuleNotFound && isExtensionlessSubpath) {
+      return nextResolve(`${specifier}.js`, context);
+    }
+    throw error;
+  }
 }
