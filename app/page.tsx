@@ -65,6 +65,17 @@ export default async function Home() {
             <div className="topbar-meta" id="topbarMeta"></div>
           </header>
 
+          {/*
+            Deliberately outside #viewMount (which tests/render-snapshots.test.mjs
+            captures for all 17 committed snapshots) and independent of
+            which view is active - a save failure during a bulk action in
+            Production Queue must still be visible after switching tabs.
+            Rendered by app/crm/legacy-app.js's renderSaveFailureBanner(),
+            subscribed to lib/client/save-failures.ts's store. Empty (and
+            so invisible) whenever nothing has failed.
+          */}
+          <div id="saveFailureBanner" role="status" aria-live="polite"></div>
+
           <section className="metric-grid" id="metrics" aria-label="CRM summary"></section>
           <section className="status-strip" id="statusStrip" aria-label="Mailing status counts"></section>
 

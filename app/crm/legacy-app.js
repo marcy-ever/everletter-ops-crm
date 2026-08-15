@@ -46,6 +46,7 @@ import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
 import { loadComponentOverrides, loadReviewedExceptions, loadStatusOverrides, saveReviewedExceptions } from '@/lib/client/local-overrides';
 import { loadSharedState, saveSharedDataset, saveSharedState } from '@/lib/client/shared-state-client';
 import { createCrmState } from '@/lib/client/crm-state';
+import { createSaveFailureStore } from '@/lib/client/save-failures';
 import {
   activeExceptions as selectActiveExceptions,
   availableBatchDates as selectAvailableBatchDates,
@@ -68,7 +69,13 @@ import {
 // renders. Calling the factory here, at this module's own top level, is
 // what keeps state isolated per test sandbox - see the import comment above
 // for why.
-const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus } = createCrmState();
+// createSaveFailureStore() is a factory for the same reason
+// createCrmState() is (see the import comment above and
+// lib/client/crm-state.ts's own header) - created here, at this
+// module's own top level, so a fresh cache-busted import gets a fresh
+// store instead of sharing one across "fresh" test sandboxes.
+const saveFailures = createSaveFailureStore();
+const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus } = createCrmState(saveFailures);
 
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
 const qaFields = [
@@ -124,7 +131,7 @@ const driveConfig = {
 // Assigned by initCrmApp() (module evaluation must stay side-effect-free -
 // see that function at the bottom). Declared here, at module scope, because
 // every render function below closes over these same bindings by name.
-let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap;
+let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap, saveFailureBanner;
 
 function activeExceptions() {
   return selectActiveExceptions(state.seed, state.reviewed);
@@ -198,6 +205,65 @@ function renderBatchFilter() {
     ...pastDates.map((date) => `<option value="${escapeHtml(date)}" ${selectedPastDate === date ? 'selected' : ''}>${formatDate(date)}</option>`),
   ].join('');
   statusFilter.value = state.statusFilter;
+}
+
+// Renders lib/client/save-failures.ts's current snapshot into
+// #saveFailureBanner (app/page.tsx) - deliberately outside #viewMount
+// (the render-snapshot harness, tests/render-snapshots.test.mjs, only
+// captures #viewMount, so writing here instead is what keeps this
+// purely additive feature from touching any of the 17 committed
+// snapshots) and independent of renderShell()/renderView() (called
+// directly from the saveFailures subscription set up in initCrmApp(),
+// below, so a save failure shows up immediately - not just on the next
+// full render() - and stays visible no matter which view is active).
+//
+// Every sentence here has to be true, not just present: a failed save
+// leaves the change on this device only, the shared database doesn't
+// have it, and reloading the page will lose it - "couldn't save"
+// alone doesn't say that. A failed *load* is a different, distinct fact
+// (nothing is unsaved - the app just doesn't have the real data) and
+// gets its own message rather than folding into the save-failure count.
+// Counted, not enumerated: failedSaveCount is a running total across
+// possibly many failures (a bulk action can fail dozens of times in one
+// click), not a list of each one.
+//
+// The closing guidance sentence branches on lastFailureCause because "wait
+// for connectivity and retry" is only true for a dropped connection - for
+// an HTTP rejection (a 409 from the catastrophic-deletion guard, a 400 for
+// an invalid status) the user isn't offline and retrying fails again for
+// the exact same reason, which the appended server message already names.
+// Telling them to wait for connectivity in that case is confidently wrong
+// in a way that costs real time.
+function renderSaveFailureBanner() {
+  const snapshot = saveFailures.getSnapshot();
+  const messages = [];
+
+  if (snapshot.failedSaveCount > 0) {
+    const n = snapshot.failedSaveCount;
+    const changeNoun = n === 1 ? 'change' : 'changes';
+    const pronoun = n === 1 ? 'it' : 'them';
+    const subject = n === 1 ? 'It' : 'They';
+    const verb = n === 1 ? 'exists' : 'exist';
+    const guidance =
+      snapshot.lastFailureCause === 'http'
+        ? `The server refused ${n === 1 ? 'it' : 'the most recent one'} - re-applying ${pronoun} won't help until that's fixed.`
+        : `Re-apply ${pronoun} once you're back online.`;
+    let text = `${number(n)} ${changeNoun} couldn't be saved. ${subject} only ${verb} on this device - the shared database doesn't have ${pronoun}, and reloading this page will lose ${pronoun}. ${guidance}`;
+    if (snapshot.lastFailureMessage) {
+      text += ` Most recent error: ${snapshot.lastFailureMessage}`;
+    }
+    messages.push(text);
+  }
+
+  if (snapshot.loadFailed) {
+    let text = "Couldn't load the shared data from the server - showing an empty starter dataset instead. Refresh the page to try again.";
+    if (snapshot.loadFailureMessage) {
+      text += ` Error: ${snapshot.loadFailureMessage}`;
+    }
+    messages.push(text);
+  }
+
+  saveFailureBanner.innerHTML = messages.map((message) => `<p>${escapeHtml(message)}</p>`).join('');
 }
 
 function renderShell() {
@@ -374,7 +440,7 @@ function renderExceptions() {
       const key = button.getAttribute('data-review');
       state.reviewed.add(key);
       saveReviewedExceptions(state.reviewed);
-      saveSharedState('reviewedException', key, '1');
+      saveSharedState('reviewedException', key, '1', saveFailures);
       render();
     });
   });
@@ -2300,7 +2366,7 @@ function render() {
 async function initializeCrm() {
   if (window.EVERLETTER_SEED) {
     state.seed = window.EVERLETTER_SEED;
-    await loadSharedState(state).catch(() => {});
+    await loadSharedState(state, saveFailures).catch(() => {});
     render();
   } else {
     viewMount.innerHTML = '<section class="data-panel"><div class="empty-state">Could not load Everletter seed data.</div></section>';
@@ -2337,6 +2403,17 @@ function initCrmApp() {
   batchFilterWrap = document.querySelector('#batchFilterWrap');
   pastBatchFilter = document.querySelector('#pastBatchFilter');
   pastBatchFilterWrap = document.querySelector('#pastBatchFilterWrap');
+  saveFailureBanner = document.querySelector('#saveFailureBanner');
+
+  // Independent of renderShell()/renderView() on purpose (see
+  // renderSaveFailureBanner()'s own comment) - a save failure has to show
+  // up the moment it's recorded, not wait for the next full render(),
+  // and has to stay visible no matter which view is currently active.
+  // Rendered once immediately in case state already has something to
+  // show (there won't be, this early - state-of-things-so-far), then on
+  // every subsequent change.
+  renderSaveFailureBanner();
+  saveFailures.subscribe(renderSaveFailureBanner);
 
   document.querySelectorAll('.side-nav button').forEach((button) => {
     button.addEventListener('click', () => {
@@ -2387,4 +2464,13 @@ export {
   // COMPONENT_FIELD_OPTIONS exactly - not consumed by any runtime caller.
   statusOrder,
   qaFields,
+  // Exported only for tests/save-failure-banner.test.mjs, which drives
+  // the real save -> lib/client/shared-state-client.ts ->
+  // lib/client/save-failures.ts -> renderSaveFailureBanner() pipeline
+  // end to end (updateMailingStatus, a real bulk-action-shaped call site)
+  // and inspects/drives the failure store directly (saveFailures) -
+  // neither consumed by any runtime caller beyond what's already wired
+  // internally.
+  updateMailingStatus,
+  saveFailures,
 };
