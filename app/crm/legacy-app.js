@@ -61,8 +61,6 @@ import {
   selectedBatchDate as selectSelectedBatchDate,
 } from '@/lib/client/selectors';
 
-const viewNames = new Set(['queue', 'exceptions', 'subscribers', 'import', 'print', 'qa', 'packet', 'bins', 'launch', 'samples', 'sync', 'automation']);
-
 // activeView/reviewed/statusOverrides/componentOverrides start as inert
 // defaults here (createCrmState() - module evaluation must stay
 // side-effect-free, see initCrmApp() at the bottom) and are set to their
@@ -2259,25 +2257,39 @@ function flowStep(icon, title, copy) {
   `;
 }
 
+// The view registry: one entry per sidebar view (see
+// app/crm/shell/nav-items.ts, the sidebar's own source of truth - kept in
+// agreement with this object's keys by tests/nav-items.test.mjs), naming
+// its render function and which filter controls it shows. Replaces the
+// former renderView() if-chain plus its separate, easy-to-forget
+// statusFilterWrap/batchFilterWrap visibility conditionals - adding or
+// migrating a view is now a one-place change instead of three.
+// pastBatchFilterWrap has no entry of its own: it always follows
+// batchFilterWrap's computed display, same coupling as before this step.
+const VIEW_REGISTRY = {
+  queue: { render: renderQueue, showStatusFilter: true, showBatchFilter: true },
+  exceptions: { render: renderExceptions, showStatusFilter: false, showBatchFilter: false },
+  subscribers: { render: renderSubscribers, showStatusFilter: false, showBatchFilter: false },
+  samples: { render: renderSamples, showStatusFilter: false, showBatchFilter: false },
+  import: { render: renderImport, showStatusFilter: false, showBatchFilter: false },
+  print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
+  qa: { render: renderQa, showStatusFilter: false, showBatchFilter: true },
+  packet: { render: renderPacket, showStatusFilter: false, showBatchFilter: true },
+  bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
+  launch: { render: renderLaunch, showStatusFilter: false, showBatchFilter: false },
+  sync: { render: renderSync, showStatusFilter: false, showBatchFilter: false },
+  automation: { render: renderAutomation, showStatusFilter: false, showBatchFilter: false },
+};
+
 function renderView() {
   document.querySelectorAll('.side-nav button').forEach((button) => {
     button.classList.toggle('active', button.getAttribute('data-view') === state.activeView);
   });
-  statusFilterWrap.style.display = state.activeView === 'queue' ? 'flex' : 'none';
-  batchFilterWrap.style.display = state.activeView === 'queue' || state.activeView === 'print' || state.activeView === 'qa' || state.activeView === 'packet' || state.activeView === 'bins' ? 'flex' : 'none';
+  const entry = VIEW_REGISTRY[state.activeView];
+  statusFilterWrap.style.display = entry?.showStatusFilter ? 'flex' : 'none';
+  batchFilterWrap.style.display = entry?.showBatchFilter ? 'flex' : 'none';
   pastBatchFilterWrap.style.display = batchFilterWrap.style.display;
-  if (state.activeView === 'queue') renderQueue();
-  if (state.activeView === 'print') renderPrint();
-  if (state.activeView === 'qa') renderQa();
-  if (state.activeView === 'packet') renderPacket();
-  if (state.activeView === 'bins') renderBins();
-  if (state.activeView === 'launch') renderLaunch();
-  if (state.activeView === 'samples') renderSamples();
-  if (state.activeView === 'exceptions') renderExceptions();
-  if (state.activeView === 'subscribers') renderSubscribers();
-  if (state.activeView === 'import') renderImport();
-  if (state.activeView === 'sync') renderSync();
-  if (state.activeView === 'automation') renderAutomation();
+  entry?.render();
 }
 
 function render() {
@@ -2302,14 +2314,14 @@ async function initializeCrm() {
 // actually start the app; importing this module does nothing observable on
 // its own. Guarded so a second call (e.g. React StrictMode's double-invoked
 // effect in development) is a safe no-op rather than double-binding every
-// listener below and re-running the nav injection.
+// listener below.
 let initialized = false;
 function initCrmApp() {
   if (initialized) return;
   initialized = true;
 
   const hashView = window.location.hash.slice(1);
-  state.activeView = viewNames.has(hashView) ? hashView : 'queue';
+  state.activeView = Object.hasOwn(VIEW_REGISTRY, hashView) ? hashView : 'queue';
   state.reviewed = loadReviewedExceptions();
   state.statusOverrides = loadStatusOverrides();
   state.componentOverrides = loadComponentOverrides();
@@ -2325,27 +2337,6 @@ function initCrmApp() {
   batchFilterWrap = document.querySelector('#batchFilterWrap');
   pastBatchFilter = document.querySelector('#pastBatchFilter');
   pastBatchFilterWrap = document.querySelector('#pastBatchFilterWrap');
-
-  const printNavButton = document.querySelector('.side-nav [data-view="print"]');
-  if (printNavButton && !document.querySelector('.side-nav [data-view="qa"]')) {
-    printNavButton.insertAdjacentHTML('afterend', '<button data-view="qa" type="button"><span>QA</span> Mailing QA</button>');
-  }
-  const qaNavButton = document.querySelector('.side-nav [data-view="qa"]');
-  if (qaNavButton && !document.querySelector('.side-nav [data-view="packet"]')) {
-    qaNavButton.insertAdjacentHTML('afterend', '<button data-view="packet" type="button"><span>B</span> Batch Packet</button>');
-  }
-  const packetNavButton = document.querySelector('.side-nav [data-view="packet"]');
-  if (packetNavButton && !document.querySelector('.side-nav [data-view="bins"]')) {
-    packetNavButton.insertAdjacentHTML('afterend', '<button data-view="bins" type="button"><span>N</span> Ashley Bins</button>');
-  }
-  const binsNavButton = document.querySelector('.side-nav [data-view="bins"]');
-  if (binsNavButton && !document.querySelector('.side-nav [data-view="launch"]')) {
-    binsNavButton.insertAdjacentHTML('afterend', '<button data-view="launch" type="button"><span>L</span> Launch Plan</button>');
-  }
-  const subscriberNavButton = document.querySelector('.side-nav [data-view="subscribers"]');
-  if (subscriberNavButton && !document.querySelector('.side-nav [data-view="samples"]')) {
-    subscriberNavButton.insertAdjacentHTML('afterend', '<button data-view="samples" type="button"><span>@</span> Sample Requests</button>');
-  }
 
   document.querySelectorAll('.side-nav button').forEach((button) => {
     button.addEventListener('click', () => {
@@ -2386,4 +2377,8 @@ export {
   renderView,
   render,
   buildSeedFromSpreadsheet,
+  // Exported only for tests/nav-items.test.mjs, which asserts this
+  // object's keys are the exact same set as app/crm/shell/nav-items.ts's
+  // ids - not consumed by any runtime caller.
+  VIEW_REGISTRY,
 };
