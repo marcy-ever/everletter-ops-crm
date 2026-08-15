@@ -3,7 +3,11 @@
  * buildSeedFromSpreadsheet output) by querying the normalized tables
  * (db/schema/) directly. app/api/shared-state/route.ts's GET handler calls
  * buildDatasetFromTables() for this; there is no other read path and
- * nothing is cached in between.
+ * nothing is cached in between. The Dataset/DatasetX types themselves live
+ * in lib/domain/dataset.ts - the canonical shape both this module and
+ * buildSeedFromSpreadsheet (lib/domain/spreadsheet/build-seed.ts) return,
+ * enforced by the type system instead of two independently-maintained
+ * interface sets.
  *
  * lib/write-to-tables.ts writes every import into these tables; this
  * module is what reads them back. Composed from one small,
@@ -51,14 +55,18 @@
  *  - exceptions[] for the "subscription-only fallback" case (the
  *    exception's mailing itself was skipped by lib/write-to-tables.ts, e.g. for
  *    a missing ship date - see docs/schema-design.md's dual-write notes):
- *    mailingId, shipDate, suggestedShipDate, status, and sourceRow can't
- *    be recovered (nothing links back to app.js's original mailingId for
- *    these), so they're "". exceptionId falls back to `EX-DB-${row.id}`
- *    (the exceptions table's own serial id) instead of app.js's
- *    `EX-${sourceRow}` format, clearly distinguishable as reconstructed
- *    rather than original. reason/subscriberId/recipientName ARE fully
- *    recoverable for this case (via subscriptionId) and are populated
- *    normally.
+ *    mailingId, shipDate, suggestedShipDate, and status can't be recovered
+ *    (nothing links back to app.js's original mailingId for these), so
+ *    they're "". sourceRow is `null` for this case specifically (not ""
+ *    - see DatasetException/lib/domain/dataset.ts: `null` means "genuinely
+ *    unrecoverable," distinct from any real row number, and the app.js's
+ *    own client-built exceptions can never produce it, since a client-side
+ *    exception is always built directly from a row already in hand).
+ *    exceptionId falls back to `EX-DB-${row.id}` (the exceptions table's
+ *    own serial id) instead of app.js's `EX-${sourceRow}` format, clearly
+ *    distinguishable as reconstructed rather than original.
+ *    reason/subscriberId/recipientName ARE fully recoverable for this case
+ *    (via subscriptionId) and are populated normally.
  *  - recipients[] omits any recipient whose EVERY subscription has an
  *    unrecognized plan (see LETTERS_BY_PLAN in lib/write-to-tables.ts) - since
  *    recipients are derived by grouping the `subscriptions` table (there's
@@ -92,121 +100,13 @@ import { mailings } from "../db/schema/mailings";
 import { exceptions } from "../db/schema/exceptions";
 import { buildRecipientId } from "./domain/ids";
 import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from "./domain/mailing-rules";
+import type { Dataset, DatasetSubscriber, DatasetRecipient, DatasetOrder, DatasetSubscription, DatasetMailing, DatasetException, DatasetSummary } from "./domain/dataset";
 
 export type SubscriberRow = typeof subscribers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type OrderRow = typeof orders.$inferSelect;
 export type MailingRow = typeof mailings.$inferSelect;
 export type ExceptionRow = typeof exceptions.$inferSelect;
-
-export interface DatasetMailing {
-  mailingId: string;
-  subscriberId: string;
-  recipientId: string;
-  orderId: string;
-  orderDate: string;
-  subscriptionId: string;
-  recipientName: string;
-  email: string;
-  character: string;
-  plan: string;
-  letterNumber: string;
-  shipDate: string;
-  suggestedShipDate: string;
-  status: string;
-  activeState: string;
-  notes: string;
-  overdue: boolean;
-  dueNext14Days: boolean;
-  sourceRow: number;
-}
-
-export interface DatasetSubscriber {
-  subscriberId: string;
-  email: string;
-  displayName: string;
-  status: string;
-  firstOrderDate: string;
-  openMailings: number;
-  totalMailings: number;
-  nextShipDate: string;
-  issueCount: number;
-}
-
-export interface DatasetRecipient {
-  recipientId: string;
-  subscriberId: string;
-  name: string;
-  address: string;
-  characters: string[];
-  totalMailings: number;
-  nextShipDate: string;
-}
-
-export interface DatasetOrder {
-  orderId: string;
-  subscriberId: string;
-  sourceOrderNumber: string;
-  createdOn: string;
-  billingMonth: string;
-  plan: string;
-  status: string;
-  amount: string;
-}
-
-export interface DatasetSubscription {
-  subscriptionId: string;
-  subscriberId: string;
-  recipientId: string;
-  plan: string;
-  character: string;
-  startDate: string;
-  endDate: string;
-  activeState: string;
-  generatedMailings: number;
-}
-
-export interface DatasetException {
-  exceptionId: string;
-  severity: string;
-  reason: string;
-  mailingId: string;
-  subscriberId: string;
-  recipientName: string;
-  shipDate: string;
-  suggestedShipDate: string;
-  status: string;
-  sourceRow: string | number;
-}
-
-export interface DatasetSummary {
-  asOf: string;
-  sourceFile: string;
-  subscriberCount: number;
-  activeSubscriberCount: number;
-  archivedSubscriberCount: number;
-  recipientCount: number;
-  orderCount: number;
-  subscriptionCount: number;
-  mailingCount: number;
-  openMailingCount: number;
-  archivedMailingCount: number;
-  overdueCount: number;
-  dueNext14Count: number;
-  exceptionCount: number;
-  missingShipDateCount: number;
-}
-
-export interface Dataset {
-  summary: DatasetSummary;
-  subscribers: DatasetSubscriber[];
-  recipients: DatasetRecipient[];
-  orders: DatasetOrder[];
-  subscriptions: DatasetSubscription[];
-  mailings: DatasetMailing[];
-  exceptions: DatasetException[];
-  automationRules: unknown[];
-}
 
 function toIsoDateOrEmpty(value: Date | string | null | undefined): string {
   if (!value) return "";
@@ -391,7 +291,7 @@ export function buildExceptions(
   return exceptionRows
     .map((e) => {
       const reason = e.type;
-      const severity = reason.includes("Missing") || reason.includes("ship date") ? "High" : "Low";
+      const severity: "High" | "Low" = reason.includes("Missing") || reason.includes("ship date") ? "High" : "Low";
       const subscription = e.subscriptionId ? subscriptionsById.get(e.subscriptionId) : undefined;
       const subscriberId = subscription?.subscriberId ?? "";
 
@@ -415,8 +315,10 @@ export function buildExceptions(
       }
 
       // Subscription-only fallback: the exception's mailing was skipped by
-      // lib/write-to-tables.ts, so mailingId/shipDate/suggestedShipDate/status/
-      // sourceRow can't be recovered - see module comment.
+      // lib/write-to-tables.ts, so mailingId/shipDate/suggestedShipDate/status
+      // can't be recovered - see module comment. sourceRow is `null`
+      // specifically (not "") - null means "genuinely unrecoverable," not
+      // "empty string as a row number."
       return {
         exceptionId: `EX-DB-${e.id}`,
         severity,
@@ -427,7 +329,7 @@ export function buildExceptions(
         shipDate: "",
         suggestedShipDate: "",
         status: "",
-        sourceRow: "",
+        sourceRow: null,
       };
     })
     .sort((a, b) => b.severity.localeCompare(a.severity) || String(a.shipDate || "").localeCompare(String(b.shipDate || "")));

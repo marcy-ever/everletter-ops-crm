@@ -1,19 +1,16 @@
 /**
  * Generates the sequence of future 1st/15th batch dates a prepaid
- * (6/12-month) order's letters will ship on. Pure - no DOM, no state, no
- * clock (orderDate is a real parameter, not read from `new Date()`) - so it
+ * (6/12-month) order's letters will ship on, and which physical storage
+ * bin (Ashley's) a mailing belongs in. Pure - no DOM, no state, no clock
+ * (orderDate is a real parameter, not read from `new Date()`) - so it
  * ships in both the client bundle (app/crm/legacy-app.js) and server code.
  *
  * monthKey()/nearestBatchDate() cover related batch-date logic but already
  * live in lib/domain/mailing-rules.ts - left there rather than moved here,
  * to avoid reshuffling something that already has a stable home.
- *
- * storageBinForMailing() is NOT here despite being batch-date-adjacent
- * business logic - it depends on formatDate(), which lives in
- * app/crm/format.ts on purpose (a display-formatting concern, not a domain
- * one), and lib/domain/ can't import from app/. It stays inline in
- * app/crm/legacy-app.js, which can import from both.
  */
+
+import { formatDate } from "./format";
 
 // Everletter's cadence is the 1st and 15th of each month, with a roughly
 // 3-day cutoff: an order placed too close to the next batch date rolls to
@@ -45,4 +42,11 @@ export function batchDatesForOrder(orderDate: string, count: number): string[] {
   }
 
   return dates;
+}
+
+// The physical Ashley storage bin a mailing belongs in, grouped by ship
+// date - "Needs date" for a mailing with no ship date to group by yet.
+export function storageBinForMailing(mailing: { shipDate: string }): string {
+  if (!mailing.shipDate) return "Needs date";
+  return `Ashley / ${formatDate(mailing.shipDate)} bin`;
 }

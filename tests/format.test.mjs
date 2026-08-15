@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { escapeHtml, formatDate, includesText, statusClass, number, titleCase } from "../app/crm/format.ts";
+import { escapeHtml, includesText, statusClass, number } from "../app/crm/format.ts";
 
 // New coverage from step 3b's extraction (app/crm/format.ts didn't exist
 // before this) - not a re-assertion of what the render snapshots already
 // cover. All expected values below were captured by actually running the
 // (unchanged) implementation, not hand-computed.
+//
+// formatDate/titleCase moved out to lib/domain/format.ts in step 3c (see
+// tests/domain-format.test.mjs) once storageBinForMailing/
+// envelopeStockForCharacter, which depend on them, turned out to be real
+// domain logic rather than display chrome.
 
 test("escapeHtml escapes all five HTML-significant characters", () => {
   assert.equal(
@@ -17,16 +22,6 @@ test("escapeHtml escapes all five HTML-significant characters", () => {
 test("escapeHtml treats null/undefined as an empty string, not the literal text \"null\"", () => {
   assert.equal(escapeHtml(null), "");
   assert.equal(escapeHtml(undefined), "");
-});
-
-test("formatDate renders a real ISO date as 'Mon D, YYYY'", () => {
-  assert.equal(formatDate("2026-08-15"), "Aug 15, 2026");
-});
-
-test("formatDate returns 'Needs date' for blank/missing input, not an Invalid Date string", () => {
-  assert.equal(formatDate(""), "Needs date");
-  assert.equal(formatDate(null), "Needs date");
-  assert.equal(formatDate(undefined), "Needs date");
 });
 
 test("includesText matches case-insensitively against any of the given values", () => {
@@ -49,13 +44,4 @@ test("number formats with locale thousands separators, defaulting missing/blank 
   assert.equal(number(0), "0");
   assert.equal(number(null), "0");
   assert.equal(number(""), "0");
-});
-
-test("titleCase capitalizes the first letter of each whitespace-separated word, lowercasing the rest", () => {
-  assert.equal(titleCase("MARLEY the BRAVE"), "Marley The Brave");
-});
-
-test("titleCase returns an empty string for blank/missing input", () => {
-  assert.equal(titleCase(""), "");
-  assert.equal(titleCase(null), "");
 });
