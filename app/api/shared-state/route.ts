@@ -1,4 +1,5 @@
 import { getDb } from "@/db";
+import { ingestionEvents } from "@/db/schema/ingestion_events";
 import {
   writeComponentStatus,
   writeImport,
@@ -7,6 +8,17 @@ import {
 } from "@/lib/write-to-tables";
 import { buildDatasetFromTables } from "@/lib/build-dataset-from-tables";
 import { fetchComponentOverrides, fetchReviewedExceptionKeys } from "@/lib/build-overrides-from-tables";
+import {
+  CatastrophicDeletionError,
+  PayloadTooLargeError,
+  SharedStateValidationError,
+  assertNotCatastrophicDeletion,
+  assertPayloadSize,
+  parseAndValidateCrmDatasetValue,
+  validateComponentStatusPayload,
+  validateMailingStatusPayload,
+  validateReviewedExceptionPayload,
+} from "@/lib/validate-shared-state";
 
 type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "crmDataset";
 
@@ -52,11 +64,25 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as {
-      kind?: StateKind;
-      key?: string;
-      value?: string;
-    };
+    // Size cap first, before the body is even parsed. content-length is
+    // checked when present (cheap, avoids reading a huge body at all),
+    // but a client can omit or lie about it, so the actual read body is
+    // measured too - see lib/validate-shared-state.ts for the measured
+    // real-fixture size behind the 10 MiB limit.
+    const contentLengthHeader = request.headers.get("content-length");
+    if (contentLengthHeader) {
+      const declaredLength = Number(contentLengthHeader);
+      if (Number.isFinite(declaredLength)) assertPayloadSize(declaredLength);
+    }
+    const rawBody = await request.text();
+    assertPayloadSize(Buffer.byteLength(rawBody, "utf8"));
+
+    let payload: { kind?: StateKind; key?: string; value?: string; confirmLargeDelete?: boolean };
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return Response.json({ error: "Request body is not valid JSON." }, { status: 400 });
+    }
 
     const kind = payload.kind;
     const key = payload.key?.trim() ?? "";
@@ -72,16 +98,44 @@ export async function POST(request: Request) {
       return Response.json({ error: "CRM dataset key must be current." }, { status: 400 });
     }
 
+    // Shape validation happens before the transaction opens, on purpose -
+    // see lib/validate-shared-state.ts's module comment for why this
+    // can't live inside lib/write-to-tables.ts instead. Each of these
+    // throws SharedStateValidationError on a malformed key or an
+    // unrecognized value; nothing here checks business rules (a real
+    // import legitimately contains rows the app itself flags as broken).
+    let crmDatasetPayload: ReturnType<typeof parseAndValidateCrmDatasetValue> | null = null;
+    if (kind === "crmDataset") {
+      crmDatasetPayload = parseAndValidateCrmDatasetValue(value);
+    } else if (kind === "mailingStatus") {
+      validateMailingStatusPayload(key, value);
+    } else if (kind === "componentStatus") {
+      validateComponentStatusPayload(key, value);
+    } else if (kind === "reviewedException") {
+      validateReviewedExceptionPayload(key);
+    }
+
     // The write-to-tables dispatch runs inside a transaction (`tx`, not
     // `db`, even though it's the only thing in it) so a real failure (as
     // opposed to the write* functions' own expected skip-and-log cases)
     // rolls back cleanly and propagates to the outer try/catch below,
-    // which turns it into a real 500.
+    // which turns it into a real 500. For crmDataset specifically, the
+    // catastrophic-deletion guard and the ingestion_events row both run
+    // inside this same transaction: the guard so its read-then-decide is
+    // consistent with the write that follows, and the event so a rolled-
+    // back import can never leave behind a row claiming it succeeded.
     const db = getDb();
     await db.transaction(async (tx) => {
-      if (kind === "crmDataset" && key === "current") {
-        const parsed = JSON.parse(value) as { seed?: unknown };
-        if (parsed.seed) await writeImport(parsed.seed as Parameters<typeof writeImport>[0], tx);
+      if (kind === "crmDataset" && crmDatasetPayload) {
+        const seed = crmDatasetPayload.seed as unknown as Parameters<typeof writeImport>[0];
+        await assertNotCatastrophicDeletion(seed, tx, Boolean(payload.confirmLargeDelete));
+        await writeImport(seed, tx);
+        await tx.insert(ingestionEvents).values({
+          source: "manual_spreadsheet",
+          rawPayload: crmDatasetPayload.raw,
+          status: "success",
+          summary: `${seed.mailings.length} mailings, ${seed.subscribers.length} subscribers, ${seed.exceptions.length} exceptions - ${crmDatasetPayload.sourceName}`,
+        });
       } else if (kind === "mailingStatus") {
         await writeMailingStatus(key, value, tx);
       } else if (kind === "componentStatus") {
@@ -93,6 +147,15 @@ export async function POST(request: Request) {
 
     return Response.json({ ok: true });
   } catch (error) {
+    if (error instanceof SharedStateValidationError) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof PayloadTooLargeError) {
+      return Response.json({ error: error.message }, { status: 413 });
+    }
+    if (error instanceof CatastrophicDeletionError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
     console.error(error);
     return Response.json(toErrorPayload(error, "Could not save shared CRM state."), { status: 500 });
   }
