@@ -26,6 +26,7 @@ import { componentKey, mailingKey } from "../domain/keys";
 import { saveComponentOverrides, saveStatusOverrides } from "./local-overrides";
 import { saveSharedState } from "./shared-state-client";
 import { effectiveMailings } from "./selectors";
+import type { SaveFailureStore } from "./save-failures";
 
 export interface CrmState {
   activeView: string;
@@ -71,7 +72,7 @@ function mailingMonthKey(mailing: { shipDate: string }): string {
   return String(mailing.shipDate || "").slice(0, 7);
 }
 
-export function createCrmState(): CrmStateStore {
+export function createCrmState(failureStore: SaveFailureStore): CrmStateStore {
   const state: CrmState = {
     activeView: "queue",
     query: "",
@@ -100,14 +101,14 @@ export function createCrmState(): CrmStateStore {
     const key = mailingKey(mailing);
     state.statusOverrides[key] = status;
     saveStatusOverrides(state.statusOverrides);
-    saveSharedState("mailingStatus", key, status);
+    saveSharedState("mailingStatus", key, status, failureStore);
   }
 
   function updateComponentStatus(mailing: MailingLike, field: string, status: string): void {
     const key = componentKey(mailing, field);
     state.componentOverrides[key] = status;
     saveComponentOverrides(state.componentOverrides);
-    saveSharedState("componentStatus", key, status);
+    saveSharedState("componentStatus", key, status, failureStore);
   }
 
   function monthlyEnvelopeTargets(mailing: EnvelopeMailingLike): EnvelopeMailingLike[] {
