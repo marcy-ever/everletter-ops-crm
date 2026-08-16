@@ -84,5 +84,10 @@ test("the real POST /api/shared-state handler commits (200/{ok:true}) when write
   const response = await POST(request);
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body, { ok: true });
+  assert.equal(body.ok, true);
+  // POST now also returns the post-write change marker (lib/change-marker.ts,
+  // added for the "someone else changed something" staleness feature) -
+  // unrelated to what this test itself proves (a soft-skip still commits),
+  // so only its presence/shape is checked here, not a specific value.
+  assert.ok(typeof body.marker === "number" || body.marker === null);
 });
