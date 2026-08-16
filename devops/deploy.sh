@@ -98,4 +98,15 @@ if [ "$app_healthy" -ne 1 ]; then
     false
 fi
 
-success "Everletter deploy completed! App container is healthy."
+# Logs *what* just deployed, not just that something did - deploy.txt
+# otherwise records "a deploy happened" with nothing to reconstruct "when
+# did this break" against later. Fetched via `docker exec` + node's own
+# fetch (same pattern the healthcheck itself already uses, see
+# devops/docker-compose.app.yml - no curl/wget on this image or assumed on
+# the host), against the app container confirmed healthy above, so this
+# read never races the boot this script just waited out. Logs the raw
+# JSON body as-is (buildTime/commitSha from lib/build-info.ts) rather than
+# parsing fields out in bash - simpler, and a missing/renamed field shows
+# up directly in the log instead of silently becoming "unknown".
+version_body="$($COMPOSE exec -T app node -e "fetch('http://127.0.0.1:3000/api/health').then((r) => r.text()).then((t) => process.stdout.write(t)).catch(() => process.stdout.write('{}'))" 2>/dev/null || echo '{}')"
+success "Everletter deploy completed! App container is healthy. Version: ${version_body}"

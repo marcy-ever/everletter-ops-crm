@@ -14,6 +14,19 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+# Build identity (lib/build-info.ts) - passed by
+# .github/workflows/build-and-push.yml's build-args, absent for a local
+# `docker:up:full` build (no build.args: in devops/docker-compose.app.yml).
+# Set as ENV, not just ARG, specifically because Next's build step inlines
+# NEXT_PUBLIC_-prefixed vars from `process.env` at build time - an ARG
+# alone is only visible to RUN instructions in this stage, not to the
+# `pnpm build` process's own environment. Deliberately no default value:
+# an unset ARG becomes an empty-string ENV, which lib/build-info.ts already
+# treats as "unstamped" rather than something to guess at.
+ARG BUILD_TIME
+ARG COMMIT_SHA
+ENV NEXT_PUBLIC_BUILD_TIME=${BUILD_TIME}
+ENV NEXT_PUBLIC_BUILD_SHA=${COMMIT_SHA}
 RUN pnpm build
 
 FROM node:22-alpine AS runner
