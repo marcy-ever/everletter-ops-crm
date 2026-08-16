@@ -6,5 +6,6 @@ export * from "./mailings";
 export * from "./mailing_components";
 export * from "./exceptions";
 export * from "./ingestion_events";
+export * from "./audit_events";
 export * from "./staging_locations";
 export * from "./relations";

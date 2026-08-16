@@ -115,3 +115,69 @@ written for: "flag, don't solve." This is Brad's call to make (and when
 made, `raw_payload`'s column comment in
 `db/schema/ingestion_events.ts` and this doc should both be updated to
 describe the real policy instead of this recommendation).
+
+## `audit_events`: retention - flagged, not solved (same treatment as above)
+
+`audit_events` (`db/schema/audit_events.ts`) is the per-change complement to
+`ingestion_events` above - one row per `mailingStatus`/`componentStatus`/
+`reviewedException` write plus one per `crmDataset` import (written inside
+the same transaction as each, by `app/api/shared-state/route.ts`'s POST
+handler; read back via `GET /api/audit`). Completely different shape and
+cardinality from `ingestion_events`: no `raw_payload` jsonb blob, just a
+handful of short text columns (`actor_email`, `kind`, `item_key`,
+`previous_value`, `new_value`) - but a change happens far more often than an
+import, so it's worth measuring on its own terms rather than assuming
+"smaller row" means "not worth flagging."
+
+**Measured directly**, not estimated: four representative rows (one of each
+`kind`, using realistic values - a full-length `mailingId::sourceRow`
+component key, an `exceptionReviewKey` with a long real reason string, a
+real-shaped import summary) inserted into a local table and measured with
+Postgres's own `pg_column_size()`:
+
+| kind | bytes (row payload) |
+| --- | --- |
+| `mailingStatus` | 132 |
+| `componentStatus` | 150 |
+| `reviewedException` | 200 (longest - `exceptionReviewKey` carries a full reason string) |
+| `crmDataset` | 166 |
+
+Average **162 bytes/row** of actual column data; call it **~200 bytes/row**
+all-in once the ~24-byte heap tuple header, line pointer, and
+`audit_events_occurred_at_idx` index entry are counted - a deliberately
+rounded-up envelope, not a precise figure.
+
+**Projected growth** at a realistic change volume, not a worst case: this
+app processes roughly 1,200 mailings across the two mailing-day batches
+(1st/15th) per month (matching the real ~1,218-row test fixture). Estimating
+~1 `mailingStatus` write plus ~3 `componentStatus` writes per mailing per
+cycle (envelope, letter, and QA status are the fields that change most),
+plus a modest number of `reviewedException` dismissals and one `crmDataset`
+import/day (same daily-import assumption `ingestion_events`'s own estimate
+above uses):
+
+- ~1,200 mailings x 4 writes = ~4,800 rows/month from status activity
+- ~30 rows/month from reviewed-exception dismissals (rough)
+- ~30 rows/month from daily imports
+- **~4,860 rows/month, ~58,000 rows/year**
+
+At ~200 bytes/row all-in: **~11.6 MB/year** - even a full order of
+magnitude heavier than this estimate (a much busier bulk-action cadence
+than observed so far) stays under ~120 MB/year, well under
+`ingestion_events`'s own ~292 MB/year projection (which stores full dataset
+payloads, not short text fields - a different kind of growth entirely).
+
+Not an urgent problem - Postgres handles tens of thousands of rows a year
+trivially - but it's unbounded in the same way `ingestion_events` is, and
+belongs in the same eventual decision rather than a separate one.
+Recommendation, not yet implemented, mirroring the same shape as above:
+
+- Keep every `audit_events` row forever, as-is - unlike `ingestion_events`,
+  there's no large field to selectively prune (`previous_value`/`new_value`
+  are always short, bounded strings, never a full payload). If a policy is
+  ever needed, it's a row-age cutoff (delete, not null-out a column), not a
+  partial-prune.
+- Given the growth estimate above, that cutoff isn't urgent - flagged here
+  so the decision isn't made by default via "nobody thought about it,"
+  matching how `ingestion_events`'s own retention question was raised
+  before it became large enough to matter.

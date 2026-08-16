@@ -1,5 +1,7 @@
 import { getDb } from "@/db";
+import { auth } from "@/auth";
 import { ingestionEvents } from "@/db/schema/ingestion_events";
+import { auditEvents } from "@/db/schema/audit_events";
 import {
   writeComponentStatus,
   writeImport,
@@ -21,6 +23,20 @@ import {
 } from "@/lib/validate-shared-state";
 
 type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "crmDataset";
+
+// What actor_email gets when a request reaches this handler with no
+// session. proxy.ts gates every route this one is reachable through, so a
+// real browser request should never hit this - but a test (or any other
+// direct call bypassing proxy.ts) legitimately has none, and recording
+// nothing there is how a null actor_email would silently start meaning two
+// different things: "the capture broke" and "there genuinely was no
+// session." This sentinel is written instead of null specifically so a
+// later reader of audit_events sees an unmistakable, honest value rather
+// than a blank cell that could be either. Exported only for
+// tests/audit-events.e2e.test.mjs, which asserts audit rows written by this
+// repo's own (proxy.ts-bypassing) e2e harness record exactly this sentinel
+// - not consumed by any runtime caller.
+export const NO_SESSION_ACTOR = "unauthenticated";
 
 const allowedKinds = new Set<StateKind>([
   "mailingStatus",
@@ -98,6 +114,33 @@ export async function POST(request: Request) {
       return Response.json({ error: "CRM dataset key must be current." }, { status: 400 });
     }
 
+    // Resolved once, before the transaction, and reused for every audit row
+    // this request produces (a crmDataset import writes one row itself
+    // below; a mailingStatus/componentStatus/reviewedException write writes
+    // at most one, since each POST addresses exactly one key). See
+    // NO_SESSION_ACTOR above for what a missing session becomes.
+    //
+    // auth() (zero-arg form) reads the session via next/headers, which
+    // depends on Next's own App Router request-scope context - present for
+    // every real request (proxy.ts already guarantees one exists by the
+    // time it reaches here), but genuinely absent when this route's POST is
+    // invoked directly, bypassing Next's server, the way this repo's own
+    // e2e suite calls route handlers (tests/*.e2e.test.mjs, see
+    // docs/testing.md) - Next's own next/dynamic-api-wrong-context error
+    // (E251, "was called outside a request scope") is the honest signal for
+    // exactly that case, not a bug to route around. Caught narrowly by that
+    // specific code (not swallowed generically) and treated the same as a
+    // real "no session" - which, outside a real request scope, it actually
+    // is.
+    let actorEmail = NO_SESSION_ACTOR;
+    try {
+      const session = await auth();
+      actorEmail = session?.user?.email ?? NO_SESSION_ACTOR;
+    } catch (error) {
+      const code = error && typeof error === "object" && "__NEXT_ERROR_CODE" in error ? (error as { __NEXT_ERROR_CODE: unknown }).__NEXT_ERROR_CODE : undefined;
+      if (code !== "E251") throw error;
+    }
+
     // Shape validation happens before the transaction opens, on purpose -
     // see lib/validate-shared-state.ts's module comment for why this
     // can't live inside lib/write-to-tables.ts instead. Each of these
@@ -130,18 +173,34 @@ export async function POST(request: Request) {
         const seed = crmDatasetPayload.seed as unknown as Parameters<typeof writeImport>[0];
         await assertNotCatastrophicDeletion(seed, tx, Boolean(payload.confirmLargeDelete));
         await writeImport(seed, tx);
+        const summary = `${seed.mailings.length} mailings, ${seed.subscribers.length} subscribers, ${seed.exceptions.length} exceptions - ${crmDatasetPayload.sourceName}`;
         await tx.insert(ingestionEvents).values({
           source: "manual_spreadsheet",
           rawPayload: crmDatasetPayload.raw,
           status: "success",
-          summary: `${seed.mailings.length} mailings, ${seed.subscribers.length} subscribers, ${seed.exceptions.length} exceptions - ${crmDatasetPayload.sourceName}`,
+          summary,
         });
+        // One audit_events row per import, same summary ingestion_events
+        // already recorded above - so a single chronological read of
+        // audit_events shows imports alongside status changes instead of
+        // mysteriously skipping them. No previousValue: an import isn't a
+        // single-field change with one prior, it's a bulk replace.
+        await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: null, newValue: summary });
       } else if (kind === "mailingStatus") {
-        await writeMailingStatus(key, value, tx);
+        const outcome = await writeMailingStatus(key, value, tx);
+        if (outcome) {
+          await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+        }
       } else if (kind === "componentStatus") {
-        await writeComponentStatus(key, value, tx);
+        const outcome = await writeComponentStatus(key, value, tx);
+        if (outcome) {
+          await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+        }
       } else if (kind === "reviewedException") {
-        await writeReviewedException(key, tx);
+        const outcome = await writeReviewedException(key, tx);
+        if (outcome) {
+          await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+        }
       }
     });
 
