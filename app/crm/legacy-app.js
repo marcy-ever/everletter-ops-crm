@@ -288,13 +288,28 @@ function renderSaveFailureBanner() {
 // unsaved failure, that banner is already saying so independently, and
 // keeping the two stores decoupled here is what keeps each one's wording
 // simple and unconditionally true.
+//
+// Deliberately says "Mailing data has changed," not "Someone ELSE has
+// changed mailing data": the marker this banner reacts to only proves a
+// write happened, never who made it. A save whose response is lost after
+// the server already committed (network drops between commit and the
+// client receiving it) advances the marker without recordOwnMarker() ever
+// running - saveSharedState's .catch branch reports that to saveFailures,
+// not staleness (see lib/client/shared-state-client.ts), so this banner
+// would go stale for the user's OWN change in exactly that case. "Someone
+// else" is usually true for a two-person CRM but asserts something the
+// mechanism can't actually verify - and the one case it's wrong is the
+// same case where the save-failure banner is already telling that same
+// user their change didn't save, which "someone else" would flatly
+// contradict. The neutral wording stays true either way and points at the
+// same remedy (refresh) regardless of whose change it was.
 function renderStalenessBanner() {
   const snapshot = staleness.getSnapshot();
   if (!snapshot.stale) {
     stalenessBanner.innerHTML = '';
     return;
   }
-  stalenessBanner.innerHTML = '<p>Someone else has changed mailing data since this page loaded. Refresh to see the latest changes. <button type="button" data-refresh-page>Refresh now</button></p>';
+  stalenessBanner.innerHTML = '<p>Mailing data has changed since this page loaded. Refresh to see the latest changes. <button type="button" data-refresh-page>Refresh now</button></p>';
   // Refreshing is the entire remedy for this banner - making the button
   // work here, rather than pointing someone at their browser's own
   // refresh control, is the whole point of including it.

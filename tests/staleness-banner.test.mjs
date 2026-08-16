@@ -39,7 +39,8 @@ test("stale: the banner says a change happened and includes a refresh control", 
   sandbox.staleness.recordServerMarker(6);
 
   const html = sandbox.getCapturedHtml("#stalenessBanner");
-  assert.match(html, /Someone else has changed mailing data/);
+  assert.match(html, /Mailing data has changed since this page loaded/);
+  assert.doesNotMatch(html, /someone else/i, "must not claim who made the change - the marker can't distinguish this user's own lost-response save from a real other-user change (see the review that added this)");
   assert.match(html, /Refresh to see the latest changes/);
   assert.match(html, /data-refresh-page/, "must include a refresh control, not just tell the user to find their browser's own button");
 });
@@ -56,7 +57,7 @@ test("pollNow() driving a real (mocked) fetch to /api/change-marker updates the 
   await flush();
 
   assert.equal(sandbox.staleness.getSnapshot().stale, true);
-  assert.match(sandbox.getCapturedHtml("#stalenessBanner"), /Someone else has changed mailing data/);
+  assert.match(sandbox.getCapturedHtml("#stalenessBanner"), /Mailing data has changed since this page loaded/);
 });
 
 test("pollNow() reporting a marker equal to this client's own leaves the banner empty", async () => {
