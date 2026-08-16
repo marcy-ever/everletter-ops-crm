@@ -312,7 +312,12 @@ test("a fully valid crmDataset import still writes normalized rows and returns 2
 
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body, { ok: true });
+  assert.equal(body.ok, true);
+  // POST now also returns the post-write change marker (lib/change-marker.ts,
+  // added for the "someone else changed something" staleness feature) -
+  // unrelated to what this test itself proves, so only its shape is
+  // checked, not a specific value.
+  assert.ok(typeof body.marker === "number" || body.marker === null);
   assert.equal(await countRows(db, subscribers), 5);
   assert.equal(await countRows(db, mailings), 5);
 });

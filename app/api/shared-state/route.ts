@@ -2,6 +2,7 @@ import { getDb } from "@/db";
 import { auth } from "@/auth";
 import { ingestionEvents } from "@/db/schema/ingestion_events";
 import { auditEvents } from "@/db/schema/audit_events";
+import { currentChangeMarker } from "@/lib/change-marker";
 import {
   writeComponentStatus,
   writeImport,
@@ -71,7 +72,18 @@ export async function GET() {
       fetchReviewedExceptionKeys(db),
     ]);
 
-    return Response.json({ statusOverrides: {}, componentOverrides, reviewed, dataset });
+    // Read after building the response above, not before - deliberately.
+    // A write racing this request then produces a marker that's already
+    // higher than what the dataset/overrides above actually reflect, which
+    // can only make a later poll compare against a baseline that's too
+    // high, not too low. That errs toward this client occasionally
+    // reporting a false "stale" (asking to refresh for a change it may
+    // already mostly have) rather than a false "current" (silently
+    // treating itself as up to date when it isn't) - the safe direction
+    // for a feature whose whole job is warning about acting on stale data.
+    const marker = await currentChangeMarker(db);
+
+    return Response.json({ statusOverrides: {}, componentOverrides, reviewed, dataset, marker });
   } catch (error) {
     console.error(error);
     return Response.json(toErrorPayload(error, "Could not load shared CRM state."), { status: 500 });
@@ -204,7 +216,17 @@ export async function POST(request: Request) {
       }
     });
 
-    return Response.json({ ok: true });
+    // Read after the transaction has committed, so a soft-skip (no audit
+    // row written - see lib/change-marker.ts) correctly returns the
+    // unchanged current marker rather than a stale pre-transaction value,
+    // and a real change correctly returns the marker its own audit row
+    // just became. lib/client/save-failures.ts's saveSharedState reads
+    // this on a successful save to advance the caller's own baseline
+    // (lib/client/staleness.ts) - so the user's own change never makes
+    // their own page look stale.
+    const marker = await currentChangeMarker(db);
+
+    return Response.json({ ok: true, marker });
   } catch (error) {
     if (error instanceof SharedStateValidationError) {
       return Response.json({ error: error.message }, { status: 400 });

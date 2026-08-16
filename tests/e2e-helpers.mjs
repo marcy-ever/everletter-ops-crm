@@ -201,7 +201,32 @@ export async function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}
     return elementsBySelector.get(selector);
   }
 
-  globalThis.document = { querySelector: queryDocument, querySelectorAll: () => [] };
+  // visibilityState/addEventListener('visibilitychange', ...) - added for
+  // the change-marker staleness feature's tab-hidden pause/resume
+  // behavior (app/crm/legacy-app.js's initCrmApp()). Every earlier feature
+  // this stub supported only ever needed document.querySelector(); this is
+  // the first one that genuinely listens for a document-level event, so
+  // there was nothing to reuse - minimal on purpose (only the
+  // 'visibilitychange' type is handled), and returned to callers via
+  // setDocumentVisibility() below rather than exposing the listener set
+  // directly, so a test simulates the same real-world trigger (the
+  // visibilityState property changing, then the event firing) instead of
+  // reaching in and calling a captured listener by hand.
+  let visibilityState = "visible";
+  const visibilityListeners = new Set();
+  globalThis.document = {
+    querySelector: queryDocument,
+    querySelectorAll: () => [],
+    get visibilityState() {
+      return visibilityState;
+    },
+    addEventListener(type, listener) {
+      if (type === "visibilitychange") visibilityListeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      if (type === "visibilitychange") visibilityListeners.delete(listener);
+    },
+  };
   globalThis.window = { EVERLETTER_SEED: undefined, location: { hash: "" } };
   globalThis.localStorage = { getItem: () => null, setItem() {} };
   globalThis.fetch = async () => ({ ok: false, json: async () => ({}) });
@@ -228,5 +253,14 @@ export async function loadAppJsSandbox(fixedNow, { captureRenders = false } = {}
     ...mod,
     window: globalThis.window,
     getCapturedHtml: (selector) => elementsBySelector.get(selector)?.innerHTML ?? "",
+    // Simulates the real trigger for a 'visibilitychange' event (the
+    // property changing, then the event firing) - see the document stub
+    // above. Deliberately named "set...Visibility" rather than
+    // "dispatchEvent" or similar: callers should think in terms of the
+    // real-world state a test wants to simulate, not the DOM plumbing.
+    setDocumentVisibility(next) {
+      visibilityState = next;
+      visibilityListeners.forEach((listener) => listener());
+    },
   };
 }
