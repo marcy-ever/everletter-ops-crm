@@ -76,6 +76,19 @@ export default async function Home() {
           */}
           <div id="saveFailureBanner" role="status" aria-live="polite"></div>
 
+          {/*
+            Same placement reasoning as #saveFailureBanner above, and a
+            deliberately separate element - "your change didn't save" and
+            "someone else changed something" are different problems and
+            shouldn't share a banner (see CLAUDE.md §8's staleness item).
+            Rendered by app/crm/legacy-app.js's renderStalenessBanner(),
+            subscribed to lib/client/staleness.ts's store, fed by a
+            background poll against GET /api/change-marker. Empty (and so
+            invisible) unless the server's change marker has moved past
+            what this client's own view reflects.
+          */}
+          <div id="stalenessBanner" role="status" aria-live="polite"></div>
+
           <section className="metric-grid" id="metrics" aria-label="CRM summary"></section>
           <section className="status-strip" id="statusStrip" aria-label="Mailing status counts"></section>
 

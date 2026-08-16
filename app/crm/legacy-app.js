@@ -44,9 +44,10 @@ import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
 // see lib/client/crm-state.ts's header for why that matters to
 // tests/e2e-helpers.mjs's loadAppJsSandbox().
 import { loadComponentOverrides, loadReviewedExceptions, loadStatusOverrides, saveReviewedExceptions } from '@/lib/client/local-overrides';
-import { loadSharedState, saveSharedDataset, saveSharedState } from '@/lib/client/shared-state-client';
+import { loadSharedState, pollChangeMarker, saveSharedDataset, saveSharedState } from '@/lib/client/shared-state-client';
 import { createCrmState } from '@/lib/client/crm-state';
 import { createSaveFailureStore } from '@/lib/client/save-failures';
+import { createStalenessStore } from '@/lib/client/staleness';
 import {
   activeExceptions as selectActiveExceptions,
   availableBatchDates as selectAvailableBatchDates,
@@ -75,7 +76,11 @@ import {
 // module's own top level, so a fresh cache-busted import gets a fresh
 // store instead of sharing one across "fresh" test sandboxes.
 const saveFailures = createSaveFailureStore();
-const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus } = createCrmState(saveFailures);
+// createStalenessStore() is the same factory-not-singleton story as
+// saveFailures above - see lib/client/staleness.ts's own header for the
+// mechanism this feeds (the "someone else changed something" banner).
+const staleness = createStalenessStore();
+const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus } = createCrmState(saveFailures, staleness);
 
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
 const qaFields = [
@@ -131,7 +136,7 @@ const driveConfig = {
 // Assigned by initCrmApp() (module evaluation must stay side-effect-free -
 // see that function at the bottom). Declared here, at module scope, because
 // every render function below closes over these same bindings by name.
-let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap, saveFailureBanner;
+let topbarMeta, metrics, statusStrip, viewMount, searchInput, statusFilter, statusFilterWrap, batchFilter, batchFilterWrap, pastBatchFilter, pastBatchFilterWrap, saveFailureBanner, stalenessBanner;
 
 function activeExceptions() {
   return selectActiveExceptions(state.seed, state.reviewed);
@@ -264,6 +269,73 @@ function renderSaveFailureBanner() {
   }
 
   saveFailureBanner.innerHTML = messages.map((message) => `<p>${escapeHtml(message)}</p>`).join('');
+}
+
+// Renders lib/client/staleness.ts's current snapshot into
+// #stalenessBanner (app/page.tsx) - same reasoning as
+// renderSaveFailureBanner() above (outside #viewMount so the render-
+// snapshot harness never sees it, independent of renderShell()/renderView()
+// so it shows up immediately and stays visible on any view), but a
+// deliberately separate element and function. "Your change didn't save"
+// and "someone else changed something" are different problems needing
+// different actions - collapsing them into one banner would make both
+// harder to act on, and per this task's own design, the two can be true
+// and visible at the same time.
+//
+// Doesn't reference saveFailures' state at all, on purpose: this banner
+// only claims what's always true ("refresh to see the latest changes"),
+// never the stronger "refreshing loses nothing" - if there's also an
+// unsaved failure, that banner is already saying so independently, and
+// keeping the two stores decoupled here is what keeps each one's wording
+// simple and unconditionally true.
+function renderStalenessBanner() {
+  const snapshot = staleness.getSnapshot();
+  if (!snapshot.stale) {
+    stalenessBanner.innerHTML = '';
+    return;
+  }
+  stalenessBanner.innerHTML = '<p>Someone else has changed mailing data since this page loaded. Refresh to see the latest changes. <button type="button" data-refresh-page>Refresh now</button></p>';
+  // Refreshing is the entire remedy for this banner - making the button
+  // work here, rather than pointing someone at their browser's own
+  // refresh control, is the whole point of including it.
+  stalenessBanner.querySelector('[data-refresh-page]')?.addEventListener('click', () => {
+    window.location?.reload?.();
+  });
+}
+
+// 45 seconds: frequent enough that a change becomes visible well within
+// the minutes it actually takes to walk to the mailing station and act on
+// a status (the real mistake this prevents - see this task's own framing),
+// infrequent enough that two people leaving the CRM open all day isn't
+// meaningfully more server load than one indexed aggregate query every
+// 45s each (lib/change-marker.ts) - nowhere close to needing real-time
+// sync for a two-person shared tool.
+const POLL_INTERVAL_MS = 45000;
+let pollTimer = null;
+
+function pollNow() {
+  pollChangeMarker(staleness);
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollNow, POLL_INTERVAL_MS);
+  // Never present in a browser (setInterval returns a plain number there);
+  // present in Node, where an un-ref'd timer doesn't keep the process
+  // alive by itself - without this, every sandboxed test that calls
+  // initCrmApp() (tests/e2e-helpers.mjs's loadAppJsSandbox(), used by
+  // dozens of test cases across this suite) would leave a live interval
+  // behind with nothing to ever clear it, and `node --test` would hang
+  // waiting for the event loop to drain instead of exiting when the
+  // actual tests finish.
+  pollTimer?.unref?.();
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
 }
 
 function renderShell() {
@@ -440,7 +512,7 @@ function renderExceptions() {
       const key = button.getAttribute('data-review');
       state.reviewed.add(key);
       saveReviewedExceptions(state.reviewed);
-      saveSharedState('reviewedException', key, '1', saveFailures);
+      saveSharedState('reviewedException', key, '1', saveFailures, staleness);
       render();
     });
   });
@@ -982,7 +1054,7 @@ function renderImport() {
     state.importStatus = 'Publishing spreadsheet to the shared CRM...';
     renderImport();
     try {
-      state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName);
+      state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName, staleness);
       state.seed = state.importPreview.seed;
       state.importPreview = null;
       state.importBusy = false;
@@ -2366,7 +2438,7 @@ function render() {
 async function initializeCrm() {
   if (window.EVERLETTER_SEED) {
     state.seed = window.EVERLETTER_SEED;
-    await loadSharedState(state, saveFailures).catch(() => {});
+    await loadSharedState(state, saveFailures, staleness).catch(() => {});
     render();
   } else {
     viewMount.innerHTML = '<section class="data-panel"><div class="empty-state">Could not load Everletter seed data.</div></section>';
@@ -2404,6 +2476,7 @@ function initCrmApp() {
   pastBatchFilter = document.querySelector('#pastBatchFilter');
   pastBatchFilterWrap = document.querySelector('#pastBatchFilterWrap');
   saveFailureBanner = document.querySelector('#saveFailureBanner');
+  stalenessBanner = document.querySelector('#stalenessBanner');
 
   // Independent of renderShell()/renderView() on purpose (see
   // renderSaveFailureBanner()'s own comment) - a save failure has to show
@@ -2414,6 +2487,34 @@ function initCrmApp() {
   // every subsequent change.
   renderSaveFailureBanner();
   saveFailures.subscribe(renderSaveFailureBanner);
+
+  // Same immediate-render-then-subscribe shape as above, for the same
+  // reason. Polling itself (startPolling(), below) is what actually keeps
+  // this banner honest over time - this alone only reacts to markers this
+  // client already learned some other way (its own initial load or save).
+  renderStalenessBanner();
+  staleness.subscribe(renderStalenessBanner);
+
+  // Pause polling when the tab is hidden (no point spending requests on a
+  // banner nobody can see) and check immediately on becoming visible again
+  // - that's the scenario this feature actually exists for: someone comes
+  // back to a tab left open for an hour, which is exactly when acting on
+  // stale data becomes a real mailing-day risk. document.addEventListener
+  // is optional-chained (rather than assumed) because
+  // tests/e2e-helpers.mjs's sandboxed `document` stub - built for
+  // document.querySelector() only, long before this feature existed -
+  // has no addEventListener of its own; polling still starts in that
+  // environment (see startPolling()'s own unref() handling for why a
+  // dangling interval there is harmless), it just never pauses.
+  document.addEventListener?.('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      stopPolling();
+    } else {
+      pollNow();
+      startPolling();
+    }
+  });
+  startPolling();
 
   document.querySelectorAll('.side-nav button').forEach((button) => {
     button.addEventListener('click', () => {
@@ -2473,4 +2574,13 @@ export {
   // internally.
   updateMailingStatus,
   saveFailures,
+  // Exported only for tests/staleness-banner.test.mjs, which drives the
+  // real load/save -> lib/client/shared-state-client.ts ->
+  // lib/client/staleness.ts -> renderStalenessBanner() pipeline end to
+  // end, simulates polling directly (pollNow(), bypassing the real
+  // POLL_INTERVAL_MS/45s wait), and inspects/drives the store directly
+  // (staleness) - none consumed by any runtime caller beyond what's
+  // already wired internally.
+  staleness,
+  pollNow,
 };
