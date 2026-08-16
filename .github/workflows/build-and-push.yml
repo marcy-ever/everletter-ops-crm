@@ -25,6 +25,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Generated here, not derived from the commit's own timestamp - a
+      # rebuild of an old commit (a manual workflow_dispatch re-run, say)
+      # should say when it was actually built, not when that commit was
+      # authored. Pre-formatted to lib/build-info.ts's exact display shape
+      # (`date -u '+%Y-%m-%d %H:%M UTC'`) so nothing downstream parses or
+      # reformats a timestamp - it's a build-time string literal end to
+      # end. github.sha is the full 40-character SHA; shortened here to
+      # the 7-character form the UI actually shows.
+      - name: Compute build identity
+        id: build_identity
+        run: |
+          echo "build_time=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -34,6 +48,9 @@ jobs:
           tags: |
             ghcr.io/marcy-ever/everletter-ops-crm:latest
             ghcr.io/marcy-ever/everletter-ops-crm:${{ github.sha }}
+          build-args: |
+            BUILD_TIME=${{ steps.build_identity.outputs.build_time }}
+            COMMIT_SHA=${{ steps.build_identity.outputs.short_sha }}
 
   deploy:
     needs: build-and-push

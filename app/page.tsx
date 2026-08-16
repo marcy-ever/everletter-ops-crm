@@ -1,5 +1,6 @@
 import Script from "next/script";
 import { auth } from "@/auth";
+import { getBuildInfo } from "@/lib/build-info";
 import CrmApp from "./crm/CrmApp";
 import Sidebar from "./crm/shell/Sidebar";
 
@@ -10,6 +11,7 @@ export const metadata = {
 
 export default async function Home() {
   const session = await auth();
+  const buildInfo = getBuildInfo();
 
   return (
     <>
@@ -54,6 +56,18 @@ export default async function Home() {
             <img src="/assets/everletter-wax-seal.png" alt="" aria-hidden="true" />
             <span>Order IDs can change. Subscriber IDs stay stable.</span>
           </div>
+
+          {/*
+            Build identity (lib/build-info.ts) - "load the page and know
+            which build this is" (see CLAUDE.md's deploy section). Outside
+            #viewMount, same constraint as the save-failure and staleness
+            banners: tests/render-snapshots.test.mjs captures #viewMount
+            only. NEXT_PUBLIC_BUILD_TIME/NEXT_PUBLIC_BUILD_SHA are inlined
+            by Next at build time (devops/app.Dockerfile), so this is a
+            build-time string literal by the time it renders - no runtime
+            cost, no client component needed.
+          */}
+          <p className="build-stamp">{buildInfo.label}</p>
         </aside>
 
         <main className="workspace">
