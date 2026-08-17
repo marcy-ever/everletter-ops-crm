@@ -216,9 +216,9 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // (which renderView() already calls, and which this component observes
   // via getViewSnapshot() below) was sufficient. Reviewing an exception is
   // different: it changes activeExceptions().length, which
-  // renderShell() - a legacy, DOM-writing function entirely outside
-  // #viewMount/#reactViewMount, untouched by any React-hosted view so far
-  // - reads to paint the "Needs review" metric card and (transitively,
+  // renderShell() (app/crm/shell/render-shell.ts) - a DOM-writing function
+  // entirely outside #reactViewMount, untouched by any React-hosted view's
+  // own render - reads to paint the "Needs review" metric card and (transitively,
   // via effectiveMailings()) the rest of the topbar. The removed legacy
   // [data-review] handler called render() (renderShell() + renderView()),
   // not renderView() alone - calling only notifyViewChanged() here would

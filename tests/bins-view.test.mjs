@@ -75,9 +75,10 @@ test("the real component output actually contains computed data, not just an emp
 // found the opposite (renderBins() had no mobile-card markup at all - the
 // mobile card list lived in Batch Packet's renderPacket() instead, under
 // the confusingly bin-themed name). Both halves of that finding's own
-// verification have now moved out of the legacy-sandbox-based harness:
-// Packet's is in tests/packet-view.test.mjs, this one checks Bins.tsx's
-// own real output instead of #viewMount, which is deliberately empty now.
+// verification moved out of the legacy-sandbox-based harness during Phase 1
+// (Packet's is in tests/packet-view.test.mjs, this one checks Bins.tsx's
+// own real output) - the harness itself, and the #viewMount element it
+// captured, are both gone now (Phase 2, CLAUDE.md).
 test("Ashley Bins renders its two desktop sections (summary cards and the detailed checklist table) - no mobile cards, verified rather than assumed", () => {
   const seed = loadSeed();
   const html = renderBinsHtml(seed);

@@ -10,8 +10,9 @@ import {
 } from "../lib/domain/keys.ts";
 
 // Format-locking tests, not parity tests - see tests/ids.test.mjs's module
-// comment for why (same reasoning, same step 3a change: app/crm/legacy-app.js
-// now imports lib/keys.ts directly instead of keeping a mirrored copy).
+// comment for why (same reasoning, same step 3a change: the app's own
+// client-side code started importing lib/domain/keys.ts directly instead
+// of keeping a mirrored copy, once it became a real ES module that could).
 //
 // Every literal value below was captured by running the pre-refactor
 // lib/keys.ts (byte-identical to app.js's own copy at the time) over these

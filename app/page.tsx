@@ -59,10 +59,8 @@ export default async function Home() {
 
           {/*
             Build identity (lib/build-info.ts) - "load the page and know
-            which build this is" (see CLAUDE.md's deploy section). Outside
-            #viewMount, same constraint as the save-failure and staleness
-            banners: tests/render-snapshots.test.mjs captures #viewMount
-            only. NEXT_PUBLIC_BUILD_TIME/NEXT_PUBLIC_BUILD_SHA are inlined
+            which build this is" (see CLAUDE.md's deploy section).
+            NEXT_PUBLIC_BUILD_TIME/NEXT_PUBLIC_BUILD_SHA are inlined
             by Next at build time (devops/app.Dockerfile), so this is a
             build-time string literal by the time it renders - no runtime
             cost, no client component needed.

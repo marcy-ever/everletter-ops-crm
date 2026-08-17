@@ -1,8 +1,8 @@
 // Phase 1, step 12 of the app.js decomposition (CLAUDE.md) - the largest
 // view migrated so far, and the first that reads state.query without
 // owning the control that sets it: the search box lives in the shell
-// (#searchInput, app/crm/legacy-app.js's own initCrmApp()), outside this
-// view's mount entirely - filtering here is driven purely by the `rows`
+// (#searchInput, app/crm/shell/init-crm-app.ts's initCrmApp()), outside
+// this view's mount entirely - filtering here is driven purely by the `rows`
 // prop CrmApp.tsx recomputes on every notifyViewChanged(), the same
 // signal the shell's own search-input handler already fires
 // (searchInput.addEventListener('input', ...) calls renderView(), which

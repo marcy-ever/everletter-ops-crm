@@ -41,8 +41,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXED_NOW = new Date("2026-08-12T12:00:00.000Z");
 const TODAY = "2026-08-12";
 
-// A real, empty driveConfig - matching app/crm/legacy-app.js's own
-// module-scope driveConfig object exactly (every URL is committed empty;
+// A real, empty driveConfig - matching app/crm/shell/drive-links.ts's own
+// driveConfig object exactly (every URL is committed empty;
 // see CLAUDE.md's data-boundary note - no real Drive folder IDs are ever
 // committed to this repo), not a stub that merely happens to satisfy the
 // type. app/crm/CrmApp.tsx's REACT_VIEWS.print entry passes that same
