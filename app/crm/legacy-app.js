@@ -6,7 +6,7 @@
 // in a sandbox and diffed its output against the lib/ versions. That's gone
 // now that this file can import real TypeScript modules (the app.js -> ESM
 // move, step 2) - one implementation, imported here instead of duplicated.
-import { mailingKey, exceptionReviewKey } from '@/lib/domain/keys';
+import { mailingKey } from '@/lib/domain/keys';
 import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // Step 3b: pure business logic extracted into lib/domain/ (shared with the
 // server, same reasoning as the imports above) and app/crm/format.ts
@@ -43,8 +43,8 @@ import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
 // this module still produces a fresh, isolated state object every time -
 // see lib/client/crm-state.ts's header for why that matters to
 // tests/e2e-helpers.mjs's loadAppJsSandbox().
-import { loadComponentOverrides, loadReviewedExceptions, loadStatusOverrides, saveReviewedExceptions } from '@/lib/client/local-overrides';
-import { loadSharedState, pollChangeMarker, saveSharedDataset, saveSharedState } from '@/lib/client/shared-state-client';
+import { loadComponentOverrides, loadReviewedExceptions, loadStatusOverrides } from '@/lib/client/local-overrides';
+import { loadSharedState, pollChangeMarker, saveSharedDataset } from '@/lib/client/shared-state-client';
 import { createCrmState } from '@/lib/client/crm-state';
 import { createSaveFailureStore } from '@/lib/client/save-failures';
 import { createStalenessStore } from '@/lib/client/staleness';
@@ -495,70 +495,6 @@ function queueRow(mailing) {
       <td class="mono">${escapeHtml(mailing.orderId)}</td>
       <td><div class="flag-stack">${flags}</div></td>
     </tr>
-  `;
-}
-
-function renderExceptions() {
-  const rows = activeExceptions()
-    .filter((row) => includesText([row.recipientName, row.reason, row.mailingId, row.status, row.severity], state.query))
-    .slice(0, 120);
-
-  viewMount.innerHTML = `
-    <section class="data-panel" aria-label="Exceptions">
-      <div class="panel-head">
-        <div>
-          <h3>Needs Review</h3>
-          <p>Bad data stops here instead of leaking into the mailing schedule.</p>
-        </div>
-        <span class="panel-count">${rows.length} open</span>
-      </div>
-      <div class="exception-list">
-        ${
-          rows.length
-            ? rows.map(exceptionRow).join('')
-            : '<div class="empty-state">Nothing matches this search. Nicely suspicious.</div>'
-        }
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-review]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const key = button.getAttribute('data-review');
-      state.reviewed.add(key);
-      saveReviewedExceptions(state.reviewed);
-      saveSharedState('reviewedException', key, '1', saveFailures, staleness);
-      render();
-    });
-  });
-}
-
-function exceptionRow(item) {
-  const suggested = item.suggestedShipDate
-    ? `<div class="suggested-date"><span>Suggested ship date</span><strong>${formatDate(item.suggestedShipDate)}</strong></div>`
-    : '';
-  // sourceRow is null for the server-reconstructed "subscription-only
-  // fallback" case (lib/build-dataset-from-tables.ts's buildExceptions())
-  // - the row number is genuinely unrecoverable there, not just blank, so
-  // the span is omitted entirely rather than showing "Sheet row" with
-  // nothing after it.
-  const sheetRow = item.sourceRow == null ? '' : `<span>Sheet row ${escapeHtml(item.sourceRow)}</span>`;
-  return `
-    <article class="exception-row">
-      <div class="severity severity-${escapeHtml(item.severity.toLowerCase())}">${escapeHtml(item.severity)}</div>
-      <div>
-        <h4>${escapeHtml(item.recipientName)}</h4>
-        <p>${escapeHtml(item.reason)}</p>
-        ${suggested}
-        <div class="row-meta">
-          <span>${formatDate(item.shipDate)}</span>
-          <span>${escapeHtml(item.status)}</span>
-          ${sheetRow}
-          <span class="mono">${escapeHtml(item.mailingId)}</span>
-        </div>
-      </div>
-      <button type="button" class="icon-action" data-review="${escapeHtml(exceptionReviewKey(item))}">Reviewed</button>
-    </article>
   `;
 }
 
@@ -1984,7 +1920,7 @@ function binMobileCard(mailing) {
 // it exists.
 const VIEW_REGISTRY = {
   queue: { render: renderQueue, showStatusFilter: true, showBatchFilter: true },
-  exceptions: { render: renderExceptions, showStatusFilter: false, showBatchFilter: false },
+  exceptions: { react: true, showStatusFilter: false, showBatchFilter: false },
   subscribers: { render: renderSubscribers, showStatusFilter: false, showBatchFilter: false },
   samples: { react: true, showStatusFilter: false, showBatchFilter: false },
   import: { render: renderImport, showStatusFilter: false, showBatchFilter: false },

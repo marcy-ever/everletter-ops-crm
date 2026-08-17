@@ -4,7 +4,9 @@ import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings } from "@/lib/client/selectors";
-import { getRenderGeneration, initCrmApp, notifyViewChanged, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
+import { saveReviewedExceptions } from "@/lib/client/local-overrides";
+import { saveSharedState } from "@/lib/client/shared-state-client";
+import { getRenderGeneration, initCrmApp, notifyViewChanged, render, saveFailures, staleness, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
 import LaunchPlan from "./views/launch-plan/LaunchPlan";
@@ -13,6 +15,8 @@ import Sync from "./views/sync/Sync";
 import { computeSyncPreview, defaultSyncSubscriberId, defaultSyncSubscriptionId } from "./views/sync/sync-selectors";
 import Samples from "./views/samples/Samples";
 import { computeSamplesData } from "./views/samples/samples-selectors";
+import Exceptions from "./views/exceptions/Exceptions";
+import { computeExceptionRows } from "./views/exceptions/exceptions-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -177,6 +181,64 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         onOpenSample={(file) => {
           window.open(file, "_blank", "noopener,noreferrer");
+        }}
+      />
+    );
+  },
+  // The first migrated view that writes to the server, and the first
+  // callback in this file to call render() instead of notifyViewChanged()
+  // - a real, reported finding, not a stylistic choice. Every earlier
+  // interactive view's state (state.syncXxx, state.sampleType) is read
+  // ONLY by that view's own React component, so notifyViewChanged() alone
+  // (which renderView() already calls, and which this component observes
+  // via getViewSnapshot() below) was sufficient. Reviewing an exception is
+  // different: it changes activeExceptions().length, which
+  // renderShell() - a legacy, DOM-writing function entirely outside
+  // #viewMount/#reactViewMount, untouched by any React-hosted view so far
+  // - reads to paint the "Needs review" metric card and (transitively,
+  // via effectiveMailings()) the rest of the topbar. The removed legacy
+  // [data-review] handler called render() (renderShell() + renderView()),
+  // not renderView() alone - calling only notifyViewChanged() here would
+  // have silently dropped the metric-card refresh, a real regression from
+  // legacy, not just a style mismatch. render() is already exported (see
+  // legacy-app.js's own export list) and its renderView() half still ends
+  // in notifyViewChanged(), so this one call reproduces legacy's exact
+  // behavior: the shell's counts update AND this component re-renders
+  // with the reviewed exception now excluded from activeExceptions().
+  //
+  // onReview's body mirrors the removed legacy handler's exactly:
+  // state.reviewed.add(key) (a Set mutation, same pattern as every other
+  // direct `state` write in this file), persist to localStorage
+  // (saveReviewedExceptions - the local cache every override already
+  // uses), POST to the server (saveSharedState, imported directly from
+  // lib/client/ rather than re-exported from legacy-app.js, since nothing
+  // else needs it there - unlike saveFailures/staleness, which ARE
+  // imported from legacy-app.js because they must be the exact same
+  // store instances legacy's own #saveFailureBanner/#stalenessBanner
+  // subscriptions already read from), then render(). The optimistic-
+  // update shape (state mutated and rendered before the POST resolves) is
+  // unchanged from legacy - see CLAUDE.md's Known Issues on
+  // saveSharedState's own async/optimistic design; a rejected save
+  // surfaces independently via saveFailures' own subscription
+  // (#saveFailureBanner render is deliberately independent of
+  // renderShell()/renderView(), per that function's own comment), and a
+  // successful save's own response marker advances staleness's
+  // myMarker/serverMarker together (recordMarkerFromBody, inside
+  // saveSharedState) so this user's own review can never flag their own
+  // page stale - both already-existing, already-tested properties of
+  // saveSharedState/lib/client/staleness.ts, reused here rather than
+  // reimplemented.
+  exceptions: () => {
+    if (!state.seed) return null;
+    const rows = computeExceptionRows(state.seed, state.reviewed, state.query);
+    return (
+      <Exceptions
+        rows={rows}
+        onReview={(key) => {
+          state.reviewed.add(key);
+          saveReviewedExceptions(state.reviewed);
+          saveSharedState("reviewedException", key, "1", saveFailures, staleness);
+          render();
         }}
       />
     );
