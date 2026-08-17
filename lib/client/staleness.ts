@@ -10,10 +10,8 @@
  *
  * Pure, no DOM - same shape as the rest of lib/client/, and a factory for
  * the same reason lib/client/save-failures.ts's createSaveFailureStore()
- * is: tests/e2e-helpers.mjs's loadAppJsSandbox() gives each snapshot case a
- * fresh legacy-app.js module instance, which only produces genuine
- * isolation if state is created fresh inside that module, not shared via
- * an importable singleton here.
+ * is - see that module's own header, and app/crm/shell/crm-app-state.ts's,
+ * for the full reasoning.
  *
  * Two markers, deliberately not one:
  *  - `myMarker` - the marker this client's own view is caught up to,
@@ -36,9 +34,10 @@
  * never just the most recent - required for recordOwnMarker specifically
  * because a bulk action fires many POSTs whose responses can arrive out of
  * order (see lib/client/crm-state.ts's mutators, called in a loop by
- * app/crm/legacy-app.js's bulk-action handlers); applied the same way to
- * recordServerMarker defensively, since poll responses could in principle
- * arrive out of order too and audit_events' marker only ever increases.
+ * app/crm/CrmApp.tsx's own REACT_VIEWS bulk-action handlers); applied the
+ * same way to recordServerMarker defensively, since poll responses could
+ * in principle arrive out of order too and audit_events' marker only ever
+ * increases.
  */
 
 export interface StalenessSnapshot {
@@ -107,8 +106,8 @@ export function createStalenessStore(): StalenessStore {
 
     // Called on every poll result (GET /api/change-marker), successful or
     // not - a failed poll simply isn't called at all (see the poll loop in
-    // app/crm/legacy-app.js), so this only ever receives a real observed
-    // value.
+    // app/crm/shell/init-crm-app.ts), so this only ever receives a real
+    // observed value.
     recordServerMarker(marker) {
       if (normalize(marker) > normalize(serverMarker)) {
         serverMarker = marker;

@@ -29,7 +29,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { installShellDomStub } from "./shell-test-helpers.mjs";
 import { readWorkbookFile } from "../app/crm/views/import/import-selectors.ts";
 import { saveSharedDataset } from "../lib/client/shared-state-client.ts";
 
@@ -188,10 +190,12 @@ test("selecting a file, previewing it, and publishing writes the normalized tabl
   const originalWindow = globalThis.window;
 
   try {
-    // loadAppJsSandbox() stubs both globalThis.window and globalThis.fetch
-    // itself (see e2e-helpers.mjs) - wiring the real route / XLSX must
-    // happen AFTER it runs, or the sandbox's own stubs silently win.
-    const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+    // installShellDomStub() stubs both globalThis.window and globalThis.fetch
+    // itself (see tests/shell-test-helpers.mjs) - wiring the real route /
+    // XLSX must happen AFTER it runs, or the stub's own stand-ins silently
+    // win.
+    installShellDomStub();
+    const sandbox = createAppState();
     const { waitForFetches } = wireFetchToRealRoute(POST);
     globalThis.window.XLSX = stubXlsx([ROW]);
 
@@ -263,10 +267,11 @@ test("publishing an import that trips the catastrophic-deletion guard surfaces t
   await importSeed(POST, existingSeed, "existing-10.xlsx");
   assert.equal(await countRowsOf(db, mailings), 10);
 
-  // loadAppJsSandbox() stubs globalThis.fetch itself - wire the real
-  // route AFTER it runs, or the sandbox's own failing stub silently wins
+  // installShellDomStub() stubs globalThis.fetch itself - wire the real
+  // route AFTER it runs, or the stub's own failing stand-in silently wins
   // (see the previous test's own comment on this).
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installShellDomStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
   sandbox.state.seed = existingSeed;
 

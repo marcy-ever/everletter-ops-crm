@@ -43,7 +43,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { formatSaveFailureBannerHtml } from "../app/crm/shell/banners.ts";
+import { installLocalStorageStub } from "./shell-test-helpers.mjs";
 import { componentKey, mailingKey } from "../lib/domain/keys.ts";
 import { QA_FIELDS, printedEnvelopeStatusForMailing, computeQaData } from "../app/crm/views/qa/qa-selectors.ts";
 
@@ -155,8 +158,6 @@ async function importSeed(POST, seed, sourceName) {
 // Same wireFetchToRealRoute/waitForFetches technique as steps 10-13's own
 // e2e write-path files - see any of their headers for why a bare
 // setTimeout(resolve, 0) flush isn't enough once fetch does real I/O.
-// Must be wired AFTER loadAppJsSandbox(), which stubs globalThis.fetch
-// itself.
 function wireFetchToRealRoute(POST) {
   const pending = [];
   globalThis.fetch = (url, options = {}) => {
@@ -196,7 +197,8 @@ test("each of the seven component-status fields, changed individually, sends the
   const seed = buildSeed([spec]);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
   const mailing = seed.mailings[0];
 
@@ -270,7 +272,8 @@ test("onMarkReady at scale writes exactly the real number of changes it issues -
   const seed = buildSeed(specs);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
   // Mirrors app/crm/CrmApp.tsx's REACT_VIEWS.qa onMarkReady body exactly,
@@ -315,7 +318,8 @@ test("onMarkReady at scale writes exactly the real number of changes it issues -
 
 test("onMarkReady where every write fails collapses into ONE counted failure message, not one per field per row", { skip }, async () => {
   await freshDb();
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   // A genuine network failure (fetch rejects), same shape a dropped
   // connection mid-batch-action would produce - saveSharedState's own
   // .catch branch (lib/client/shared-state-client.ts) handles this for
@@ -343,7 +347,7 @@ test("onMarkReady where every write fails collapses into ONE counted failure mes
   const snapshot = sandbox.saveFailures.getSnapshot();
   assert.equal(snapshot.failedSaveCount, EXPECTED_FAILURES);
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(sandbox.saveFailures.getSnapshot());
   assert.match(html, new RegExp(`${EXPECTED_FAILURES} changes couldn.{1,8}t be saved`));
   // Counted, not enumerated - exactly one <p> for the save-failure
   // message, not thirty (tests/save-failure-banner.test.mjs already
@@ -363,7 +367,8 @@ test("onMarkMailed at scale writes exactly one audit row per already-ready row (
   const seed = buildSeed(specs);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
   // Populate this client's own componentOverrides directly, simulating
@@ -423,7 +428,8 @@ test("the staleness store's highest-wins handling survives out-of-order response
   const body2 = await response2.json();
   assert.ok(body2.marker > body1.marker, "fixture invariant: the second, later write should carry a strictly higher marker than the first");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   // Simulates the higher-marker response (write 2's) arriving and being
   // recorded FIRST, then the lower-marker response (write 1's) arriving
   // LATE - exactly the out-of-order case a slow request for an

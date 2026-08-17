@@ -31,7 +31,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { formatSaveFailureBannerHtml } from "../app/crm/shell/banners.ts";
+import { installLocalStorageStub } from "./shell-test-helpers.mjs";
 import { componentKey } from "../lib/domain/keys.ts";
 
 const skip = e2eSkipReason({ requiresFixture: false });
@@ -149,16 +152,16 @@ async function flush() {
 }
 
 // Mirrors app/crm/CrmApp.tsx's REACT_VIEWS.bins onBulkMark body exactly.
-function fireBulkMark(sandbox, mailings, mode) {
+function fireBulkMark(appState, mailings, mode) {
   mailings.forEach((mailing) => {
     if (mode === "ready") {
-      sandbox.updateComponentStatus(mailing, "envelope", "In Ashley Box");
-      sandbox.updateComponentStatus(mailing, "letter", "Stuffed");
-      sandbox.updateComponentStatus(mailing, "location", "Ashley");
+      appState.updateComponentStatus(mailing, "envelope", "In Ashley Box");
+      appState.updateComponentStatus(mailing, "letter", "Stuffed");
+      appState.updateComponentStatus(mailing, "location", "Ashley");
     } else {
-      sandbox.updateComponentStatus(mailing, "envelope", "Need Print");
-      sandbox.updateComponentStatus(mailing, "letter", "Need Print");
-      sandbox.updateComponentStatus(mailing, "location", "Marcy");
+      appState.updateComponentStatus(mailing, "envelope", "Need Print");
+      appState.updateComponentStatus(mailing, "letter", "Need Print");
+      appState.updateComponentStatus(mailing, "location", "Marcy");
     }
   });
 }
@@ -172,7 +175,8 @@ test("each of the three per-row fields, changed individually, sends the correct 
   const seed = buildSeed([spec]);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const appState = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
   const mailing = seed.mailings[0];
 
@@ -183,7 +187,7 @@ test("each of the three per-row fields, changed individually, sends the correct 
   ];
 
   for (const [field, newValue] of fields) {
-    sandbox.updateComponentStatus(mailing, field, newValue);
+    appState.updateComponentStatus(mailing, field, newValue);
     await waitForFetches();
     await flush();
 
@@ -193,7 +197,7 @@ test("each of the three per-row fields, changed individually, sends the correct 
     assert.equal(rows[0].kind, "componentStatus");
     assert.equal(rows[0].newValue, newValue);
 
-    const snapshot = sandbox.staleness.getSnapshot();
+    const snapshot = appState.staleness.getSnapshot();
     assert.equal(snapshot.stale, false, `changing field "${field}" must not make this same client's own page look stale`);
   }
 });
@@ -208,10 +212,11 @@ test("onBulkMark('ready') at scale writes exactly three audit rows per row - one
   const seed = buildSeed(specs);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const appState = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
-  fireBulkMark(sandbox, seed.mailings, "ready");
+  fireBulkMark(appState, seed.mailings, "ready");
   await waitForFetches();
   await flush();
 
@@ -227,7 +232,7 @@ test("onBulkMark('ready') at scale writes exactly three audit rows per row - one
   assert.deepEqual(Array.from(byField.letter), ["Stuffed"]);
   assert.deepEqual(Array.from(byField.location), ["Ashley"]);
 
-  const snapshot = sandbox.staleness.getSnapshot();
+  const snapshot = appState.staleness.getSnapshot();
   assert.equal(snapshot.stale, false, "the actor's own bulk action must not make their own page look stale either");
 });
 
@@ -241,10 +246,11 @@ test("onBulkMark('check') at scale writes the opposite target values - the secon
   const seed = buildSeed(specs);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const appState = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
-  fireBulkMark(sandbox, seed.mailings, "check");
+  fireBulkMark(appState, seed.mailings, "check");
   await waitForFetches();
   await flush();
 
@@ -263,21 +269,22 @@ test("onBulkMark('check') at scale writes the opposite target values - the secon
 
 test("a bulk-mark action where every write fails collapses into ONE counted failure message, not one per field per row", { skip }, async () => {
   await freshDb();
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const appState = createAppState();
   // A genuine network failure (fetch rejects), same shape a dropped
   // connection mid-bulk-action would produce.
   globalThis.fetch = () => Promise.reject(new Error("simulated network failure"));
 
   const ROW_COUNT = 6;
   const mailings = Array.from({ length: ROW_COUNT }, (_, i) => buildMailing(i + 1));
-  fireBulkMark(sandbox, mailings, "ready");
+  fireBulkMark(appState, mailings, "ready");
   await flush();
 
   const EXPECTED_FAILURES = ROW_COUNT * 3;
-  const snapshot = sandbox.saveFailures.getSnapshot();
+  const snapshot = appState.saveFailures.getSnapshot();
   assert.equal(snapshot.failedSaveCount, EXPECTED_FAILURES);
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(appState.saveFailures.getSnapshot());
   assert.match(html, new RegExp(`${EXPECTED_FAILURES} changes couldn.{1,8}t be saved`));
   assert.equal((html.match(/<p>/g) || []).length, 1);
 });
@@ -297,11 +304,12 @@ test("the staleness store's highest-wins handling survives out-of-order response
   const body2 = await response2.json();
   assert.ok(body2.marker > body1.marker, "fixture invariant: the second, later write should carry a strictly higher marker than the first");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  sandbox.staleness.recordOwnMarker(body2.marker);
-  sandbox.staleness.recordOwnMarker(body1.marker);
+  installLocalStorageStub();
+  const appState = createAppState();
+  appState.staleness.recordOwnMarker(body2.marker);
+  appState.staleness.recordOwnMarker(body1.marker);
 
-  const snapshot = sandbox.staleness.getSnapshot();
+  const snapshot = appState.staleness.getSnapshot();
   assert.equal(snapshot.myMarker, body2.marker, "a late-arriving LOWER marker must never regress myMarker backward from an already-recorded higher one");
   assert.equal(snapshot.stale, false);
 });

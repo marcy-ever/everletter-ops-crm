@@ -15,7 +15,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { buildSeedFromSpreadsheet } from "../lib/domain/spreadsheet/build-seed.ts";
 import { countRows } from "./db-test-helpers.mjs";
 import { exceptionReviewKey, mailingKey, componentKey } from "../lib/domain/keys.ts";
 
@@ -341,8 +342,7 @@ test("a full import of the real 1,218-row fixture still works end to end and wri
 
   const fixedNow = new Date("2026-08-12T15:00:00.000Z");
   const rows = loadSpreadsheetRows();
-  const appJs = await loadAppJsSandbox(fixedNow);
-  const seed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", fixedNow, []);
+  const seed = buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", fixedNow, []);
 
   const value = JSON.stringify({ seed, sourceName: "Import_20260812_181828.xlsx", uploadedAt: fixedNow.toISOString(), summary: seed.summary });
   const response = await POST(postRequest(JSON.stringify({ kind: "crmDataset", key: "current", value })));

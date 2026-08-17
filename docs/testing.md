@@ -112,64 +112,49 @@ non-reimportable dataset - do not run `pnpm test:e2e` against it.
 
 ## Golden-HTML view snapshots
 
-`tests/render-snapshots.test.mjs` is part of `test:unit` (unconditional, no
-skip logic, no Postgres or spreadsheet fixture needed) and covers something
-nothing else in this suite touches: what `app/crm/legacy-app.js`'s render
-functions actually output. The pre-existing tests prove the data layer
-(import → normalized tables → reconstruction); this suite proves what each
-of the twelve views renders from a given `state`. It's step 1 of the
-planned `app.js` decomposition - the safety net every later refactor step
-diffs against - and is itself test infrastructure only; it makes no
-production code changes.
-
-How it works: `tests/e2e-helpers.mjs`'s `loadAppJsSandbox(fixedNow, {
-captureRenders: true })` dynamic-imports the real `app/crm/legacy-app.js`
-(a real ES module as of step 2 of the decomposition plan, §9) with a
-`document` stub installed on `globalThis` that records `innerHTML` writes
-per selector (see that file's own comment for why `captureRenders` defaults
-to `false` and is fully backward compatible with every other caller). Each
-test case builds an explicit `state` (never relies on defaults), calls the real
-`renderView()`, and diffs the captured `#viewMount` HTML against a
-committed snapshot in `tests/snapshots/*.html` - one plain, readable file
-per case, not minified or JSON-wrapped, so a snapshot diff shows up as a
-normal diff in review. Input data comes from a synthetic, committed fixture
+Every one of the twelve views has its own `tests/<view>-view.test.mjs` file
+proving its real React component (`app/crm/views/.../<View>.tsx`) renders
+markup equivalent to a committed snapshot in `tests/snapshots/*.html` - one
+plain, readable file per view, not minified or JSON-wrapped, so a snapshot
+diff shows up as a normal diff in review. `renderToStaticMarkup()` renders
+the component directly; `tests/html-normalize.mjs`'s documented whitespace
+rules make the comparison (byte-identity isn't achievable for JSX output -
+see that module's own header) rather than a bespoke normalizer per file.
+Input data comes from a synthetic, committed fixture
 (`tests/fixtures/synthetic-rows.json`) run through the real
 `buildSeedFromSpreadsheet()` - never `testing/Import_20260812_181828.xlsx`,
 which is real customer data and can't be committed (see CLAUDE.md's
 sanitized-repo data boundary).
 
-**To regenerate snapshots after an intentional rendering change:**
-
-```bash
-UPDATE_SNAPSHOTS=1 pnpm test:unit
-```
+**To regenerate a view's snapshot after an intentional rendering change:**
+edit `tests/snapshots/<view>.html` directly, or capture fresh output from
+that view's own test file and copy it in - there is no single
+`UPDATE_SNAPSHOTS`-style regeneration script; each view's own test file
+owns its snapshot.
 
 **A snapshot diff in a refactor PR is a finding to explain, never a file to
 regenerate away.** The whole point of this suite is to catch rendering
-changes a refactor wasn't supposed to make. Regenerating on red without
-first understanding *why* the HTML changed defeats the harness - if the
-diff is expected (e.g. an intentional markup change), say so in the PR
-description; if it isn't, it just caught a real regression.
+changes a refactor wasn't supposed to make. If the diff is expected (e.g.
+an intentional markup change), say so in the PR description; if it isn't,
+it just caught a real regression.
 
-Two known, deliberately-unpinned edge cases are documented directly in
-`tests/render-snapshots.test.mjs`'s module comment and at the relevant test
-case: `number()`'s use of `.toLocaleString()` is locale-dependent (harmless
-in practice while fixture counts stay under 1,000, since thousands
-separators are the only thing that varies), and `batchDatesForOrder()` (used
-only by the Sync Simulator view) has a real, pre-existing timezone bug -
-it round-trips through `.toISOString()` with no `getTimezoneOffset()`
-correction, unlike every sibling date function in the file, so under a
-positive-UTC-offset `TZ` its generated dates shift back one calendar day.
-Confirmed via direct `TZ=Asia/Tokyo` reproduction. Not fixed here - no
-production code changes is a hard constraint of this suite - but flagged
-as a real finding for whoever picks up the next decomposition step.
+This replaced an earlier mechanism, `tests/render-snapshots.test.mjs`,
+which drove a real dynamic import of the pre-Phase-2 monolith
+(`app/crm/legacy-app.js`, deleted along with that file - see CLAUDE.md's
+app.js decomposition history) through a sandboxed `document` stub and
+diffed its captured `#viewMount` output. As each of the twelve views
+migrated to React (Phase 1), its own `*-view.test.mjs` file took over that
+view's snapshot coverage directly against the real component - by the time
+Phase 2 deleted the monolith, `render-snapshots.test.mjs`'s own case list
+was already empty, so removing the file itself was mechanical, not a
+coverage change.
 
 ## What `tests/e2e-helpers.mjs` provides
 
 Extracted after the setup/gating preamble was found copy-pasted verbatim
 across all three e2e files, with real drift between the copies (one had
-`fixedNow` time-pinning on the sandboxed `app.js` loader, the other didn't)
-and a real bug (the ENOENT crash above). One definition now provides:
+`fixedNow` time-pinning, the other didn't) and a real bug (the ENOENT crash
+above). One definition now provides:
 
 - `hasDbUrl` / `hasFixture` / `e2eSkipReason()` - the skip gates described
   above.
@@ -178,16 +163,22 @@ and a real bug (the ENOENT crash above). One definition now provides:
   hand in one place instead of drifting across files.
 - `loadSpreadsheetRows()` - reads and parses the real test spreadsheet the
   same way every file needs it.
-- `loadAppJsSandbox(fixedNow?)` - dynamic-imports the real
-  `app/crm/legacy-app.js` (with `document`/`window`/`localStorage`/`fetch`
-  stubs installed on `globalThis` first) so tests call its actual functions
-  (`buildSeedFromSpreadsheet`, etc.) instead of a reimplementation. `fixedNow`
-  is optional: pass it to pin the sandbox's `Date` to an exact instant
-  (needed by `build-dataset-from-tables.e2e`, which compares client-side and
-  server-reconstructed "now"-dependent fields and would otherwise be flaky
-  across a real day boundary - see `lib/domain/mailing-rules.ts`'s module comment);
-  omit it to get the real clock.
 
 `tests/db-test-helpers.mjs` is a separate, smaller module (`countRows()`)
 used only by `write-to-tables-transactional.e2e` - see its own comment for why it
 stayed separate from `e2e-helpers.mjs` rather than being folded in.
+
+`tests/shell-test-helpers.mjs` provides the much smaller stubs that
+replaced this file's own `loadAppJsSandbox()` (removed along with
+`app/crm/legacy-app.js` - Phase 2 of the app.js decomposition, CLAUDE.md):
+`installLocalStorageStub()` for the many e2e write-path tests that call
+`updateMailingStatus`/`updateComponentStatus`/`updateEnvelopeStatus`
+(`lib/client/crm-state.ts`'s mutators write through to `localStorage`
+unconditionally), and `installShellDomStub()` (which calls the former
+internally) for the smaller set of tests that also need
+`document`/`window` - `app/crm/shell/render-shell.ts`'s `renderView()` and
+`app/crm/shell/init-crm-app.ts`'s `bootCrmApp()` specifically. Fresh,
+isolated `state`/stores no longer need any stub at all -
+`app/crm/shell/crm-app-state.ts`'s `createAppState()` is a plain factory a
+test calls directly; see that module's own header for how this replaced
+`loadAppJsSandbox()`'s cache-busting dynamic import() trick.

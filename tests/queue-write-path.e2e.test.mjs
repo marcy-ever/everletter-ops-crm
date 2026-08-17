@@ -34,7 +34,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { formatSaveFailureBannerHtml } from "../app/crm/shell/banners.ts";
+import { installLocalStorageStub } from "./shell-test-helpers.mjs";
 import { mailingKey } from "../lib/domain/keys.ts";
 
 const skip = e2eSkipReason({ requiresFixture: false });
@@ -129,8 +132,6 @@ async function importSeed(POST, seed, sourceName) {
 // Same wireFetchToRealRoute/waitForFetches technique as steps 10-12's own
 // e2e write-path files - see any of their headers for why a bare
 // setTimeout(resolve, 0) flush isn't enough once fetch does real I/O.
-// Must be wired AFTER loadAppJsSandbox(), which stubs globalThis.fetch
-// itself.
 function wireFetchToRealRoute(POST) {
   const pending = [];
   globalThis.fetch = (url, options = {}) => {
@@ -160,7 +161,8 @@ test("a single row's status change (onStatusChange) sends the correct POST body,
   const seed = buildSeed([spec]);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
   const mailing = seed.mailings[0];
@@ -194,7 +196,8 @@ test("a bulk action (onBulkStatus) at realistic scale writes exactly one audit r
   const seed = buildSeed(specs);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
   // Mirrors app/crm/CrmApp.tsx's REACT_VIEWS.queue onBulkStatus body
@@ -220,7 +223,8 @@ test("a bulk action (onBulkStatus) at realistic scale writes exactly one audit r
 
 test("a bulk action where every write fails collapses into ONE counted failure message, not one per row", { skip }, async () => {
   await freshDb();
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   // A genuine network failure (fetch rejects, same shape a dropped
   // connection mid-bulk-action would produce), not a stubbed HTTP
   // rejection - saveSharedState's own .catch branch
@@ -235,7 +239,7 @@ test("a bulk action where every write fails collapses into ONE counted failure m
   const snapshot = sandbox.saveFailures.getSnapshot();
   assert.equal(snapshot.failedSaveCount, ROW_COUNT);
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(sandbox.saveFailures.getSnapshot());
   assert.match(html, new RegExp(`${ROW_COUNT} changes couldn.{1,8}t be saved`));
   // Counted, not enumerated - exactly one <p> for the save-failure
   // message, not one per failed row (same property
@@ -263,7 +267,8 @@ test("the staleness store's highest-wins handling survives a lower marker arrivi
   const body2 = await response2.json();
   assert.ok(body2.marker > body1.marker, "fixture invariant: the second, later write should carry a strictly higher marker than the first");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   // Simulates the higher-marker response (write 2's) arriving and being
   // recorded FIRST, then the lower-marker response (write 1's) arriving
   // LATE - exactly the out-of-order case a slow request for an

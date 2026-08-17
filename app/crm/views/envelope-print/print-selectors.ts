@@ -10,11 +10,16 @@
  * Reused, not reimplemented: componentStatus/effectiveMailings/
  * activeExceptions/selectedBatchDate/includesText (shared since step 4).
  *
- * driveConfig is threaded in as an explicit parameter rather than
- * imported from app/crm/legacy-app.js directly - same pattern every other
- * view-selectors file in this migration uses for a legacy dependency
- * (letterFolderUrl in qa-selectors.ts/packet-selectors.ts, envelopePrintRows
- * in packet-selectors.ts) - app/crm/CrmApp.tsx passes the real one.
+ * driveConfig is threaded in as an explicit parameter rather than imported
+ * from app/crm/shell/drive-links.ts directly (its real home since Phase 2's
+ * monolith deletion - CLAUDE.md; app/crm/legacy-app.js held it before that)
+ * - same pattern every other view-selectors file in this migration uses for
+ * a shared dependency it doesn't own (letterFolderUrl in qa-selectors.ts/
+ * packet-selectors.ts, envelopePrintRows in packet-selectors.ts) -
+ * app/crm/CrmApp.tsx passes the real one. The DriveConfig type below is
+ * imported from that same module rather than redeclared here - the two
+ * copies were identical from the day this file was written; closed as a
+ * real, exact duplication once drive-links.ts existed to import it from.
  *
  * A real, deliberately-preserved quirk from legacy's own renderPrint():
  * if the currently-selected stock filter no longer matches any of the
@@ -35,13 +40,9 @@ import { activeExceptions, componentStatus, effectiveMailings, includesText, sel
 import { printModeForPlan, envelopeQuantityForMailing } from "@/lib/domain/plans";
 import { driveCharacterKey, envelopeStockForCharacter, letterNumberKey } from "@/lib/domain/characters";
 import { storageBinForMailing } from "@/lib/domain/batch-dates";
+import type { DriveConfig } from "../../shell/drive-links";
 
-export interface DriveConfig {
-  printReadyFolderUrl: string;
-  characterFolders: Record<string, string>;
-  envelopeFolders: Record<string, string>;
-  letterFolders: Record<string, Record<string, string>>;
-}
+export type { DriveConfig };
 
 function characterFolderUrl(mailing: DatasetMailing, driveConfig: DriveConfig): string {
   return driveConfig.characterFolders[driveCharacterKey(mailing.character)] || "";
@@ -54,7 +55,7 @@ function envelopeFolderUrl(mailing: DatasetMailing, driveConfig: DriveConfig): s
 // Duplicated here rather than imported - the same one-line-ternary
 // treatment printedEnvelopeStatusForMailing() got in Subscribers/QA/
 // Packet, and letterFolderUrl() itself is a real export elsewhere
-// (app/crm/legacy-app.js, for QA/Packet's own use), but this local
+// (app/crm/shell/drive-links.ts, for QA/Packet's own use), but this local
 // wrapper's exact-vs-fallback-vs-missing three-way branch is print-row
 // specific.
 function letterFolderUrl(mailing: DatasetMailing, driveConfig: DriveConfig): string {

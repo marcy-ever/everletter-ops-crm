@@ -21,9 +21,9 @@ test.afterEach(() => {
 // loadSharedState's success path writes through to
 // lib/client/local-overrides.ts, which touches the bare `localStorage`
 // global - present in a real browser (and stubbed by
-// tests/e2e-helpers.mjs's loadAppJsSandbox() for the sandboxed tests) but
-// not in a plain node:test run. Stubbed the same minimal way here since
-// this file deliberately runs without that sandbox.
+// tests/shell-test-helpers.mjs's installLocalStorageStub() for tests that
+// use it) but not in a plain node:test run. Stubbed the same minimal way
+// here directly since this file deliberately runs without that helper.
 globalThis.localStorage = {
   getItem: () => null,
   setItem() {},
