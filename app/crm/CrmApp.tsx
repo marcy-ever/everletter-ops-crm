@@ -4,11 +4,13 @@ import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings } from "@/lib/client/selectors";
-import { initCrmApp, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
+import { getRenderGeneration, initCrmApp, notifyViewChanged, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
 import LaunchPlan from "./views/launch-plan/LaunchPlan";
 import { computeLaunchPlanData } from "./views/launch-plan/launch-selectors";
+import Sync from "./views/sync/Sync";
+import { computeSyncPreview, defaultSyncSubscriberId, defaultSyncSubscriptionId } from "./views/sync/sync-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -32,13 +34,25 @@ import { computeLaunchPlanData } from "./views/launch-plan/launch-selectors";
 //    component doesn't need to know about individual nav-click/hash-load
 //    call sites, only that a render happened.
 //  - getSnapshot and getServerSnapshot are the same function
-//    (getActiveView) rather than two: state.activeView's module-level
-//    default ('queue', lib/client/crm-state.ts) is identical at SSR time
-//    and at the moment of React's first client render (initCrmApp() only
-//    ever runs inside the effect below, strictly after that first
-//    render), so there's no value they could ever legitimately disagree
-//    on - using one function makes that guarantee explicit instead of
-//    hoping two separately-written functions stay in sync.
+//    (getViewSnapshot) rather than two: whatever it returns is identical
+//    at SSR time and at the moment of React's first client render
+//    (initCrmApp() only ever runs inside the effect below, strictly after
+//    that first render), so there's no value they could ever legitimately
+//    disagree on - using one function makes that guarantee explicit
+//    instead of hoping two separately-written functions stay in sync.
+//    The snapshot itself combines state.activeView with
+//    getRenderGeneration() (lib/client/crm-state.ts) rather than watching
+//    state.activeView alone - added in step 8 (Sync Simulator), the first
+//    interactive migrated view: a form-control change mutates
+//    state.syncSubscriberId/etc., never state.activeView, so a snapshot
+//    of state.activeView alone would never look different to
+//    useSyncExternalStore's Object.is check and React would correctly (by
+//    that hook's own contract) skip re-rendering. getRenderGeneration()
+//    changes on every notifyViewChanged() call regardless of what
+//    prompted it, so the combined snapshot always looks new when a render
+//    might actually be needed. See lib/client/crm-state.ts's own header
+//    for the full before/after reasoning - this was a real gap step 6/7
+//    never hit because neither Automation nor Launch Plan had inputs.
 //  - React gets its own mount element, #reactViewMount (app/page.tsx),
 //    separate from #viewMount. Legacy code writes into #viewMount via
 //    raw innerHTML; if React also owned that same node, legacy's next
@@ -96,6 +110,49 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
     );
     return <LaunchPlan data={data} />;
   },
+  // The first interactive migrated view - see this file's own header on
+  // getViewSnapshot() for why that's what forced the render-generation
+  // fix. Lazy-initializes state.syncSubscriberId/syncSubscriptionId on
+  // first render exactly like the removed legacy renderSync() did inline
+  // ("if (!state.syncSubscriberId) {...}") - a real `state` mutation, so
+  // it happens here (the one place besides legacy-app.js allowed to touch
+  // `state` for a React-hosted view), not inside the pure
+  // defaultSyncSubscriberId()/defaultSyncSubscriptionId() selectors those
+  // values come from. Each onXxxChange handler mirrors exactly what the
+  // legacy <select>/<input> onchange handlers it replaces did: write into
+  // `state`, then notifyViewChanged() - the same signal renderView()
+  // fires on every legacy render, so this component doesn't need a
+  // separate re-render mechanism of its own.
+  sync: () => {
+    if (!state.seed) return null;
+    if (!state.syncSubscriberId) {
+      state.syncSubscriberId = defaultSyncSubscriberId(state.seed);
+      state.syncSubscriptionId = defaultSyncSubscriptionId(state.syncSubscriberId, state.seed);
+    }
+    const data = computeSyncPreview(state.seed, state.syncSubscriberId, state.syncSubscriptionId, state.syncPlan, state.syncOrderDate);
+    return (
+      <Sync
+        data={data}
+        onSubscriberChange={(subscriberId) => {
+          state.syncSubscriberId = subscriberId;
+          state.syncSubscriptionId = state.seed ? defaultSyncSubscriptionId(subscriberId, state.seed) : "";
+          notifyViewChanged();
+        }}
+        onPlanChange={(plan) => {
+          state.syncPlan = plan;
+          notifyViewChanged();
+        }}
+        onOrderDateChange={(orderDate) => {
+          state.syncOrderDate = orderDate;
+          notifyViewChanged();
+        }}
+        onSubscriptionChange={(subscriptionId) => {
+          state.syncSubscriptionId = subscriptionId;
+          notifyViewChanged();
+        }}
+      />
+    );
+  },
 };
 
 // Runs initCrmApp() inside a browser-only effect specifically so nothing
@@ -104,8 +161,8 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
 // server to produce the initial HTML - only its effects are browser-only).
 // initCrmApp() itself guards against being called twice, which covers
 // React StrictMode double-invoking effects in development.
-function getActiveView(): string {
-  return state.activeView;
+function getViewSnapshot(): string {
+  return `${state.activeView}:${getRenderGeneration()}`;
 }
 
 export default function CrmApp() {
@@ -113,7 +170,8 @@ export default function CrmApp() {
     initCrmApp();
   }, []);
 
-  const activeView = useSyncExternalStore(subscribeViewChanged, getActiveView, getActiveView);
+  const viewSnapshot = useSyncExternalStore(subscribeViewChanged, getViewSnapshot, getViewSnapshot);
+  const activeView = viewSnapshot.slice(0, viewSnapshot.lastIndexOf(":"));
 
   if (typeof document === "undefined") return null;
   const mount = document.getElementById("reactViewMount");

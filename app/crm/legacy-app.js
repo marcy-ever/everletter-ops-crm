@@ -19,9 +19,9 @@ import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // their only call sites were inside buildSeedFromSpreadsheet/
 // spreadsheetExceptionReasons, which now live in
 // lib/domain/spreadsheet/build-seed.ts and import these themselves.
-import { plannedLetterCount, printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
+import { printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
 import { driveCharacterKey, letterNumberKey, envelopeStockForCharacter } from '@/lib/domain/characters';
-import { batchDatesForOrder, storageBinForMailing } from '@/lib/domain/batch-dates';
+import { storageBinForMailing } from '@/lib/domain/batch-dates';
 // formatDate/titleCase moved to lib/domain/format.ts (step 3c) once
 // storageBinForMailing/envelopeStockForCharacter, which depend on them,
 // turned out to be real domain logic rather than display chrome - see
@@ -54,10 +54,7 @@ import {
   componentStatus as selectComponentStatus,
   effectiveMailings as selectEffectiveMailings,
   exceptionsForMailing as selectExceptionsForMailing,
-  findSubscriptionMailings as selectFindSubscriptionMailings,
   getRecipient as selectGetRecipient,
-  getRecipientName as selectGetRecipientName,
-  getSubscriberSubscriptions as selectGetSubscriberSubscriptions,
   includesText,
   nextBatchDate as selectNextBatchDate,
   packetProblemRows as selectPacketProblemRows,
@@ -83,7 +80,7 @@ const saveFailures = createSaveFailureStore();
 // saveFailures above - see lib/client/staleness.ts's own header for the
 // mechanism this feeds (the "someone else changed something" banner).
 const staleness = createStalenessStore();
-const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus, notifyViewChanged, subscribeViewChanged } = createCrmState(saveFailures, staleness);
+const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus, notifyViewChanged, subscribeViewChanged, getRenderGeneration } = createCrmState(saveFailures, staleness);
 
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
 const qaFields = [
@@ -740,18 +737,6 @@ function profileMailingCard(mailing) {
       </div>
     </article>
   `;
-}
-
-function findSubscriptionMailings(subscriptionId) {
-  return selectFindSubscriptionMailings(subscriptionId, state.seed);
-}
-
-function getSubscriberSubscriptions(subscriberId) {
-  return selectGetSubscriberSubscriptions(subscriberId, state.seed);
-}
-
-function getRecipientName(recipientId) {
-  return selectGetRecipientName(recipientId, state.seed);
 }
 
 function getRecipient(recipientId) {
@@ -2118,136 +2103,6 @@ function renderSamples() {
   });
 }
 
-function getSyncPreview() {
-  const subscriber = state.seed.subscribers.find((item) => item.subscriberId === state.syncSubscriberId) || state.seed.subscribers[0];
-  const subscriptions = getSubscriberSubscriptions(subscriber.subscriberId);
-  const subscription = subscriptions.find((item) => item.subscriptionId === state.syncSubscriptionId) || subscriptions[0] || state.seed.subscriptions[0];
-  const existing = findSubscriptionMailings(subscription.subscriptionId);
-  const currentMax = existing.reduce((max, mailing) => Math.max(max, numericLetter(mailing.letterNumber)), 0);
-  const count = plannedLetterCount(state.syncPlan);
-  const shipDates = batchDatesForOrder(state.syncOrderDate, count);
-  const generated = shipDates.map((shipDate, index) => ({
-    letterNumber: currentMax + index + 1,
-    shipDate,
-    mailingId: `SIM-${subscription.subscriptionId}-${shipDate.replaceAll('-', '')}-L${currentMax + index + 1}`,
-  }));
-  return { subscriber, subscriptions, subscription, existing, currentMax, count, generated };
-}
-
-function renderSync() {
-  if (!state.syncSubscriberId) {
-    const active = state.seed.subscribers.find((subscriber) => subscriber.status === 'Active') || state.seed.subscribers[0];
-    state.syncSubscriberId = active.subscriberId;
-    state.syncSubscriptionId = getSubscriberSubscriptions(active.subscriberId)[0]?.subscriptionId || '';
-  }
-
-  const preview = getSyncPreview();
-  const subscriberOptions = state.seed.subscribers
-    .filter((subscriber) => subscriber.status === 'Active')
-    .slice(0, 120)
-    .map((subscriber) => `<option value="${escapeHtml(subscriber.subscriberId)}" ${subscriber.subscriberId === preview.subscriber.subscriberId ? 'selected' : ''}>${escapeHtml(subscriber.displayName)} Â· ${escapeHtml(subscriber.email || subscriber.subscriberId)}</option>`)
-    .join('');
-  const subscriptionOptions = preview.subscriptions
-    .map((subscription) => {
-      const recipientName = getRecipientName(subscription.recipientId);
-      const label = `${recipientName} Â· ${subscription.character} Â· ${subscription.plan}`;
-      return `<option value="${escapeHtml(subscription.subscriptionId)}" ${subscription.subscriptionId === preview.subscription.subscriptionId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-    })
-    .join('');
-
-  viewMount.innerHTML = `
-    <section class="data-panel sync-panel" aria-label="Squarespace sync simulator">
-      <div class="panel-head">
-        <div>
-          <h3>Squarespace Sync Simulator</h3>
-          <p>Preview how a daily sync turns a renewal order into the next Everletter mailings.</p>
-        </div>
-        <span class="panel-count">Daily sync</span>
-      </div>
-      <div class="sync-layout">
-        <div class="sync-form">
-          <label>
-            <span>Existing subscriber</span>
-            <select id="syncSubscriber">${subscriberOptions}</select>
-          </label>
-          <label>
-            <span>Plan / order type</span>
-            <select id="syncPlan">
-              ${['Month-to-month', '6-month', '12-month', 'One-time'].map((plan) => `<option ${plan === state.syncPlan ? 'selected' : ''}>${plan}</option>`).join('')}
-            </select>
-          </label>
-          <label>
-            <span>Order paid date</span>
-            <input id="syncOrderDate" type="date" value="${escapeHtml(state.syncOrderDate)}" />
-          </label>
-          <label>
-            <span>Subscription sequence</span>
-            <select id="syncSubscription">${subscriptionOptions || `<option>${escapeHtml(preview.subscription.subscriptionId)}</option>`}</select>
-          </label>
-        </div>
-
-        <div class="sync-summary">
-          <h4>${escapeHtml(preview.subscriber.displayName)}</h4>
-          <p>${escapeHtml(preview.subscriber.email || 'Missing email')} Â· ${escapeHtml(preview.subscriber.subscriberId)}</p>
-          <p>${escapeHtml(getRecipientName(preview.subscription.recipientId))} Â· ${escapeHtml(preview.subscription.character)} Â· ${escapeHtml(preview.subscription.plan)}</p>
-          <dl>
-            <div><dt>Existing letters</dt><dd>${number(preview.existing.length)}</dd></div>
-            <div><dt>Highest letter #</dt><dd>${number(preview.currentMax)}</dd></div>
-            <div><dt>New letters</dt><dd>${number(preview.count)}</dd></div>
-            <div><dt>Order number</dt><dd>New in Squarespace</dd></div>
-          </dl>
-        </div>
-      </div>
-
-      <div class="generated-mailings">
-        <h4>Generated mailing rows</h4>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Letter #</th>
-                <th>Ship Date</th>
-                <th>Status</th>
-                <th>Mailing ID</th>
-                <th>Why</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${preview.generated.map((row) => `
-                <tr>
-                  <td>${row.letterNumber}</td>
-                  <td>${formatDate(row.shipDate)}</td>
-                  <td><span class="pill status-to-prepare">To Prepare</span></td>
-                  <td class="mono">${escapeHtml(row.mailingId)}</td>
-                  <td>Next letter after #${number(preview.currentMax)} for this exact recipient + character subscription.</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  `;
-
-  document.querySelector('#syncSubscriber').addEventListener('change', (event) => {
-    state.syncSubscriberId = event.target.value;
-    state.syncSubscriptionId = getSubscriberSubscriptions(state.syncSubscriberId)[0]?.subscriptionId || '';
-    renderSync();
-  });
-  document.querySelector('#syncPlan').addEventListener('change', (event) => {
-    state.syncPlan = event.target.value;
-    renderSync();
-  });
-  document.querySelector('#syncOrderDate').addEventListener('change', (event) => {
-    state.syncOrderDate = event.target.value;
-    renderSync();
-  });
-  document.querySelector('#syncSubscription').addEventListener('change', (event) => {
-    state.syncSubscriptionId = event.target.value;
-    renderSync();
-  });
-}
-
 // The view registry: one entry per sidebar view (see
 // app/crm/shell/nav-items.ts, the sidebar's own source of truth - kept in
 // agreement with this object's keys by tests/nav-items.test.mjs), naming
@@ -2278,7 +2133,7 @@ const VIEW_REGISTRY = {
   packet: { render: renderPacket, showStatusFilter: false, showBatchFilter: true },
   bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
   launch: { react: true, showStatusFilter: false, showBatchFilter: false },
-  sync: { render: renderSync, showStatusFilter: false, showBatchFilter: false },
+  sync: { react: true, showStatusFilter: false, showBatchFilter: false },
   automation: { react: true, showStatusFilter: false, showBatchFilter: false },
 };
 
@@ -2462,13 +2317,20 @@ export {
   // already wired internally.
   staleness,
   pollNow,
-  // subscribeViewChanged is a real runtime export, consumed by
-  // app/crm/CrmApp.tsx (the React-hosting seam - see its own header) to
-  // observe state.activeView without duplicating it into React state.
-  // VIEW_REGISTRY is exported for two runtime callers now, not just
+  // notifyViewChanged/subscribeViewChanged/getRenderGeneration are real
+  // runtime exports, consumed by app/crm/CrmApp.tsx (the React-hosting
+  // seam - see its own header, and lib/client/crm-state.ts's for why
+  // getRenderGeneration exists as of step 8) both to observe "a render
+  // may be needed" without duplicating any of `state` into React state,
+  // and - as of step 8's interactive views - to trigger that same signal
+  // from a React event handler after writing into `state` directly,
+  // exactly mirroring what a legacy `<select>` onchange handler already
+  // does. VIEW_REGISTRY is exported for two runtime callers now, not just
   // tests: CrmApp.tsx reads a view's `react` flag to decide whether to
   // render anything, the same way renderView() above does - both read
   // the one registry rather than each hand-maintaining "which views are
   // React-hosted."
+  notifyViewChanged,
   subscribeViewChanged,
+  getRenderGeneration,
 };
