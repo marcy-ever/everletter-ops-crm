@@ -12,8 +12,11 @@ import {
   getRecipient,
   getRecipientName,
   getSubscriberSubscriptions,
+  includesText,
   isExceptionReviewed,
   nextBatchDate,
+  packetProblemRows,
+  packetRows,
   pastBatchDates,
   selectedBatchDate,
 } from "../lib/client/selectors.ts";
@@ -250,4 +253,102 @@ test("findSubscriptionMailings/getSubscriberSubscriptions/getRecipientName/getRe
   assert.equal(getRecipient("rec1", seed), recipient);
   assert.equal(getRecipientName("nope", seed), "Unknown recipient");
   assert.equal(getRecipient("nope", seed), null);
+});
+
+// includesText/packetRows/packetProblemRows: moved here from
+// app/crm/format.ts (includesText) and app/crm/legacy-app.js (the other
+// two) in Phase 1 step 7, once Launch Plan needed the same packet
+// derivation Batch Packet already had - see this module's own header for
+// the full reasoning. New coverage: these three had never been unit
+// tested before (only indirectly, through the packet render-snapshot).
+
+test("includesText matches case-insensitively against any of the given values", () => {
+  assert.equal(includesText(["Marley", "Ringo"], "marl"), true);
+  assert.equal(includesText(["Marley", "Ringo"], "zzz"), false);
+});
+
+test("includesText treats a blank/whitespace-only query as matching everything", () => {
+  assert.equal(includesText(["Marley", "Ringo"], ""), true);
+  assert.equal(includesText(["Marley", "Ringo"], "   "), true);
+});
+
+test("packetRows excludes Archived, Mailed, and non-matching-batch-date rows", () => {
+  const active = mailing({ mailingId: "m1", activeState: "Active", status: "To Prepare", shipDate: "2026-08-15" });
+  const archived = mailing({ mailingId: "m2", activeState: "Archived", status: "To Prepare", shipDate: "2026-08-15" });
+  const mailed = mailing({ mailingId: "m3", activeState: "Active", status: "Mailed", shipDate: "2026-08-15" });
+  const wrongBatch = mailing({ mailingId: "m4", activeState: "Active", status: "To Prepare", shipDate: "2026-09-01" });
+  const rows = [active, archived, mailed, wrongBatch];
+
+  assert.deepEqual(
+    packetRows(rows, "2026-08-15", "all", "").map((m) => m.mailingId),
+    ["m1"],
+  );
+});
+
+test("packetRows: batchDate '' (all open batches) does not filter by ship date at all", () => {
+  const rows = [
+    mailing({ mailingId: "m1", shipDate: "2026-08-15" }),
+    mailing({ mailingId: "m2", shipDate: "2026-09-01" }),
+  ];
+  assert.deepEqual(packetRows(rows, "", "all", "").map((m) => m.mailingId).sort(), ["m1", "m2"]);
+});
+
+test("packetRows: packetScope 'monthly' keeps only Month-to-month, any other scope keeps every plan", () => {
+  const monthly = mailing({ mailingId: "m1", plan: "Month-to-month" });
+  const twelveMonth = mailing({ mailingId: "m2", plan: "12-month" });
+  const rows = [monthly, twelveMonth];
+
+  assert.deepEqual(packetRows(rows, "", "monthly", "").map((m) => m.mailingId), ["m1"]);
+  assert.deepEqual(packetRows(rows, "", "all", "").map((m) => m.mailingId).sort(), ["m1", "m2"]);
+});
+
+test("packetRows: query filters via includesText against recipient/email/character/plan/status/mailingId/orderId", () => {
+  const rows = [
+    mailing({ mailingId: "m1", recipientName: "Ava Example", email: "ava@example.test", orderId: "ORD-1" }),
+    mailing({ mailingId: "m2", recipientName: "Ben Example", email: "ben@example.test", orderId: "ORD-2" }),
+  ];
+  assert.deepEqual(packetRows(rows, "", "all", "Ava").map((m) => m.mailingId), ["m1"]);
+  assert.deepEqual(packetRows(rows, "", "all", "ORD-2").map((m) => m.mailingId), ["m2"]);
+});
+
+test("packetRows sorts by envelope stock, then drive character key, then recipient name", () => {
+  const rows = [
+    mailing({ mailingId: "m1", character: "Ringo", recipientName: "Zed" }),
+    mailing({ mailingId: "m2", character: "Harper", recipientName: "Bea" }),
+    mailing({ mailingId: "m3", character: "Harper", recipientName: "Ava" }),
+  ];
+  // Envelope stock: "Harper color envelope" < "Ringo color envelope"
+  // alphabetically, so both Harper rows sort before the Ringo row; within
+  // Harper, recipient name breaks the tie (Ava before Bea).
+  assert.deepEqual(
+    packetRows(rows, "", "all", "").map((m) => m.mailingId),
+    ["m3", "m2", "m1"],
+  );
+});
+
+test("packetProblemRows includes a row with a High-severity exception", () => {
+  const m = mailing({ mailingId: "m1", plan: "Month-to-month" });
+  const seed = seedWith({ mailings: [m], exceptions: [exception({ mailingId: "m1", severity: "High" })] });
+  assert.deepEqual(packetProblemRows([m], seed, new Set(), {}).map((r) => r.mailingId), ["m1"]);
+});
+
+test("packetProblemRows includes a row whose payment component isn't Active, or whose qa component is Problem", () => {
+  const m1 = mailing({ mailingId: "m1", plan: "Month-to-month" });
+  const m2 = mailing({ mailingId: "m2", plan: "Month-to-month" });
+  const seed = seedWith({ mailings: [m1, m2] });
+  const componentOverrides = {
+    "m1::2::payment": "CC Failed",
+    "m2::2::qa": "Problem",
+  };
+  assert.deepEqual(
+    packetProblemRows([m1, m2], seed, new Set(), componentOverrides).map((r) => r.mailingId).sort(),
+    ["m1", "m2"],
+  );
+});
+
+test("packetProblemRows includes a row with no ship date, and excludes a genuinely clean row", () => {
+  const clean = mailing({ mailingId: "m1", plan: "Month-to-month", shipDate: "2026-08-15" });
+  const noShipDate = mailing({ mailingId: "m2", plan: "Month-to-month", shipDate: "" });
+  const seed = seedWith({ mailings: [clean, noShipDate] });
+  assert.deepEqual(packetProblemRows([clean, noShipDate], seed, new Set(), {}).map((r) => r.mailingId), ["m2"]);
 });
