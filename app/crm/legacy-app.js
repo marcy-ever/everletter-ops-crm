@@ -6,7 +6,6 @@
 // in a sandbox and diffed its output against the lib/ versions. That's gone
 // now that this file can import real TypeScript modules (the app.js -> ESM
 // move, step 2) - one implementation, imported here instead of duplicated.
-import { mailingKey } from '@/lib/domain/keys';
 import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // Step 3b: pure business logic extracted into lib/domain/ (shared with the
 // server, same reasoning as the imports above) and app/crm/format.ts
@@ -19,16 +18,18 @@ import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // their only call sites were inside buildSeedFromSpreadsheet/
 // spreadsheetExceptionReasons, which now live in
 // lib/domain/spreadsheet/build-seed.ts and import these themselves.
-import { printModeForPlan, envelopeQuantityForMailing } from '@/lib/domain/plans';
-import { driveCharacterKey, letterNumberKey, envelopeStockForCharacter } from '@/lib/domain/characters';
-import { storageBinForMailing } from '@/lib/domain/batch-dates';
+import { driveCharacterKey, letterNumberKey } from '@/lib/domain/characters';
 // formatDate/titleCase moved to lib/domain/format.ts (step 3c) once
 // storageBinForMailing/envelopeStockForCharacter, which depend on them,
 // turned out to be real domain logic rather than display chrome - see
 // that module's header. escapeHtml/includesText/statusClass/number stay
-// view-only, in app/crm/format.ts.
+// view-only, in app/crm/format.ts. Every view that once called
+// storageBinForMailing/envelopeStockForCharacter/statusClass/includesText
+// directly here has migrated to React (Phase 1, steps 6-17 - CLAUDE.md) -
+// this file only ever needed them as adapters for those views' own
+// render functions, none of which still exist.
 import { formatDate } from '@/lib/domain/format';
-import { escapeHtml, statusClass, number } from './format';
+import { escapeHtml, number } from './format';
 // buildSeedFromSpreadsheet (the 206-line seed builder) and
 // spreadsheetExceptionReasons (the exception-reason checks it calls) are
 // commit 3's extraction - the highest-risk single move in step 3b, kept
@@ -54,13 +55,9 @@ import { createStalenessStore } from '@/lib/client/staleness';
 import {
   activeExceptions as selectActiveExceptions,
   availableBatchDates as selectAvailableBatchDates,
-  componentStatus as selectComponentStatus,
   effectiveMailings as selectEffectiveMailings,
-  getRecipient as selectGetRecipient,
-  includesText,
   nextBatchDate as selectNextBatchDate,
   pastBatchDates as selectPastBatchDates,
-  selectedBatchDate as selectSelectedBatchDate,
 } from '@/lib/client/selectors';
 
 // activeView/reviewed/statusOverrides/componentOverrides start as inert
@@ -137,10 +134,6 @@ function effectiveMailings() {
   return selectEffectiveMailings(state.seed, state.statusOverrides);
 }
 
-function printedEnvelopeStatusForMailing(mailing) {
-  return envelopeQuantityForMailing(mailing) > 1 ? 'Both Printed' : 'Printed';
-}
-
 // Adapters, not architecture: these pass app.js's own `state` into the pure
 // lib/client/selectors.ts functions so every existing call site below
 // (effectiveMailings(), componentStatus(mailing, field), etc.) keeps
@@ -158,10 +151,6 @@ function pastBatchDates() {
 
 function nextBatchDate() {
   return selectNextBatchDate(effectiveMailings(), todayIso(new Date()));
-}
-
-function selectedBatchDate() {
-  return selectSelectedBatchDate(state.batchFilter, effectiveMailings(), todayIso(new Date()));
 }
 
 function renderBatchFilter() {
@@ -366,226 +355,10 @@ function metric(icon, label, value, tone) {
   `;
 }
 
-function getRecipient(recipientId) {
-  return selectGetRecipient(recipientId, state.seed);
-}
-
-function characterFolderUrl(mailing) {
-  return driveConfig.characterFolders[driveCharacterKey(mailing.character)] || '';
-}
-
-function envelopeFolderUrl(mailing) {
-  return driveConfig.envelopeFolders[driveCharacterKey(mailing.character)] || '';
-}
-
 function letterFolderUrl(mailing) {
   const characterKey = driveCharacterKey(mailing.character);
   const letterKey = letterNumberKey(mailing.letterNumber);
   return driveConfig.letterFolders[characterKey]?.[letterKey] || '';
-}
-
-function driveButton(label, url, fallbackAction) {
-  if (url) {
-    return `<button type="button" class="link-button" data-drive-url="${escapeHtml(url)}">${escapeHtml(label)}</button>`;
-  }
-  return `<button type="button" class="link-button" data-print-action="${escapeHtml(fallbackAction)}">${escapeHtml(label)}</button>`;
-}
-
-function addressLines(mailing) {
-  const recipient = getRecipient(mailing.recipientId);
-  const address = recipient?.address || '';
-  const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
-  if (parts.length >= 3) {
-    return [parts[0], `${parts[1]}, ${parts.slice(2).join(', ')}`];
-  }
-  return address ? [address] : ['Missing address'];
-}
-
-function envelopeProfileForCharacter(character) {
-  const key = driveCharacterKey(character);
-  const adultProfile = [
-    '"Allura", "Segoe Script", "Brush Script MT", cursive',
-    '"EB Garamond", serif',
-    '24pt',
-    '13.5pt',
-    '#3B2A1E',
-    '1.35',
-    '0',
-  ];
-  const profiles = {
-    marley: ['"Quicksand", sans-serif', '"Quicksand", sans-serif', '24pt', '17pt', '#8D164D', '1.35', '0'],
-    ringo: ['"Schoolbell", cursive', '"Schoolbell", cursive', '24pt', '17pt', '#E86600', '1.35', '0'],
-    oliver: ['"Coming Soon", cursive', '"Coming Soon", cursive', '16pt', '13pt', '#26312d', '1.35', '0'],
-    harper: ['"Anonymous Pro", monospace', '"Anonymous Pro", monospace', '15pt', '12.5pt', '#465FD9', '1.32', '0'],
-    penelope: adultProfile,
-    seraphine: adultProfile,
-    marigold: adultProfile,
-  };
-  const [nameFont, addressFont, nameSize, addressSize, color, lineHeight, letterSpacing] = profiles[key] || adultProfile;
-  return { nameFont, addressFont, nameSize, addressSize, color, lineHeight, letterSpacing };
-}
-
-function envelopeCornerArtUrl(character) {
-  const key = driveCharacterKey(character);
-  const artFiles = {
-    harper: 'harper-corner.png',
-    marley: 'marley-corner.png',
-    oliver: 'oliver-corner.png',
-    ringo: 'ringo-corner.png',
-  };
-  if (!artFiles[key]) return '';
-  return new URL(`/assets/${artFiles[key]}`, window.location.href).href;
-}
-
-function envelopeArtClass(character) {
-  const key = driveCharacterKey(character);
-  return ['harper', 'marley', 'oliver', 'ringo'].includes(key) ? `art-${key}` : '';
-}
-
-function envelopeStyleVars(profile) {
-  return [
-    `--name-font:${profile.nameFont}`,
-    `--address-font:${profile.addressFont}`,
-    `--name-size:${profile.nameSize}`,
-    `--address-size:${profile.addressSize}`,
-    `--envelope-color:${profile.color}`,
-    `--line-height:${profile.lineHeight}`,
-    `--letter-spacing:${profile.letterSpacing}`,
-  ].join(';');
-}
-
-function envelopePrintRows(rows) {
-  return rows.filter((mailing) => componentStatus(mailing, 'envelope') === 'Need Print').flatMap((mailing) => (
-    Array.from({ length: envelopeQuantityForMailing(mailing) }, (_, index) => ({
-      ...mailing,
-      envelopeCopyNumber: index + 1,
-      envelopeCopyTotal: envelopeQuantityForMailing(mailing),
-    }))
-  ));
-}
-
-function envelopeHtml(rows) {
-  const pages = rows.map((mailing) => {
-    const lines = addressLines(mailing);
-    const profile = envelopeProfileForCharacter(mailing.character);
-    const cornerArt = envelopeCornerArtUrl(mailing.character);
-    const artClass = envelopeArtClass(mailing.character);
-    return `
-      <section class="envelope-page" style="${escapeHtml(envelopeStyleVars(profile))}">
-        ${cornerArt ? `<img class="corner-art ${escapeHtml(artClass)}" src="${escapeHtml(cornerArt)}" alt="" />` : ''}
-        <div class="mail-to">
-          <strong>${escapeHtml(mailing.recipientName)}</strong>
-          ${lines.map((line) => `<span>${escapeHtml(line)}</span>`).join('')}
-        </div>
-        <div class="envelope-meta">${escapeHtml(mailing.character)} Â· Envelope ${number(mailing.envelopeCopyNumber || 1)} of ${number(mailing.envelopeCopyTotal || 1)} Â· ${formatDate(mailing.shipDate)}</div>
-      </section>
-    `;
-  }).join('');
-
-  return `<!doctype html>
-    <html>
-      <head>
-        <title>Everletter Envelopes</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Allura&family=Anonymous+Pro&family=Caveat&family=Coming+Soon&family=Dancing+Script&family=EB+Garamond&family=Gloria+Hallelujah&family=Quicksand:wght@400;500;600&family=Schoolbell&display=swap');
-          @page { size: 7.25in 5.25in; margin: 0; }
-          * { box-sizing: border-box; }
-          body { margin: 0; color: #1f2d2a; }
-          .envelope-page {
-            position: relative;
-            width: 7.25in;
-            height: 5.25in;
-            page-break-after: always;
-            background: #fff;
-          }
-          .return-address {
-            position: absolute;
-            top: 0.38in;
-            left: 0.45in;
-            font: 10pt Arial, sans-serif;
-            line-height: 1.25;
-            color: #4c5654;
-          }
-          .mail-to {
-            position: absolute;
-            top: 2.12in;
-            left: 1.42in;
-            width: 4.55in;
-            color: var(--envelope-color);
-            text-align: center;
-          }
-          .mail-to strong,
-          .mail-to span {
-            display: block;
-          }
-          .mail-to strong {
-            margin-bottom: 0.08in;
-            color: var(--envelope-color);
-            font-family: var(--name-font);
-            font-size: var(--name-size);
-            font-weight: 400;
-            line-height: var(--line-height);
-            letter-spacing: var(--letter-spacing);
-          }
-          .mail-to span {
-            color: var(--envelope-color);
-            font-family: var(--address-font);
-            font-size: var(--address-size);
-            font-weight: 400;
-            line-height: var(--line-height);
-            letter-spacing: var(--letter-spacing);
-          }
-          .envelope-meta {
-            display: none;
-          }
-          .corner-art {
-            position: absolute;
-            left: 0.12in;
-            bottom: 0.12in;
-            width: 0.86in;
-            max-height: 1.28in;
-            object-fit: contain;
-            object-position: left bottom;
-          }
-          .corner-art.art-harper {
-            left: 0;
-            bottom: 0;
-            width: 1.8in;
-            max-height: 1.45in;
-          }
-          .corner-art.art-oliver {
-            left: 0;
-            bottom: 0;
-            width: 1.08in;
-            max-height: 1.62in;
-          }
-          .corner-art.art-marley {
-            width: 0.95in;
-            max-height: 1.34in;
-          }
-          .corner-art.art-ringo {
-            width: 0.88in;
-            max-height: 1.28in;
-          }
-          @media screen {
-            body { background: #ecebe6; padding: 24px; }
-            .envelope-page { margin: 0 auto 24px; box-shadow: 0 8px 28px rgba(0,0,0,.16); }
-          }
-        </style>
-      </head>
-      <body>${pages}</body>
-    </html>`;
-}
-
-function openEnvelopePrint(rows) {
-  const popup = window.open('', '_blank');
-  if (!popup) {
-    alert('Popup blocked. Allow popups for this file to print envelopes.');
-    return;
-  }
-  popup.document.open();
-  popup.document.write(envelopeHtml(rows));
-  popup.document.close();
 }
 
 function openDriveLink(url) {
@@ -594,227 +367,6 @@ function openDriveLink(url) {
     return;
   }
   window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-function renderPrint() {
-  const highExceptionMailingIds = new Set(
-    activeExceptions()
-      .filter((item) => item.severity === 'High')
-      .map((item) => item.mailingId),
-  );
-  const batchDate = selectedBatchDate();
-  const baseRows = effectiveMailings()
-    .filter((mailing) => mailing.activeState === 'Active')
-    .filter((mailing) => !highExceptionMailingIds.has(mailing.mailingId))
-    .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => mailing.status !== 'Mailed')
-    .filter((mailing) => componentStatus(mailing, 'envelope') === 'Need Print')
-    .filter((mailing) => (state.printScope === 'monthly' ? mailing.plan === 'Month-to-month' : true))
-    .filter((mailing) =>
-      includesText(
-        [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
-        state.query,
-      ),
-    )
-    .sort((a, b) => (
-      envelopeStockForCharacter(a.character).localeCompare(envelopeStockForCharacter(b.character))
-      || driveCharacterKey(a.character).localeCompare(driveCharacterKey(b.character))
-      || String(a.recipientName).localeCompare(String(b.recipientName))
-    ));
-  const envelopeGroups = Array.from(baseRows.reduce((groups, mailing) => {
-    const key = envelopeStockForCharacter(mailing.character);
-    groups.set(key, (groups.get(key) || 0) + envelopeQuantityForMailing(mailing));
-    return groups;
-  }, new Map()).entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  if (state.printStockFilter !== 'all' && !envelopeGroups.some(([label]) => label === state.printStockFilter)) {
-    state.printStockFilter = 'all';
-  }
-  const rows = baseRows
-    .filter((mailing) => state.printStockFilter === 'all' || envelopeStockForCharacter(mailing.character) === state.printStockFilter)
-    .slice(0, 160);
-  const monthToMonthCount = rows.filter((mailing) => printModeForPlan(mailing.plan) === 'Month-to-month').length;
-  const stockLabel = state.printStockFilter === 'all' ? 'shown' : state.printStockFilter.replace(' envelope', '');
-  const latestMonthlyOrderDate = rows
-    .filter((mailing) => mailing.plan === 'Month-to-month' && mailing.orderDate)
-    .map((mailing) => mailing.orderDate)
-    .sort()
-    .at(-1);
-  const envelopePieceCount = rows.reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0);
-
-  viewMount.innerHTML = `
-    <section class="data-panel" aria-label="Batch print">
-      <div class="panel-head">
-        <div>
-          <h3>${batchDate ? `${formatDate(batchDate)} Batch Print` : 'Batch Print'}</h3>
-          <p>Shows envelopes still marked Need Print. Once a customer envelope is marked Printed or In Ashley Box, it drops off this print list.</p>
-        </div>
-        <span class="panel-count">${rows.length} shown / ${number(envelopePieceCount)} envelopes</span>
-      </div>
-
-      <div class="print-summary">
-        <div><span>Mailing rows</span><strong>${number(rows.length)}</strong></div>
-        <div><span>Envelopes to print</span><strong>${number(envelopePieceCount)}</strong></div>
-        <div><span>Month-to-month</span><strong>${number(monthToMonthCount)}</strong></div>
-        <div><span>Latest renewal</span><strong>${latestMonthlyOrderDate ? formatDate(latestMonthlyOrderDate) : 'None'}</strong></div>
-      </div>
-
-      <div class="print-toolbar" aria-label="Print scope">
-        <span>Show:</span>
-        <button type="button" class="${state.printScope === 'monthly' ? 'active' : ''}" data-print-scope="monthly">Month-to-month only</button>
-        <button type="button" class="${state.printScope === 'all' ? 'active' : ''}" data-print-scope="all">All open mailings</button>
-      </div>
-
-      <div class="envelope-groups" aria-label="Envelope groups">
-        <button type="button" class="${state.printStockFilter === 'all' ? 'active' : ''}" data-print-stock="all">All stocks <strong>${number(baseRows.reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0))}</strong></button>
-        ${envelopeGroups.map(([label, count]) => `<button type="button" class="${state.printStockFilter === label ? 'active' : ''}" data-print-stock="${escapeHtml(label)}">${escapeHtml(label)} <strong>${number(count)}</strong></button>`).join('')}
-      </div>
-
-      <div class="batch-actions" aria-label="Print actions">
-        <span>Print actions:</span>
-        <button type="button" data-browser-print>Print This List</button>
-        <button type="button" data-print-envelopes>Print ${escapeHtml(stockLabel)} Envelopes (${number(envelopePieceCount)})</button>
-        <button type="button" data-mark-envelopes-printed>Mark ${escapeHtml(stockLabel)} Envelopes Printed</button>
-        <button type="button" data-drive-url="${escapeHtml(driveConfig.printReadyFolderUrl)}">Open Print-Ready Folder</button>
-        <button type="button" data-print-action="batch-envelope">Open Batch Envelopes</button>
-        <button type="button" data-print-action="batch-letter">Open Batch Letters</button>
-      </div>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Ship Date</th>
-              <th>Recipient</th>
-              <th>Mode</th>
-              <th>Renewal Date</th>
-              <th>Status</th>
-              <th>Envelope Status</th>
-              <th>Storage Bin</th>
-              <th>Envelope Stock</th>
-              <th>Env Qty</th>
-              <th>Envelope</th>
-              <th>Letter</th>
-              <th>Print Notes</th>
-            </tr>
-          </thead>
-          <tbody>${rows.map(printRow).join('')}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-print-status]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const row = rows.find((mailing) => mailingKey(mailing) === select.getAttribute('data-print-status'));
-      if (row) {
-        updateMailingStatus(row, select.value);
-        renderPrint();
-      }
-    });
-  });
-
-  viewMount.querySelectorAll('[data-print-envelope-status]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const row = rows.find((mailing) => mailingKey(mailing) === select.getAttribute('data-print-envelope-status'));
-      if (row) {
-        updateEnvelopeStatus(row, select.value);
-        renderPrint();
-      }
-    });
-  });
-
-  viewMount.querySelectorAll('[data-print-action]').forEach((button) => {
-    button.addEventListener('click', () => {
-      alert('Next Drive step: attach the matching envelope or letter file URL for this batch.');
-    });
-  });
-
-  viewMount.querySelectorAll('[data-drive-url]').forEach((button) => {
-    button.addEventListener('click', () => openDriveLink(button.getAttribute('data-drive-url')));
-  });
-
-  viewMount.querySelectorAll('[data-print-scope]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.printScope = button.getAttribute('data-print-scope');
-      state.printStockFilter = 'all';
-      renderPrint();
-    });
-  });
-
-  viewMount.querySelectorAll('[data-print-stock]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.printStockFilter = button.getAttribute('data-print-stock');
-      renderPrint();
-    });
-  });
-
-  viewMount.querySelector('[data-browser-print]').addEventListener('click', () => {
-    window.print();
-  });
-
-  viewMount.querySelector('[data-print-envelopes]').addEventListener('click', () => {
-    openEnvelopePrint(envelopePrintRows(rows));
-  });
-
-  viewMount.querySelectorAll('[data-print-one-envelope]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const row = rows.find((mailing) => mailingKey(mailing) === button.getAttribute('data-print-one-envelope'));
-      if (row) {
-        openEnvelopePrint(envelopePrintRows([row]));
-      }
-    });
-  });
-
-  viewMount.querySelector('[data-mark-envelopes-printed]').addEventListener('click', () => {
-    rows.forEach((mailing) => updateEnvelopeStatus(mailing, printedEnvelopeStatusForMailing(mailing)));
-    renderPrint();
-  });
-}
-
-function printRow(mailing) {
-  const mode = printModeForPlan(mailing.plan);
-  const exactLetterUrl = letterFolderUrl(mailing);
-  const fallbackCharacterUrl = characterFolderUrl(mailing);
-  const envelopeUrl = envelopeFolderUrl(mailing);
-  const letterUrl = exactLetterUrl || fallbackCharacterUrl;
-  const envelopeState = envelopeUrl ? 'Character envelope folder' : 'Needs envelope link';
-  const letterState = exactLetterUrl ? `Exact Letter ${escapeHtml(mailing.letterNumber)}` : fallbackCharacterUrl ? 'Open character folder' : 'Needs letter link';
-  const letterButtonLabel = exactLetterUrl ? 'Open Letter' : fallbackCharacterUrl ? 'Open Character' : 'Needs Link';
-  const notes = mode === 'Prepaid bulk'
-    ? 'Can be printed/prepared in advance and stored by mail date.'
-    : 'Time-sensitive renewal; generate only after paid order sync.';
-  return `
-    <tr>
-      <td>${formatDate(mailing.shipDate)}</td>
-      <td><strong>${escapeHtml(mailing.recipientName)}</strong><span>${escapeHtml(mailing.email || 'Missing email')}</span></td>
-      <td><span class="flag ${mode === 'Prepaid bulk' ? 'flag-green' : 'flag-amber'}">${escapeHtml(mode)}</span></td>
-      <td>${mailing.plan === 'Month-to-month' ? `<strong>${formatDate(mailing.orderDate)}</strong><span>Paid/order date</span>` : `<span>${formatDate(mailing.orderDate)}</span>`}</td>
-      <td>
-        <select class="status-select status-${statusClass(mailing.status)}" data-print-status="${escapeHtml(mailingKey(mailing))}">
-          ${statusOrder.map((status) => `<option ${status === mailing.status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}
-        </select>
-      </td>
-      <td>
-        <select class="qa-select qa-${statusClass(componentStatus(mailing, 'envelope'))}" data-print-envelope-status="${escapeHtml(mailingKey(mailing))}">
-          ${['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'].map((option) => `<option ${option === componentStatus(mailing, 'envelope') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-        </select>
-      </td>
-      <td>${escapeHtml(storageBinForMailing(mailing))}</td>
-      <td>${escapeHtml(envelopeStockForCharacter(mailing.character))}</td>
-      <td><strong>${number(envelopeQuantityForMailing(mailing))}</strong><span>${mailing.plan === 'Month-to-month' ? 'This paid month' : 'Per mailing'}</span></td>
-      <td>
-        <button type="button" class="link-button" data-print-one-envelope="${escapeHtml(mailingKey(mailing))}">Print Envelope</button>
-        ${driveButton('Open Folder', envelopeUrl, 'envelope')}
-        <span>${escapeHtml(envelopeState)}</span>
-      </td>
-      <td>${driveButton(letterButtonLabel, letterUrl, 'letter')}<span>${letterState}</span></td>
-      <td>${escapeHtml(notes)}</td>
-    </tr>
-  `;
-}
-
-function componentStatus(mailing, field) {
-  return selectComponentStatus(mailing, field, state.seed, state.reviewed, state.componentOverrides);
 }
 
 // The view registry: one entry per sidebar view (see
@@ -842,7 +394,7 @@ const VIEW_REGISTRY = {
   subscribers: { react: true, showStatusFilter: false, showBatchFilter: false },
   samples: { react: true, showStatusFilter: false, showBatchFilter: false },
   import: { react: true, showStatusFilter: false, showBatchFilter: false },
-  print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
+  print: { react: true, showStatusFilter: false, showBatchFilter: true },
   qa: { react: true, showStatusFilter: false, showBatchFilter: true },
   packet: { react: true, showStatusFilter: false, showBatchFilter: true },
   bins: { react: true, showStatusFilter: false, showBatchFilter: true },
@@ -1058,18 +610,6 @@ export {
   notifyViewChanged,
   subscribeViewChanged,
   getRenderGeneration,
-  // envelopePrintRows/openEnvelopePrint are the envelope print generator
-  // (envelopeHtml, the per-character styling, and everything else that
-  // path depends on) - explicitly OUT of scope for step 12 (Subscribers)
-  // to migrate or rewrite; that's step 17 (Envelope Print), deliberately
-  // last since its correctness lands on physical paper. Exported here
-  // completely unchanged, purely so app/crm/CrmApp.tsx's
-  // REACT_VIEWS.subscribers entry can call them for the profile pane's
-  // "Print Envelope" action exactly as the removed legacy handler did
-  // (openEnvelopePrint(envelopePrintRows([row]))) - a shared dependency
-  // this step calls, not something it owns.
-  envelopePrintRows,
-  openEnvelopePrint,
   // letterFolderUrl is Drive-config lookup (driveConfig, above - private
   // folder IDs are intentionally never in this repo, so it always resolves
   // to "" here, same as every other Drive lookup) - exported unchanged for
@@ -1077,8 +617,8 @@ export {
   // is the one piece of renderQa()'s original per-row logic that lives
   // outside lib/client/selectors.ts entirely. A shared dependency
   // app/crm/CrmApp.tsx's REACT_VIEWS.qa entry calls, not something this
-  // step owns or rewrites - same category as envelopePrintRows/
-  // openEnvelopePrint above.
+  // step owns or rewrites - same category as driveConfig/openDriveLink
+  // below.
   letterFolderUrl,
   // driveConfig/openDriveLink are Batch Print/Batch Packet/Ashley Bins'
   // shared Drive plumbing - exported unchanged for step 15 (Batch Packet -
@@ -1088,9 +628,8 @@ export {
   // other Drive lookup in this sanitized repo) are the one piece of
   // renderPacket()'s original logic that isn't a per-mailing lookup like
   // letterFolderUrl above. A shared dependency app/crm/CrmApp.tsx's
-  // REACT_VIEWS.packet entry calls, not something this step owns or
-  // rewrites - same category as envelopePrintRows/openEnvelopePrint/
-  // letterFolderUrl.
+  // REACT_VIEWS.packet AND REACT_VIEWS.print entries both call, not
+  // something either step owns or rewrites.
   driveConfig,
   openDriveLink,
 };

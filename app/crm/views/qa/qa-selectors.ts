@@ -69,15 +69,18 @@ export const QA_FIELDS: QaField[] = [
   { key: "qa", label: "QA", options: ["Open", "Problem", "Ready"] },
 ];
 
-// Same one-line rule as legacy's own printedEnvelopeStatusForMailing()
-// (app/crm/legacy-app.js, still used there by Batch Print's own bulk
-// action, so left in place rather than deleted) and Subscribers'
+// Same one-line rule as Subscribers' own copy
 // (app/crm/views/subscribers/subscribers-selectors.ts) - duplicated here
-// for the same reason Subscribers' own copy gave: a trivial ternary over
-// an already-shared selector (envelopeQuantityForMailing), not real logic
-// worth threading an extra export through for. Now three copies - flagged
-// in this step's PR as worth a real dedup pass, not fixed here since that
-// would touch Subscribers, out of this task's explicit scope.
+// for the reason that file gives: a trivial ternary over an already-shared
+// selector (envelopeQuantityForMailing), not real logic worth threading an
+// extra export through for. legacy-app.js's own copy (Batch Print's bulk
+// action) was deleted, not kept, when Print migrated to React (Phase 1
+// step 17 - CLAUDE.md, the last view) - its onMarkEnvelopesPrinted reuses
+// THIS export directly (imported into app/crm/CrmApp.tsx as
+// qaPrintedEnvelopeStatusForMailing) rather than adding a third copy, since
+// Print's own PrintRowData already carries the one field (envelopeQuantity)
+// this function's signature needs. Two copies remain (here and
+// Subscribers') - still flagged as worth a real dedup pass, not fixed here.
 export function printedEnvelopeStatusForMailing(mailing: { envelopeQuantity: number }): string {
   return mailing.envelopeQuantity > 1 ? "Both Printed" : "Printed";
 }
