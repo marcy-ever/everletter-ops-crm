@@ -58,6 +58,27 @@ test("subscribeViewChanged supports multiple independent subscribers", async () 
   assert.equal(b, 1);
 });
 
+// getRenderGeneration() (lib/client/crm-state.ts) was added in step 8
+// (Sync Simulator) - see that module's own header for the full gap it
+// closes: a React view watching state.activeView alone via
+// useSyncExternalStore would never re-render on an input change, since
+// those mutate state.syncSubscriberId/etc, never state.activeView.
+test("getRenderGeneration() increments on every notifyViewChanged() call, regardless of what changed - the signal app/crm/CrmApp.tsx's snapshot combines with state.activeView", async () => {
+  const appJs = await loadAppJsSandbox(undefined, { captureRenders: true });
+  appJs.state.seed = minimalSeed();
+
+  const before = appJs.getRenderGeneration();
+  appJs.state.activeView = "sync";
+  appJs.renderView();
+  assert.equal(appJs.getRenderGeneration(), before + 1);
+
+  // Not just view switches - any notifyViewChanged() call at all, which is
+  // exactly what a Sync input's onChange handler triggers after writing
+  // into `state` (see app/crm/CrmApp.tsx's REACT_VIEWS.sync entry).
+  appJs.notifyViewChanged();
+  assert.equal(appJs.getRenderGeneration(), before + 2);
+});
+
 test("switching to a react-hosted view (automation) clears #viewMount instead of leaving the previous legacy view's content", async () => {
   const appJs = await loadAppJsSandbox(undefined, { captureRenders: true });
   appJs.state.activeView = "queue";

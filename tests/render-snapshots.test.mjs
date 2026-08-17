@@ -164,10 +164,6 @@ const seed = seedBuilderSandbox.buildSeedFromSpreadsheet(rows, "synthetic-rows.j
 
 const avaSubscriber = seed.subscribers.find((subscriber) => subscriber.email === "ava.example@example.test");
 assert.ok(avaSubscriber, "fixture invariant: Ava's subscriber should exist in the built seed");
-const avaMarleySubscription = seed.subscriptions.find(
-  (subscription) => subscription.subscriberId === avaSubscriber.subscriberId && subscription.character === "Marley",
-);
-assert.ok(avaMarleySubscription, "fixture invariant: Ava's Marley subscription should exist in the built seed");
 
 // Common baseline every case starts from, then overrides only what that
 // case is actually about - see the module comment above for why nothing is
@@ -241,24 +237,16 @@ const CASES = [
   // coverage moved - tests/snapshots/launch.html is NOT deleted, same
   // treatment as automation.html.
   ["samples", "samples", {}],
-  // Previously the one case in this suite that wasn't timezone-stable:
-  // renderSync() calls batchDatesForOrder() (app/crm/legacy-app.js), which used to
-  // serialize each generated date with `batch.toISOString().slice(0, 10)`
-  // - unlike every other date serialization in this file (todayIso(),
-  // formatDate(), nearestBatchDate()), which round-trip through
-  // `date.getTime() - date.getTimezoneOffset() * 60000` first specifically
-  // so the calendar date is stable regardless of runtime timezone. Fixed
-  // directly in app.js to use the same correction (see that commit); this
-  // snapshot was regenerated against the fixed output and is now verified
-  // stable under TZ=Asia/Tokyo along with every other case in CASES.
-  [
-    "sync",
-    "sync",
-    {
-      syncSubscriberId: avaSubscriber.subscriberId,
-      syncSubscriptionId: avaMarleySubscription.subscriptionId,
-    },
-  ],
+  // "sync" was here through step 7, timezone-fix history and all (see
+  // this file's own module comment above for that bug/fix story - it
+  // stays there since it's still true of the underlying rendering, just
+  // no longer exercised via this harness). Removed by step 8 (Phase 1's
+  // third view migration, CLAUDE.md), same treatment as "automation"/
+  // "launch" below: moved to a real React component
+  // (app/crm/views/sync/Sync.tsx) hosted outside #viewMount entirely.
+  // tests/snapshots/sync.html is NOT deleted - it's the frozen reference
+  // tests/sync-view.test.mjs compares Sync.tsx's own rendered output
+  // against, under the same normalized comparison automation/launch use.
   // "automation" was here through step 5 - removed by step 6 (Phase 1's
   // first view migration, CLAUDE.md), which moved it to a real React
   // component (app/crm/views/Automation.tsx) hosted outside #viewMount
