@@ -10,9 +10,14 @@
 // updateMailingStatus() - the already-standard write-through mutators,
 // unchanged) really produce the right POST body, really write exactly
 // one audit row per write, and really avoid tripping this same user's
-// own staleness banner - and does onPrintEnvelope really call the
-// still-legacy envelopePrintRows()/openEnvelopePrint() with the exact
-// same arguments the removed legacy handler used.
+// own staleness banner - and does onPrintEnvelope really call
+// envelopePrintRows()/openEnvelopePrint() (relocated unchanged to
+// app/crm/views/envelope-print/envelope-html.ts in Phase 1 step 17 -
+// CLAUDE.md, the last view migrated - see that module's own header for
+// why the generator itself never became React) with the exact same
+// arguments the removed legacy handler used, now with seed/reviewed/
+// componentOverrides threaded in explicitly since the relocated
+// generator no longer closes over legacy-app.js's own `state`.
 //
 // The mailing fixture below is deliberately a 6-month (not Month-to-
 // month) plan: updateEnvelopeStatus()'s own monthlyEnvelopeTargets()
@@ -37,6 +42,7 @@ import { eq } from "drizzle-orm";
 import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
 import { componentKey, mailingKey } from "../lib/domain/keys.ts";
 import { computeSubscriberProfile, printedEnvelopeStatusForMailing } from "../app/crm/views/subscribers/subscribers-selectors.ts";
+import { envelopePrintRows, openEnvelopePrint } from "../app/crm/views/envelope-print/envelope-html.ts";
 
 const skip = e2eSkipReason({ requiresFixture: false });
 
@@ -226,23 +232,23 @@ test("Mark At Ashley calls updateEnvelopeStatus AND updateMailingStatus, sends t
   assert.equal(snapshot.stale, false, "marking at Ashley must not make this same client's own page look stale");
 });
 
-test("Print Envelope calls the still-legacy envelopePrintRows()/openEnvelopePrint() with the same arguments the removed legacy handler used", { skip }, async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  // loadAppJsSandbox()'s window stub has no location.href (no prior test
-  // ever needed one) - envelopeCornerArtUrl() (legacy-app.js, part of the
-  // unmodified envelope print generator this step explicitly doesn't
-  // touch) resolves a relative asset URL against it. A local, test-file-
-  // scoped addition, not a change to the shared sandbox or the app.
-  globalThis.window.location.href = "http://localhost/";
-  sandbox.state.seed = buildSeed([buildMailing(3, { status: "To Prepare" })], { "MAIL-T3": "6-month" });
+test("Print Envelope calls envelopePrintRows()/openEnvelopePrint() (relocated to envelope-html.ts, step 17) with the same arguments the removed legacy handler used", { skip }, async () => {
+  // No sandbox needed here anymore - envelopePrintRows()/openEnvelopePrint()
+  // are pure functions imported directly from envelope-html.ts since step
+  // 17 (CLAUDE.md), not sandbox-scoped legacy-app.js exports closing over
+  // its own `state`/`window`. A bare stub window (not the full sandbox
+  // stub) is enough to satisfy envelopeCornerArtUrl()'s window.location.href
+  // read - part of the unmodified envelope print generator this step
+  // explicitly doesn't touch.
+  globalThis.window = { location: { href: "http://localhost/" } };
+  const seed = buildSeed([buildMailing(3, { status: "To Prepare" })], { "MAIL-T3": "6-month" });
 
-  const profile = computeSubscriberProfile(sandbox.state.seed, {}, new Set(), {}, sandbox.state.seed.subscribers[0]);
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, seed.subscribers[0]);
   const mailing = profile.openRows[0];
 
-  // openEnvelopePrint (legacy-app.js) calls window.open('', '_blank')
+  // openEnvelopePrint (envelope-html.ts) calls window.open('', '_blank')
   // then popup.document.write/close - stub window.open so this can run
   // headlessly and capture what was written.
-  const originalOpen = globalThis.window.open;
   let written = null;
   globalThis.window.open = () => ({
     document: {
@@ -254,20 +260,19 @@ test("Print Envelope calls the still-legacy envelopePrintRows()/openEnvelopePrin
     },
   });
 
-  try {
-    // Mirrors app/crm/CrmApp.tsx's REACT_VIEWS.subscribers onPrintEnvelope
-    // body exactly: openEnvelopePrint(envelopePrintRows([mailing])).
-    const expectedRows = sandbox.envelopePrintRows([mailing]);
-    sandbox.openEnvelopePrint(expectedRows);
+  // Mirrors app/crm/CrmApp.tsx's REACT_VIEWS.subscribers onPrintEnvelope
+  // body exactly: openEnvelopePrint(envelopePrintRows([mailing], seed,
+  // reviewed, componentOverrides), seed) - both extra threaded-in
+  // parameters are the mechanical, non-behavior-changing consequence of
+  // the generator no longer closing over legacy-app.js's own `state`.
+  const expectedRows = envelopePrintRows([mailing], seed, new Set(), {});
+  openEnvelopePrint(expectedRows, seed);
 
-    assert.ok(written, "openEnvelopePrint should have written HTML into the popup");
-    // envelopePrintRows filters to components whose envelope status is
-    // "Need Print" - a freshly-imported mailing with no overrides
-    // defaults to that, so the fixture's one row should survive the
-    // filter and appear in the generated HTML by its recipient name.
-    assert.equal(expectedRows.length, 1, "fixture invariant: the mailing's default envelope status should be Need Print");
-    assert.match(written, /Test Recipient T3/);
-  } finally {
-    globalThis.window.open = originalOpen;
-  }
+  assert.ok(written, "openEnvelopePrint should have written HTML into the popup");
+  // envelopePrintRows filters to components whose envelope status is
+  // "Need Print" - a freshly-imported mailing with no overrides
+  // defaults to that, so the fixture's one row should survive the
+  // filter and appear in the generated HTML by its recipient name.
+  assert.equal(expectedRows.length, 1, "fixture invariant: the mailing's default envelope status should be Need Print");
+  assert.match(written, /Test Recipient T3/);
 });

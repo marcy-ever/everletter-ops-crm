@@ -8,13 +8,11 @@ import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import {
   driveConfig,
-  envelopePrintRows,
   getRenderGeneration,
   initCrmApp,
   letterFolderUrl,
   notifyViewChanged,
   openDriveLink,
-  openEnvelopePrint,
   render,
   saveFailures,
   staleness,
@@ -47,6 +45,9 @@ import Packet from "./views/packet/Packet";
 import { computePacketData } from "./views/packet/packet-selectors";
 import Bins from "./views/bins/Bins";
 import { computeBinsData } from "./views/bins/bins-selectors";
+import Print from "./views/envelope-print/Print";
+import { computePrintData } from "./views/envelope-print/print-selectors";
+import { envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -369,11 +370,12 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // not what the rule would predict. Flagged here rather than silently
   // "fixed" by adding a render() call legacy never had.
   //
-  // onPrintEnvelope calls the still-legacy envelopePrintRows()/
-  // openEnvelopePrint() (exported unchanged from legacy-app.js - the
-  // envelope print generator itself is step 17's, not this step's, to
-  // touch) with the exact same argument shape the removed handler used
-  // (a one-mailing array).
+  // onPrintEnvelope calls envelopePrintRows()/openEnvelopePrint() (moved
+  // to app/crm/views/envelope-print/envelope-html.ts, unchanged, in step
+  // 17 - CLAUDE.md) with the exact same argument shape the removed
+  // handler used (a one-mailing array), now with seed/reviewed/
+  // componentOverrides threaded in explicitly since the relocated
+  // generator no longer closes over legacy-app.js's own `state`.
   subscribers: () => {
     if (!state.seed) return null;
     const rows = computeSubscriberRows(state.seed, state.query);
@@ -390,7 +392,8 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         profile={profile}
         onPrintEnvelope={(mailing) => {
-          openEnvelopePrint(envelopePrintRows([mailing]));
+          const seed = state.seed!;
+          openEnvelopePrint(envelopePrintRows([mailing], seed, state.reviewed, state.componentOverrides), seed);
         }}
         onMarkPrinted={(mailing) => {
           updateEnvelopeStatus(mailing, printedEnvelopeStatusForMailing(mailing));
@@ -566,8 +569,16 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // nothing rendered depends on them, so no notifyViewChanged() call at all.
   packet: () => {
     if (!state.seed) return null;
+    const seed = state.seed;
+    // Bound closure, not the bare relocated function (step 17, CLAUDE.md) -
+    // computePacketData() still receives envelopePrintRows as an opaque,
+    // threaded-in function (unchanged shape from step 15), so the
+    // seed/reviewed/componentOverrides the relocated generator now needs
+    // explicitly are captured here rather than changing packet-selectors.ts's
+    // own contract.
+    const boundEnvelopePrintRows = (rows: EffectiveMailing[]) => envelopePrintRows(rows, seed, state.reviewed, state.componentOverrides);
     const data = computePacketData(
-      state.seed,
+      seed,
       state.statusOverrides,
       state.reviewed,
       state.componentOverrides,
@@ -576,7 +587,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
       state.query,
       todayIso(new Date()),
       letterFolderUrl,
-      envelopePrintRows,
+      boundEnvelopePrintRows,
     );
     return (
       <Packet
@@ -589,7 +600,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         onFieldChange={updateBinComponentStatus}
         onPrint={() => window.print()}
-        onPrintEnvelopes={() => openEnvelopePrint(envelopePrintRows(data.rows))}
+        onPrintEnvelopes={() => openEnvelopePrint(boundEnvelopePrintRows(data.rows), seed)}
         onOpenDriveLink={(url) => openDriveLink(url)}
       />
     );
@@ -633,6 +644,103 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           notifyViewChanged();
         }}
         onPrint={() => window.print()}
+      />
+    );
+  },
+  // The last of twelve views (step 17, CLAUDE.md). The generator this
+  // view calls - envelopeHtml() et al., relocated unchanged to
+  // ./views/envelope-print/envelope-html.ts - does NOT become React; see
+  // that module's own header. envelopePrintRows()/openEnvelopePrint() now
+  // need seed/reviewed/componentOverrides threaded in explicitly (the one
+  // real signature change the relocation forced, not a behavior change -
+  // same transformation every other selector promoted out of
+  // legacy-app.js in this migration already went through).
+  //
+  // A real, deliberately-preserved quirk: legacy's own renderPrint()
+  // mutates state.printStockFilter back to "all" AS A SIDE EFFECT of
+  // rendering, if the currently-selected stock no longer matches any
+  // computed envelope group. computePrintData() can't do that (a pure
+  // function, like every selector in this migration) - it returns
+  // effectivePrintStockFilter instead, and this entry writes it back to
+  // state when it differs, replicating the exact same self-correction
+  // without hiding a mutation inside a selector. See
+  // print-selectors.ts's own header for the full reasoning.
+  //
+  // Every write here calls notifyViewChanged() alone, matching legacy's
+  // own [data-print-status]/[data-print-envelope-status]/[data-print-scope]/
+  // [data-print-stock]/[data-mark-envelopes-printed] handlers exactly -
+  // none of them called render() in the original either, even though a
+  // mailing-status write would predict it (same "describe what legacy
+  // actually does" finding step 12/step 13 already made for other
+  // views). onBrowserPrint/onPrintEnvelopes/onPrintOneEnvelope/
+  // onOpenDriveLink/onPrintAction are pure browser actions - no
+  // notifyViewChanged() call at all, matching step 9's onOpenSample
+  // precedent. onMarkEnvelopesPrinted reuses qaPrintedEnvelopeStatusForMailing
+  // (step 14's own copy) rather than adding a fifth duplicate of the same
+  // one-line ternary - PrintRowData already carries envelopeQuantity, the
+  // one field that function's signature needs.
+  print: () => {
+    if (!state.seed) return null;
+    const seed = state.seed;
+    const data = computePrintData(
+      seed,
+      state.statusOverrides,
+      state.reviewed,
+      state.componentOverrides,
+      state.batchFilter,
+      state.printScope,
+      state.printStockFilter,
+      state.query,
+      todayIso(new Date()),
+      driveConfig,
+    );
+    if (data.effectivePrintStockFilter !== state.printStockFilter) {
+      state.printStockFilter = data.effectivePrintStockFilter;
+    }
+    return (
+      <Print
+        data={data}
+        printScope={state.printScope}
+        printStockFilter={data.effectivePrintStockFilter}
+        printReadyFolderUrl={driveConfig.printReadyFolderUrl}
+        onScopeChange={(scope) => {
+          state.printScope = scope;
+          state.printStockFilter = "all";
+          notifyViewChanged();
+        }}
+        onStockChange={(stock) => {
+          state.printStockFilter = stock;
+          notifyViewChanged();
+        }}
+        onFieldChange={(mailing, field, value) => {
+          if (field === "status") {
+            updateMailingStatus(mailing, value);
+          } else {
+            updateEnvelopeStatus(mailing, value);
+          }
+          notifyViewChanged();
+        }}
+        onBrowserPrint={() => window.print()}
+        onPrintEnvelopes={() => {
+          openEnvelopePrint(
+            envelopePrintRows(
+              data.rows.map((row) => row.mailing),
+              seed,
+              state.reviewed,
+              state.componentOverrides,
+            ),
+            seed,
+          );
+        }}
+        onPrintOneEnvelope={(mailing) => {
+          openEnvelopePrint(envelopePrintRows([mailing], seed, state.reviewed, state.componentOverrides), seed);
+        }}
+        onMarkEnvelopesPrinted={() => {
+          data.rows.forEach((row) => updateEnvelopeStatus(row.mailing, qaPrintedEnvelopeStatusForMailing(row)));
+          notifyViewChanged();
+        }}
+        onOpenDriveLink={(url) => openDriveLink(url)}
+        onPrintAction={() => alert("Next Drive step: attach the matching envelope or letter file URL for this batch.")}
       />
     );
   },
