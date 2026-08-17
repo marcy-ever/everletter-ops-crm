@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { escapeHtml, includesText, statusClass, number } from "../app/crm/format.ts";
+import { escapeHtml, statusClass, number } from "../app/crm/format.ts";
 
 // New coverage from step 3b's extraction (app/crm/format.ts didn't exist
 // before this) - not a re-assertion of what the render snapshots already
@@ -10,7 +10,9 @@ import { escapeHtml, includesText, statusClass, number } from "../app/crm/format
 // formatDate/titleCase moved out to lib/domain/format.ts in step 3c (see
 // tests/domain-format.test.mjs) once storageBinForMailing/
 // envelopeStockForCharacter, which depend on them, turned out to be real
-// domain logic rather than display chrome.
+// domain logic rather than display chrome. includesText moved out too, in
+// Phase 1 step 7, to lib/client/selectors.ts (see tests/selectors.test.mjs)
+// once a cross-view selector needed it - see that module's own header.
 
 test("escapeHtml escapes all five HTML-significant characters", () => {
   assert.equal(
@@ -22,16 +24,6 @@ test("escapeHtml escapes all five HTML-significant characters", () => {
 test("escapeHtml treats null/undefined as an empty string, not the literal text \"null\"", () => {
   assert.equal(escapeHtml(null), "");
   assert.equal(escapeHtml(undefined), "");
-});
-
-test("includesText matches case-insensitively against any of the given values", () => {
-  assert.equal(includesText(["Marley", "Ringo"], "marl"), true);
-  assert.equal(includesText(["Marley", "Ringo"], "zzz"), false);
-});
-
-test("includesText treats a blank/whitespace-only query as matching everything", () => {
-  assert.equal(includesText(["Marley", "Ringo"], ""), true);
-  assert.equal(includesText(["Marley", "Ringo"], "   "), true);
 });
 
 test("statusClass lowercases and replaces non-alphanumeric runs with a single hyphen, for use as a CSS class", () => {

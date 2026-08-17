@@ -28,7 +28,7 @@ import { batchDatesForOrder, storageBinForMailing } from '@/lib/domain/batch-dat
 // that module's header. escapeHtml/includesText/statusClass/number stay
 // view-only, in app/crm/format.ts.
 import { formatDate, titleCase } from '@/lib/domain/format';
-import { escapeHtml, includesText, statusClass, number } from './format';
+import { escapeHtml, statusClass, number } from './format';
 // buildSeedFromSpreadsheet (the 206-line seed builder) and
 // spreadsheetExceptionReasons (the exception-reason checks it calls) are
 // commit 3's extraction - the highest-risk single move in step 3b, kept
@@ -58,7 +58,10 @@ import {
   getRecipient as selectGetRecipient,
   getRecipientName as selectGetRecipientName,
   getSubscriberSubscriptions as selectGetSubscriberSubscriptions,
+  includesText,
   nextBatchDate as selectNextBatchDate,
+  packetProblemRows as selectPacketProblemRows,
+  packetRows as selectPacketRows,
   pastBatchDates as selectPastBatchDates,
   selectedBatchDate as selectSelectedBatchDate,
 } from '@/lib/client/selectors';
@@ -1480,24 +1483,12 @@ function qaSelect(mailing, field) {
   `;
 }
 
+// Adapter, not architecture - see the comment above availableBatchDates()
+// for what that means and when it goes away. Moved to
+// lib/client/selectors.ts in Phase 1 step 7 (CLAUDE.md), once Launch Plan
+// needed the same derivation Batch Packet already did.
 function packetRows() {
-  const batchDate = selectedBatchDate();
-  return effectiveMailings()
-    .filter((mailing) => mailing.activeState === 'Active')
-    .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => mailing.status !== 'Mailed')
-    .filter((mailing) => (state.packetScope === 'monthly' ? mailing.plan === 'Month-to-month' : true))
-    .filter((mailing) =>
-      includesText(
-        [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
-        state.query,
-      ),
-    )
-    .sort((a, b) => (
-      envelopeStockForCharacter(a.character).localeCompare(envelopeStockForCharacter(b.character))
-      || driveCharacterKey(a.character).localeCompare(driveCharacterKey(b.character))
-      || String(a.recipientName).localeCompare(String(b.recipientName))
-    ));
+  return selectPacketRows(effectiveMailings(), selectedBatchDate(), state.packetScope, state.query);
 }
 
 function groupedWork(rows, keyFn, countFn = () => 1) {
@@ -1540,13 +1531,9 @@ function packetComponentGroups(rows, field) {
   }));
 }
 
+// Adapter, not architecture - same as packetRows() above.
 function packetProblemRows(rows) {
-  return rows.filter((mailing) => (
-    exceptionsForMailing(mailing).some((item) => item.severity === 'High')
-    || componentStatus(mailing, 'payment') !== 'Active'
-    || componentStatus(mailing, 'qa') === 'Problem'
-    || !mailing.shipDate
-  ));
+  return selectPacketProblemRows(rows, state.seed, state.reviewed, state.componentOverrides);
 }
 
 function packetChecklist(rows, owner) {
@@ -1991,120 +1978,6 @@ function binMobileCard(mailing) {
   `;
 }
 
-function renderLaunch() {
-  const today = todayIso(new Date());
-  const batchDate = nextBatchDate();
-  const rows = packetRows();
-  const problemRows = packetProblemRows(rows);
-  const monthlyRows = rows.filter((mailing) => mailing.plan === 'Month-to-month');
-  const envelopeCount = rows.reduce((sum, mailing) => sum + envelopeQuantityForMailing(mailing), 0);
-  const monthlyEnvelopeCount = monthlyRows.reduce((sum, mailing) => sum + envelopeQuantityForMailing(mailing), 0);
-  const highExceptions = activeExceptions().filter((item) => item.severity === 'High').length;
-  const launchItems = [
-    {
-      label: 'Use CRM as the mailing source of truth',
-      status: 'Ready',
-      detail: `Next visible batch is ${formatDate(batchDate)}. Production Queue, Mailing QA, and Batch Packet are all built around that date.`,
-    },
-    {
-      label: 'Run the Batch Packet before assembly',
-      status: rows.length ? 'Ready' : 'Check',
-      detail: `${number(rows.length)} mailing rows and ${number(envelopeCount)} envelope pieces are in the current packet.`,
-    },
-    {
-      label: 'Print month-to-month envelopes in pairs',
-      status: monthlyEnvelopeCount ? 'Ready' : 'Clear',
-      detail: `${number(monthlyRows.length)} month-to-month mailing rows need ${number(monthlyEnvelopeCount)} envelopes because each paid month covers two letters.`,
-    },
-    {
-      label: 'Clear held/problem rows before printing',
-      status: problemRows.length ? 'Needs Review' : 'Ready',
-      detail: problemRows.length ? `${number(problemRows.length)} rows are held in this packet.` : 'No held rows in the active packet.',
-    },
-    {
-      label: 'Give Ashley a shared version before Squarespace sync',
-      status: 'Next',
-      detail: 'Ashley needs the same live status data before we automate orders. The target is a usable shared link by Jul 22.',
-    },
-    {
-      label: 'Treat Mailchimp sample automation as phase two',
-      status: 'Later',
-      detail: 'Sample letters are saved and ready. Mailchimp can wait until the mailing process is stable.',
-    },
-  ];
-  const nextWave = [
-    ['Shared database', 'Move local browser statuses into a real shared backend so Marcy and Ashley always see the same QA state.'],
-    ['Private hosted link', 'Ashley can open the CRM from her computer or phone without using a zip file.'],
-    ['Mobile quick actions', 'Make phones useful for lookup, status changes, Ashley bins, and mailing QA without fighting wide tables.'],
-    ['Squarespace sync', 'Pull paid orders automatically so order IDs, dates, plans, and customer data are not hand-entered.'],
-    ['Mailchimp sample requests', 'Website sample request creates a CRM lead, tags Kid or Adult in Mailchimp, and sends the correct sample letter.'],
-    ['Customer profile totals', 'Track lifetime revenue, open mailings, completed letters, samples requested, and conversions in one place.'],
-  ];
-
-  viewMount.innerHTML = `
-    <section class="launch-layout" aria-label="Launch plan">
-      <div class="launch-hero">
-        <div>
-          <p class="section-label">Launch mode</p>
-          <h3>Get the mailing process out of spreadsheets first.</h3>
-          <p>The CRM is ready to use as the operational checklist for the next mailing. Mailchimp is important, but it belongs in the automation wave after the core mailing flow stops being painful.</p>
-        </div>
-        <div class="launch-date-card">
-          <span>Today</span>
-          <strong>${formatDate(today)}</strong>
-          <span>Next batch</span>
-          <strong>${formatDate(batchDate)}</strong>
-        </div>
-      </div>
-
-      <div class="launch-grid">
-        <article class="data-panel launch-panel">
-          <div class="panel-head">
-            <div>
-              <h3>Go-live checklist</h3>
-              <p>Use this before the next 1st/15th mailing.</p>
-            </div>
-            <span class="panel-count">${number(highExceptions)} high exceptions</span>
-          </div>
-          <div class="launch-list">
-            ${launchItems.map(launchItem).join('')}
-          </div>
-        </article>
-
-        <article class="data-panel launch-panel">
-          <div class="panel-head">
-            <div>
-              <h3>Launch order</h3>
-              <p>What we should connect after the manual CRM flow is trusted.</p>
-            </div>
-            <span class="panel-count">Phased</span>
-          </div>
-          <ol class="launch-roadmap">
-            ${nextWave.map(([title, detail], index) => `
-              <li>
-                <span>${index + 1}</span>
-                <div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(detail)}</p></div>
-              </li>
-            `).join('')}
-          </ol>
-        </article>
-      </div>
-    </section>
-  `;
-}
-
-function launchItem(item) {
-  return `
-    <div class="launch-item">
-      <span class="launch-status launch-status-${statusClass(item.status)}">${escapeHtml(item.status)}</span>
-      <div>
-        <strong>${escapeHtml(item.label)}</strong>
-        <p>${escapeHtml(item.detail)}</p>
-      </div>
-    </div>
-  `;
-}
-
 function renderSamples() {
   const flows = [
     ['Request captured', 'Squarespace form submits email, sample type, source page, and timestamp into the CRM.'],
@@ -2404,7 +2277,7 @@ const VIEW_REGISTRY = {
   qa: { render: renderQa, showStatusFilter: false, showBatchFilter: true },
   packet: { render: renderPacket, showStatusFilter: false, showBatchFilter: true },
   bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
-  launch: { render: renderLaunch, showStatusFilter: false, showBatchFilter: false },
+  launch: { react: true, showStatusFilter: false, showBatchFilter: false },
   sync: { render: renderSync, showStatusFilter: false, showBatchFilter: false },
   automation: { react: true, showStatusFilter: false, showBatchFilter: false },
 };

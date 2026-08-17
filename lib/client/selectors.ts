@@ -23,13 +23,43 @@
  * exceptionsForMailing/activeExceptions. A change to a mailing's exceptions
  * can change its default component status even though no component
  * override changed at all.
+ *
+ * packetRows/packetProblemRows moved here in Phase 1 step 7 (CLAUDE.md).
+ * Step 4 deliberately left them in app/crm/legacy-app.js, reasoning they
+ * were view-shaped assembly mixing UI-local filter state, used only by
+ * Batch Packet - true at the time, wrong once Launch Plan needed the same
+ * derivation (two views sharing one derivation is the actual definition
+ * of a shared selector). packetRows takes `batchDate` as an explicit
+ * input rather than computing it from `batchFilter` itself (unlike the
+ * legacy version, which called selectedBatchDate() internally) - both
+ * call sites already need that value for their own display purposes too,
+ * so passing it once removes a duplicate computation without changing
+ * the result (selectedBatchDate is pure).
+ *
+ * includesText moved here from app/crm/format.ts for the same reason
+ * packetRows needed it: a `lib/client/` selector needing a view-only
+ * helper would invert this codebase's import direction (lib/ is meant to
+ * be consumed by app/, not the reverse) - and unlike escapeHtml/
+ * statusClass/number (genuinely display-only: HTML escaping, CSS class
+ * strings, locale number formatting), includesText's search-matching
+ * logic is exactly the kind of cross-view derivation this file exists
+ * for. app/crm/format.ts's own header comment predicted this exact
+ * question when formatDate/titleCase made the same move in step 3c
+ * ("nothing in lib/domain/ actually needs it") - this is the same move,
+ * one layer over, now that something in lib/client/ does.
  */
 
 import type { Dataset, DatasetException, DatasetMailing, DatasetRecipient, DatasetSubscription } from "../domain/dataset";
 import { componentKey, exceptionReviewKey, mailingKey } from "../domain/keys";
 import { isOpenStatus } from "../domain/mailing-rules";
 import { printModeForPlan } from "../domain/plans";
-import { driveCharacterKey } from "../domain/characters";
+import { driveCharacterKey, envelopeStockForCharacter } from "../domain/characters";
+
+export function includesText(values: unknown[], query: string): boolean {
+  if (!query.trim()) return true;
+  const needle = query.trim().toLowerCase();
+  return values.some((value) => String(value ?? "").toLowerCase().includes(needle));
+}
 
 export function isExceptionReviewed(item: DatasetException, reviewed: Set<string>): boolean {
   return reviewed.has(exceptionReviewKey(item)) || reviewed.has(item.exceptionId);
@@ -131,4 +161,51 @@ export function getRecipientName(recipientId: string, seed: Dataset): string {
 
 export function getRecipient(recipientId: string, seed: Dataset): DatasetRecipient | null {
   return seed.recipients.find((item) => item.recipientId === recipientId) || null;
+}
+
+// The active packet: every mailing that would actually go out in the
+// selected batch, in the order Batch Packet (and now Launch Plan) group
+// and print work by. `batchDate` is the caller's already-resolved
+// selectedBatchDate() result (see this file's own header for why it's a
+// parameter here, not computed internally) - "" means "all open batches",
+// matching selectedBatchDate's own "all"/"" convention.
+export function packetRows(mailings: EffectiveMailing[], batchDate: string, packetScope: string, query: string): EffectiveMailing[] {
+  return mailings
+    .filter((mailing) => mailing.activeState === "Active")
+    .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
+    .filter((mailing) => mailing.status !== "Mailed")
+    .filter((mailing) => (packetScope === "monthly" ? mailing.plan === "Month-to-month" : true))
+    .filter((mailing) =>
+      includesText(
+        [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
+        query,
+      ),
+    )
+    .sort(
+      (a, b) =>
+        envelopeStockForCharacter(a.character).localeCompare(envelopeStockForCharacter(b.character)) ||
+        driveCharacterKey(a.character).localeCompare(driveCharacterKey(b.character)) ||
+        String(a.recipientName).localeCompare(String(b.recipientName)),
+    );
+}
+
+// Rows within a packet that shouldn't go out yet - a real, unresolved High
+// exception, a non-Active payment status, a QA "Problem" flag, or a
+// missing ship date. `rows` is deliberately the caller's own packetRows()
+// result (or any subset of it), not computed here - Batch Packet and
+// Launch Plan both call this on their own already-filtered rows rather
+// than this function re-deriving the packet from scratch.
+export function packetProblemRows(
+  rows: EffectiveMailing[],
+  seed: Dataset,
+  reviewed: Set<string>,
+  componentOverrides: Record<string, string>,
+): EffectiveMailing[] {
+  return rows.filter(
+    (mailing) =>
+      exceptionsForMailing(mailing, seed, reviewed).some((item) => item.severity === "High") ||
+      componentStatus(mailing, "payment", seed, reviewed, componentOverrides) !== "Active" ||
+      componentStatus(mailing, "qa", seed, reviewed, componentOverrides) === "Problem" ||
+      !mailing.shipDate,
+  );
 }

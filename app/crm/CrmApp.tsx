@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { todayIso } from "@/lib/domain/mailing-rules";
+import { effectiveMailings } from "@/lib/client/selectors";
 import { initCrmApp, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
+import LaunchPlan from "./views/launch-plan/LaunchPlan";
+import { computeLaunchPlanData } from "./views/launch-plan/launch-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -54,6 +58,46 @@ import type { AutomationRule } from "./views/Automation";
 //    registry renderView() already checks, so this component and
 //    renderView() can never disagree about which views are which.
 //
+// REACT_VIEWS (added in step 7, alongside Launch Plan) is the same lesson
+// this codebase already learned once, one layer over: step 5 replaced
+// renderView()'s per-view if-chain with VIEW_REGISTRY once enough legacy
+// views existed that the chain was real, not speculative, duplication.
+// Two React-hosted views is exactly that same moment for this dispatch -
+// a second `if (activeView === "launch") {...}` here would be the
+// beginning of the identical chain, so it's a lookup table from the
+// start instead. Each entry computes its own props from `state` (the
+// single explicit place `new Date()` is ever called for a migrated view -
+// see launch-selectors.ts's own header on why the view itself never
+// reaches for the clock) and returns the element to portal.
+//
+// Guards on `state.seed` being non-null for views that need real data:
+// Automation degrades gracefully with an empty rules array (its 7 static
+// flow steps still render), but Launch Plan's computation does real
+// property access on `seed` and has no sensible "empty" rendering to
+// fall back to - and neither legacy views nor Automation actually show
+// anything before state.seed loads either (nothing calls render() until
+// then), so "render nothing yet" is the existing behavior, not a new one.
+const REACT_VIEWS: Record<string, () => ReactNode> = {
+  automation: () => {
+    const automationRules = (state.seed?.automationRules as AutomationRule[] | undefined) ?? [];
+    return <Automation automationRules={automationRules} />;
+  },
+  launch: () => {
+    if (!state.seed) return null;
+    const data = computeLaunchPlanData(
+      state.seed,
+      effectiveMailings(state.seed, state.statusOverrides),
+      state.reviewed,
+      state.componentOverrides,
+      state.batchFilter,
+      state.packetScope,
+      state.query,
+      todayIso(new Date()),
+    );
+    return <LaunchPlan data={data} />;
+  },
+};
+
 // Runs initCrmApp() inside a browser-only effect specifically so nothing
 // in legacy-app.js executes during SSR, where document/window/localStorage
 // don't exist (a "use client" component's render still runs once on the
@@ -76,12 +120,8 @@ export default function CrmApp() {
   if (!mount) return null;
 
   const entry = (VIEW_REGISTRY as Record<string, { react?: boolean }>)[activeView];
-  if (!entry?.react) return null;
+  const renderReactView = REACT_VIEWS[activeView];
+  if (!entry?.react || !renderReactView) return null;
 
-  if (activeView === "automation") {
-    const automationRules = ((state.seed?.automationRules as AutomationRule[]) ?? []) as AutomationRule[];
-    return createPortal(<Automation automationRules={automationRules} />, mount);
-  }
-
-  return null;
+  return createPortal(renderReactView(), mount);
 }
