@@ -8,11 +8,21 @@ export PATH="/usr/local/bin:$PATH"
 # to the wrong byte offset and execute garbage. Copying self to a stable temp
 # path and re-execing from there, before anything touches git, means the
 # running process is reading a file `git reset` can never overwrite.
+#
+# `exec bash "$TMP_SELF"`, not `exec "$TMP_SELF"`: on the NAS, /tmp is a
+# noexec mount - the kernel refuses to exec a file there regardless of its
+# permission bits (exit 126, "Permission denied", even immediately after
+# chmod +x - the same DSM behavior docs/backups.md documents for a
+# different path). Invoking bash explicitly and handing it the script as an
+# ordinary argument sidesteps that entirely: bash itself lives on an
+# executable mount, and reading a file's contents to interpret is not the
+# same syscall as exec()'ing it, so noexec never enters into it. No chmod
+# needed either, for the same reason - nothing here ever exec()s this file
+# directly.
 if [ -z "${DEPLOY_SH_REEXEC:-}" ]; then
   TMP_SELF="$(mktemp /tmp/everletter-deploy.XXXXXX.sh)"
   cp "$0" "$TMP_SELF"
-  chmod +x "$TMP_SELF"
-  DEPLOY_SH_REEXEC=1 exec "$TMP_SELF" "$@"
+  DEPLOY_SH_REEXEC=1 exec bash "$TMP_SELF" "$@"
 fi
 trap 'rm -f "$0"' EXIT
 
