@@ -222,7 +222,18 @@ function compareOrUpdateSnapshot(name, html) {
 
 const CASES = [
   ["queue", "queue", {}],
-  ["exceptions", "exceptions", {}],
+  // "exceptions" was here through step 9. Removed by step 10 (Phase 1's
+  // fifth view migration, CLAUDE.md), same treatment as automation/
+  // launch/sync/samples: moved to a real React component
+  // (app/crm/views/exceptions/Exceptions.tsx) hosted outside #viewMount
+  // entirely. tests/snapshots/exceptions.html and
+  // tests/snapshots/exceptions-empty-search.html are NOT deleted - they're
+  // the frozen references tests/exceptions-view.test.mjs compares
+  // Exceptions.tsx's own rendered output against, under the same
+  // normalized comparison automation/launch/sync/samples use. The
+  // "exceptions-empty-search" case that used to live at the bottom of
+  // this array (alongside the other separate-states-not-separate-views
+  // entries) moved there too.
   ["subscribers", "subscribers", {}],
   ["import", "import", {}],
   ["print", "print", {}],
@@ -275,7 +286,6 @@ const CASES = [
   ["queue-status-filter", "queue", { statusFilter: "Mailed" }],
   ["subscribers-selected", "subscribers", { selectedSubscriberId: avaSubscriber.subscriberId }],
   ["queue-search", "queue", { query: "Ringo" }],
-  ["exceptions-empty-search", "exceptions", { query: "zzz-nonexistent-zzz" }],
 ];
 
 for (const [snapshotName, activeView, overrides] of CASES) {
