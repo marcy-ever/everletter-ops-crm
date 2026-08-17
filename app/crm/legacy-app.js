@@ -63,6 +63,8 @@ import {
   packetProblemRows as selectPacketProblemRows,
   packetRows as selectPacketRows,
   pastBatchDates as selectPastBatchDates,
+  qaIsReady as selectQaIsReady,
+  qaNeedsAttention as selectQaNeedsAttention,
   selectedBatchDate as selectSelectedBatchDate,
 } from '@/lib/client/selectors';
 
@@ -86,15 +88,6 @@ const staleness = createStalenessStore();
 const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus, notifyViewChanged, subscribeViewChanged, getRenderGeneration } = createCrmState(saveFailures, staleness);
 
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
-const qaFields = [
-  { key: 'payment', label: 'Payment', options: ['Active', 'Needs Check', 'CC Failed', 'Paused'] },
-  { key: 'envelope', label: 'Envelope', options: ['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'] },
-  { key: 'letter', label: 'Letter', options: ['Need Print', 'Printed', 'Stuffed', 'Not Needed'] },
-  { key: 'artifact', label: 'Artifact', options: ['Need Check', 'Packed', 'Not Needed'] },
-  { key: 'insert', label: 'Map / Insert', options: ['Need Check', 'Packed', 'Not Needed'] },
-  { key: 'location', label: 'Location', options: ['Marcy', 'Ashley', 'Batch Bin', 'Mailed'] },
-  { key: 'qa', label: 'QA', options: ['Open', 'Problem', 'Ready'] },
-];
 const driveConfig = {
   printReadyFolderUrl: '',
   characterFolders: {
@@ -829,33 +822,6 @@ function printRow(mailing) {
   `;
 }
 
-function qaRows() {
-  const highExceptionMailingIds = new Set(
-    activeExceptions()
-      .filter((item) => item.severity === 'High')
-      .map((item) => item.mailingId),
-  );
-  const batchDate = selectedBatchDate();
-  return effectiveMailings()
-    .filter((mailing) => mailing.activeState === 'Active')
-    .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => mailing.status !== 'Mailed')
-    .filter((mailing) => (state.printScope === 'monthly' ? mailing.plan === 'Month-to-month' : true))
-    .filter((mailing) =>
-      includesText(
-        [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
-        state.query,
-      ),
-    )
-    .sort((a, b) => (
-      Number(highExceptionMailingIds.has(b.mailingId)) - Number(highExceptionMailingIds.has(a.mailingId))
-      || envelopeStockForCharacter(a.character).localeCompare(envelopeStockForCharacter(b.character))
-      || driveCharacterKey(a.character).localeCompare(driveCharacterKey(b.character))
-      || String(a.recipientName).localeCompare(String(b.recipientName))
-    ))
-    .slice(0, 180);
-}
-
 function exceptionsForMailing(mailing) {
   return selectExceptionsForMailing(mailing, state.seed, state.reviewed);
 }
@@ -864,149 +830,19 @@ function componentStatus(mailing, field) {
   return selectComponentStatus(mailing, field, state.seed, state.reviewed, state.componentOverrides);
 }
 
+// Adapters, not architecture - see the comment above availableBatchDates()
+// for what that means and when each one goes away. Moved to
+// lib/client/selectors.ts in Phase 1 step 14 (Mailing QA - CLAUDE.md), once
+// QA needed the same ready/attention classification packetFinalRow()
+// (Batch Packet, below - still legacy, step 15/16 to migrate) already did.
+// These two disappear once Batch Packet migrates and calls the pure
+// selectors directly, same as every other adapter here.
 function qaIsReady(mailing) {
-  return componentStatus(mailing, 'payment') === 'Active'
-    && ['Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'].includes(componentStatus(mailing, 'envelope'))
-    && ['Stuffed', 'Not Needed'].includes(componentStatus(mailing, 'letter'))
-    && ['Packed', 'Not Needed'].includes(componentStatus(mailing, 'artifact'))
-    && ['Packed', 'Not Needed'].includes(componentStatus(mailing, 'insert'))
-    && componentStatus(mailing, 'qa') === 'Ready';
+  return selectQaIsReady(mailing, state.seed, state.reviewed, state.componentOverrides);
 }
 
 function qaNeedsAttention(mailing) {
-  const statuses = qaFields.map((field) => componentStatus(mailing, field.key));
-  return statuses.some((status) => ['Need Print', 'Need Check', 'Needs Check', 'CC Failed', 'Paused', 'Problem', 'Open'].includes(status));
-}
-
-function renderQa() {
-  const batchDate = selectedBatchDate();
-  const rows = qaRows();
-  const readyCount = rows.filter(qaIsReady).length;
-  const problemCount = rows.filter((mailing) => componentStatus(mailing, 'qa') === 'Problem' || componentStatus(mailing, 'payment') !== 'Active').length;
-  const envelopePrintCount = rows
-    .filter((mailing) => componentStatus(mailing, 'envelope') === 'Need Print')
-    .reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0);
-  const needsCheckCount = rows.filter(qaNeedsAttention).length;
-
-  viewMount.innerHTML = `
-    <section class="data-panel" aria-label="Mailing QA">
-      <div class="panel-head">
-        <div>
-          <h3>${batchDate ? `${formatDate(batchDate)} Mailing QA` : 'Mailing QA'}</h3>
-          <p>One truth for mailing day: payment, envelope, letter, artifact, insert, physical location, and final ready state.</p>
-        </div>
-        <span class="panel-count">${rows.length} items</span>
-      </div>
-
-      <div class="print-summary qa-summary">
-        <div><span>Ready</span><strong>${number(readyCount)}</strong></div>
-        <div><span>Envelopes to print</span><strong>${number(envelopePrintCount)}</strong></div>
-        <div><span>Needs check</span><strong>${number(needsCheckCount)}</strong></div>
-        <div><span>Problems</span><strong>${number(problemCount)}</strong></div>
-      </div>
-
-      <div class="print-toolbar" aria-label="QA scope">
-        <span>Show:</span>
-        <button type="button" class="${state.printScope === 'monthly' ? 'active' : ''}" data-qa-scope="monthly">Month-to-month only</button>
-        <button type="button" class="${state.printScope === 'all' ? 'active' : ''}" data-qa-scope="all">All open mailings</button>
-      </div>
-
-      <div class="batch-actions" aria-label="QA actions">
-        <span>Batch actions:</span>
-        <button type="button" data-qa-mark-ready>Mark clean shown rows Ready</button>
-        <button type="button" data-qa-mark-mailed>Mark QA-ready rows Mailed</button>
-      </div>
-
-      <div class="table-wrap">
-        <table class="qa-table">
-          <thead>
-            <tr>
-              <th>Ship Date</th>
-              <th>Recipient</th>
-              <th>Character</th>
-              <th>Plan</th>
-              <th>Letter</th>
-              <th>Env Qty</th>
-              ${qaFields.map((field) => `<th>${escapeHtml(field.label)}</th>`).join('')}
-              <th>Flags</th>
-            </tr>
-          </thead>
-          <tbody>${rows.length ? rows.map(qaRow).join('') : '<tr><td colspan="14" class="empty-state">Nothing in this QA batch.</td></tr>'}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-qa-select]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const [rowKey, field] = select.getAttribute('data-qa-select').split('::field::');
-      const row = rows.find((mailing) => mailingKey(mailing) === rowKey);
-      if (row) {
-        if (field === 'envelope') {
-          updateEnvelopeStatus(row, select.value);
-        } else {
-          updateComponentStatus(row, field, select.value);
-        }
-        renderQa();
-      }
-    });
-  });
-
-  viewMount.querySelectorAll('[data-qa-scope]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.printScope = button.getAttribute('data-qa-scope');
-      renderQa();
-    });
-  });
-
-  viewMount.querySelector('[data-qa-mark-ready]').addEventListener('click', () => {
-    rows.filter((mailing) => componentStatus(mailing, 'payment') === 'Active').forEach((mailing) => {
-      if (componentStatus(mailing, 'envelope') === 'Need Print') updateEnvelopeStatus(mailing, printedEnvelopeStatusForMailing(mailing));
-      if (componentStatus(mailing, 'letter') === 'Need Print') updateComponentStatus(mailing, 'letter', 'Stuffed');
-      if (componentStatus(mailing, 'artifact') === 'Need Check') updateComponentStatus(mailing, 'artifact', 'Packed');
-      if (componentStatus(mailing, 'insert') === 'Need Check') updateComponentStatus(mailing, 'insert', 'Packed');
-      updateComponentStatus(mailing, 'qa', 'Ready');
-    });
-    renderQa();
-  });
-
-  viewMount.querySelector('[data-qa-mark-mailed]').addEventListener('click', () => {
-    rows.filter(qaIsReady).forEach((mailing) => updateMailingStatus(mailing, 'Mailed'));
-    render();
-  });
-}
-
-function qaRow(mailing) {
-  const issues = exceptionsForMailing(mailing);
-  const flags = [
-    ...issues.map((item) => `<span class="flag ${item.severity === 'High' ? 'flag-rose' : 'flag-amber'}">${escapeHtml(item.reason)}</span>`),
-    !letterFolderUrl(mailing) ? '<span class="flag flag-amber">Letter folder not mapped</span>' : '',
-    mailing.plan === 'Month-to-month' ? '<span class="flag flag-blue">Month-to-month</span>' : '<span class="flag flag-green">Prebuilt</span>',
-  ].join('');
-
-  return `
-    <tr class="${qaIsReady(mailing) ? 'qa-ready-row' : qaNeedsAttention(mailing) ? 'qa-attention-row' : ''}">
-      <td>${formatDate(mailing.shipDate)}</td>
-      <td><strong>${escapeHtml(mailing.recipientName)}</strong><span>${escapeHtml(mailing.email || 'Missing email')}</span></td>
-      <td>${escapeHtml(mailing.character)}<span>${escapeHtml(envelopeStockForCharacter(mailing.character))}</span></td>
-      <td>${escapeHtml(mailing.plan)}</td>
-      <td>${escapeHtml(mailing.letterNumber)}</td>
-      <td><strong>${number(envelopeQuantityForMailing(mailing))}</strong></td>
-      ${qaFields.map((field) => qaSelect(mailing, field)).join('')}
-      <td><div class="flag-stack">${flags}</div></td>
-    </tr>
-  `;
-}
-
-function qaSelect(mailing, field) {
-  const status = componentStatus(mailing, field.key);
-  return `
-    <td>
-      <select class="qa-select qa-${statusClass(status)}" data-qa-select="${escapeHtml(mailingKey(mailing))}::field::${escapeHtml(field.key)}">
-        ${field.options.map((option) => `<option ${option === status ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-      </select>
-    </td>
-  `;
+  return selectQaNeedsAttention(mailing, state.seed, state.reviewed, state.componentOverrides);
 }
 
 // Adapter, not architecture - see the comment above availableBatchDates()
@@ -1530,7 +1366,7 @@ const VIEW_REGISTRY = {
   samples: { react: true, showStatusFilter: false, showBatchFilter: false },
   import: { react: true, showStatusFilter: false, showBatchFilter: false },
   print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
-  qa: { render: renderQa, showStatusFilter: false, showBatchFilter: true },
+  qa: { react: true, showStatusFilter: false, showBatchFilter: true },
   packet: { render: renderPacket, showStatusFilter: false, showBatchFilter: true },
   bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
   launch: { react: true, showStatusFilter: false, showBatchFilter: false },
@@ -1695,11 +1531,14 @@ export {
   // ids - not consumed by any runtime caller.
   VIEW_REGISTRY,
   // Exported only for tests/component-fields-parity.test.mjs, which
-  // asserts these still match lib/domain/mailing-rules.ts's
-  // MAILING_STATUSES and lib/domain/component-fields.ts's
-  // COMPONENT_FIELD_OPTIONS exactly - not consumed by any runtime caller.
+  // asserts this still matches lib/domain/mailing-rules.ts's
+  // MAILING_STATUSES exactly - not consumed by any runtime caller. qaFields
+  // was the same story for lib/domain/component-fields.ts's
+  // COMPONENT_FIELD_OPTIONS until step 14 (Mailing QA - CLAUDE.md) moved it
+  // to app/crm/views/qa/qa-selectors.ts (QA_FIELDS) along with the view
+  // that owned it - that test now imports QA_FIELDS directly instead of
+  // going through this sandbox export.
   statusOrder,
-  qaFields,
   // updateMailingStatus/updateEnvelopeStatus were exported only for
   // tests/save-failure-banner.test.mjs (which drives the real save ->
   // lib/client/shared-state-client.ts -> lib/client/save-failures.ts ->
@@ -1709,8 +1548,12 @@ export {
   // REACT_VIEWS.subscribers entry now calls both for real, for the
   // profile pane's "Mark Printed"/"Mark At Ashley" actions - the same
   // already-standard write-through mutators every other write path in
-  // this file already used, not a new mechanism.
+  // this file already used, not a new mechanism. updateComponentStatus
+  // joins them in step 14 (Mailing QA), for the same reason: seven
+  // real, direct per-field writes from a React event handler now, not
+  // just through the updateEnvelopeStatus/updateMailingStatus wrappers.
   updateMailingStatus,
+  updateComponentStatus,
   updateEnvelopeStatus,
   saveFailures,
   // Exported only for tests/staleness-banner.test.mjs, which drives the
@@ -1750,4 +1593,14 @@ export {
   // this step calls, not something it owns.
   envelopePrintRows,
   openEnvelopePrint,
+  // letterFolderUrl is Drive-config lookup (driveConfig, above - private
+  // folder IDs are intentionally never in this repo, so it always resolves
+  // to "" here, same as every other Drive lookup) - exported unchanged for
+  // step 14 (Mailing QA - CLAUDE.md), whose "Letter folder not mapped" flag
+  // is the one piece of renderQa()'s original per-row logic that lives
+  // outside lib/client/selectors.ts entirely. A shared dependency
+  // app/crm/CrmApp.tsx's REACT_VIEWS.qa entry calls, not something this
+  // step owns or rewrites - same category as envelopePrintRows/
+  // openEnvelopePrint above.
+  letterFolderUrl,
 };

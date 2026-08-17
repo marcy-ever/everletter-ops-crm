@@ -10,6 +10,7 @@ import {
   envelopePrintRows,
   getRenderGeneration,
   initCrmApp,
+  letterFolderUrl,
   notifyViewChanged,
   openEnvelopePrint,
   render,
@@ -17,6 +18,7 @@ import {
   staleness,
   state,
   subscribeViewChanged,
+  updateComponentStatus,
   updateEnvelopeStatus,
   updateMailingStatus,
   VIEW_REGISTRY,
@@ -37,6 +39,8 @@ import Subscribers from "./views/subscribers/Subscribers";
 import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriber } from "./views/subscribers/subscribers-selectors";
 import Queue from "./views/queue/Queue";
 import { computeQueueRows } from "./views/queue/queue-selectors";
+import Qa from "./views/qa/Qa";
+import { computeQaData, printedEnvelopeStatusForMailing as qaPrintedEnvelopeStatusForMailing } from "./views/qa/qa-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -418,6 +422,95 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         onBulkStatus={(status) => {
           data.rows.forEach((mailing) => updateMailingStatus(mailing, status));
+          render();
+        }}
+      />
+    );
+  },
+  // The densest write surface migrated so far: seven independently-
+  // editable component-status fields per row, across up to 180 rows, plus
+  // two batch actions and a scope toggle. letterFolderUrl is imported from
+  // legacy-app.js unchanged (Drive-config lookup - see its own export
+  // comment there) and threaded into computeQaData() as an explicit
+  // function parameter, same as every other clock/dependency this seam
+  // passes in rather than letting a lib-shaped selector reach for a
+  // global.
+  //
+  // onFieldChange calls notifyViewChanged() alone, not render() - reading
+  // legacy's own [data-qa-select] handler (renderQa() only, never
+  // render()) directly, the same per-action verification step 13's own
+  // header comment describes: a component-status write never touches
+  // shell metrics or the topbar, only this view's own rows/summary
+  // counts. onScopeChange is the same story - legacy's own [data-qa-scope]
+  // handler also calls renderQa() only.
+  //
+  // onScopeChange mutates state.printScope directly - the SAME field
+  // Batch Print's still-legacy renderPrint() reads for its own scope
+  // toggle (app/crm/legacy-app.js, data-print-scope). Preserved exactly,
+  // not a bug: toggling QA's scope here changes what Batch Print shows
+  // too, next time that still-legacy view renders - the identical shape
+  // of surprise step 7 (Launch Plan) first documented for state.query/
+  // packetScope/batchFilter.
+  //
+  // onMarkReady reproduces legacy's [data-qa-mark-ready] handler exactly:
+  // per-row conditional writes against each row's ALREADY-COMPUTED
+  // fieldValues (computeQaData()'s own snapshot from this render, not a
+  // live re-read) - safe because none of the four conditional fields
+  // (envelope/letter/artifact/insert) depend on another field's value
+  // changing within the same loop, verified by reading the legacy handler
+  // directly, not assumed. notifyViewChanged() only, matching legacy - no
+  // component-status write here reaches outside this view's own mount.
+  // onMarkMailed calls render() instead, because it writes
+  // updateMailingStatus() (not updateComponentStatus()) - the one write in
+  // this view that DOES change what the shell's own metrics show,
+  // exactly like legacy's own handler, which calls render() and not
+  // renderQa(). Both batch actions are migrated exactly as they are - no
+  // confirmation, no restyling, no batching, no undo - same rule step 13's
+  // bulk buttons were migrated under.
+  qa: () => {
+    if (!state.seed) return null;
+    const data = computeQaData(
+      state.seed,
+      state.statusOverrides,
+      state.reviewed,
+      state.componentOverrides,
+      state.batchFilter,
+      state.printScope,
+      state.query,
+      todayIso(new Date()),
+      letterFolderUrl,
+    );
+    return (
+      <Qa
+        data={data}
+        printScope={state.printScope}
+        onScopeChange={(scope) => {
+          state.printScope = scope;
+          notifyViewChanged();
+        }}
+        onFieldChange={(mailing, field, value) => {
+          if (field === "envelope") {
+            updateEnvelopeStatus(mailing, value);
+          } else {
+            updateComponentStatus(mailing, field, value);
+          }
+          notifyViewChanged();
+        }}
+        onMarkReady={() => {
+          data.rows
+            .filter((row) => row.fieldValues.payment === "Active")
+            .forEach((row) => {
+              const mailing = row.mailing;
+              if (row.fieldValues.envelope === "Need Print") updateEnvelopeStatus(mailing, qaPrintedEnvelopeStatusForMailing(row));
+              if (row.fieldValues.letter === "Need Print") updateComponentStatus(mailing, "letter", "Stuffed");
+              if (row.fieldValues.artifact === "Need Check") updateComponentStatus(mailing, "artifact", "Packed");
+              if (row.fieldValues.insert === "Need Check") updateComponentStatus(mailing, "insert", "Packed");
+              updateComponentStatus(mailing, "qa", "Ready");
+            });
+          notifyViewChanged();
+        }}
+        onMarkMailed={() => {
+          data.rows.filter((row) => row.isReady).forEach((row) => updateMailingStatus(row.mailing, "Mailed"));
           render();
         }}
       />

@@ -47,6 +47,16 @@
  * question when formatDate/titleCase made the same move in step 3c
  * ("nothing in lib/domain/ actually needs it") - this is the same move,
  * one layer over, now that something in lib/client/ does.
+ *
+ * qaIsReady/qaNeedsAttention moved here in Phase 1 step 14 (Mailing QA -
+ * CLAUDE.md), same treatment packetRows got in step 7: Batch Packet's
+ * still-legacy packetFinalRow() (app/crm/legacy-app.js) needs the exact
+ * same ready/attention classification QA's own rows do, so this is a
+ * shared selector, not a QA-view-only one - unlike qaRows() itself
+ * (app/crm/views/qa/qa-selectors.ts), which only QA ever needed. Moved
+ * unchanged: same field list (COMPONENT_FIELD_OPTIONS' keys, verified
+ * identical to legacy's own qaFields order by
+ * tests/component-fields-parity.test.mjs), same status-value lists.
  */
 
 import type { Dataset, DatasetException, DatasetMailing, DatasetRecipient, DatasetSubscription } from "../domain/dataset";
@@ -54,6 +64,7 @@ import { componentKey, exceptionReviewKey, mailingKey } from "../domain/keys";
 import { isOpenStatus } from "../domain/mailing-rules";
 import { printModeForPlan } from "../domain/plans";
 import { driveCharacterKey, envelopeStockForCharacter } from "../domain/characters";
+import { COMPONENT_FIELD_OPTIONS } from "../domain/component-fields";
 
 export function includesText(values: unknown[], query: string): boolean {
   if (!query.trim()) return true;
@@ -112,6 +123,28 @@ export function componentStatus(
   componentOverrides: Record<string, string>,
 ): string {
   return componentOverrides[componentKey(mailing, field)] || defaultComponentStatus(mailing, field, seed, reviewed);
+}
+
+// "Everything is where it needs to be for mailing day" - payment collected,
+// envelope/letter/artifact/insert all past their "still needs work" states,
+// and QA itself marked Ready.
+export function qaIsReady(mailing: DatasetMailing, seed: Dataset, reviewed: Set<string>, componentOverrides: Record<string, string>): boolean {
+  return (
+    componentStatus(mailing, "payment", seed, reviewed, componentOverrides) === "Active" &&
+    ["Printed", "Both Printed", "In Ashley Box", "Not Needed"].includes(componentStatus(mailing, "envelope", seed, reviewed, componentOverrides)) &&
+    ["Stuffed", "Not Needed"].includes(componentStatus(mailing, "letter", seed, reviewed, componentOverrides)) &&
+    ["Packed", "Not Needed"].includes(componentStatus(mailing, "artifact", seed, reviewed, componentOverrides)) &&
+    ["Packed", "Not Needed"].includes(componentStatus(mailing, "insert", seed, reviewed, componentOverrides)) &&
+    componentStatus(mailing, "qa", seed, reviewed, componentOverrides) === "Ready"
+  );
+}
+
+// At least one of the seven component fields is sitting in a status that
+// means "someone still needs to look at this row" - not necessarily a
+// problem, just not settled either way.
+export function qaNeedsAttention(mailing: DatasetMailing, seed: Dataset, reviewed: Set<string>, componentOverrides: Record<string, string>): boolean {
+  const statuses = Object.keys(COMPONENT_FIELD_OPTIONS).map((field) => componentStatus(mailing, field, seed, reviewed, componentOverrides));
+  return statuses.some((status) => ["Need Print", "Need Check", "Needs Check", "CC Failed", "Paused", "Problem", "Open"].includes(status));
 }
 
 export function availableBatchDates(mailings: EffectiveMailing[], today: string): string[] {
