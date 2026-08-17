@@ -155,7 +155,7 @@ export interface WriteOutcome {
   newValue: string;
 }
 
-// Matches app.js's own plannedLetterCount() (app/crm/legacy-app.js) for the three
+// Matches lib/domain/plans.ts's own plannedLetterCount() for the three
 // metered plans, plus One-time - which plannedLetterCount treats as its
 // "anything else" fallback of 1. "Needs Review"/unrecognized plans are not
 // in this table on purpose: they're not a real cadence to report a count

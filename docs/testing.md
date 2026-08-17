@@ -23,18 +23,20 @@ all of them and fails the way a release gate should.
   citations did). Pure functions, hand-built fixtures, and the golden-HTML
   render snapshots - no external services. Safe to run anytime, runs in
   parallel.
-- **`pnpm test:e2e`** - the three end-to-end files
-  (`build-dataset-from-tables.e2e`, `write-to-tables-transactional.e2e`,
-  `shared-state-get.e2e`). Needs real local Postgres and, for two of the
-  three, the real local test spreadsheet (see below). **Serialized**
+- **`pnpm test:e2e`** - the end-to-end files (see `package.json`'s `test:e2e`
+  script for the current list, same reasoning as `test:unit` above for not
+  repeating it here - it grew from the original three schema-migration files
+  to fourteen as Phase 1's view migrations each added their own write-path
+  proof against a real Postgres). Needs real local Postgres and, for some of
+  them, the real local test spreadsheet (see below). **Serialized**
   (`node --test --test-concurrency=1`) deliberately, not as a style choice:
-  node:test runs separate files in parallel by default, but all three files
+  node:test runs separate files in parallel by default, but these files
   truncate and reimport the same shared local Postgres tables, and there's
-  only one physical database, not one per file - two of these files
-  truncating/writing concurrently would corrupt each other's results (e.g.
-  a discrepancy count computed mid-truncate by another file). Don't invoke
-  these files directly with `node --test` without `--test-concurrency=1` if
-  running more than one together.
+  only one physical database, not one per file - truncating/writing
+  concurrently would corrupt each other's results (e.g. a discrepancy count
+  computed mid-truncate by another file). Don't invoke these files directly
+  with `node --test` without `--test-concurrency=1` if running more than one
+  together.
 - **`pnpm test`** - `test:unit` then `test:e2e`. This is the actual release
   gate.
 - **`pnpm typecheck`** - `tsc --noEmit`. Deliberately separate from `test`:
@@ -69,9 +71,10 @@ themselves - no need to `source .env.local` first, unless you're also
 running `drizzle-kit` commands directly, which don't read `.env.local` on
 their own.
 
-The real test spreadsheet (`build-dataset-from-tables.e2e` and
-`shared-state-get.e2e` need it; `write-to-tables-transactional.e2e` doesn't) is
-gitignored and developer-local: `testing/Import_20260812_181828.xlsx`. Ask
+The real test spreadsheet (only `build-dataset-from-tables.e2e` and
+`shared-state-get.e2e` need it - every other e2e file builds its own small,
+hand-written fixture instead) is gitignored and developer-local:
+`testing/Import_20260812_181828.xlsx`. Ask
 Marcy/Brad for a copy if you don't have one - never commit a real customer
 export (see CLAUDE.md's data-boundary notes).
 

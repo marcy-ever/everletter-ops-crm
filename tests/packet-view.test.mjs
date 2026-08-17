@@ -113,9 +113,11 @@ test("the real component output actually contains computed data, not just an emp
 
 // Moved from tests/render-snapshots.test.mjs (step 15's own migration) -
 // that file's neighboring "Ashley Bins has no mobile cards" test (step 1's
-// original finding) stays there since Bins is still legacy; this half now
-// checks Packet.tsx's own real output instead of the legacy sandbox, since
-// #viewMount is deliberately empty for a react-hosted view.
+// original finding) stayed there at the time, since Bins was still legacy
+// then (it migrated in step 16); this half checks Packet.tsx's own real
+// output instead of the legacy sandbox. Both halves, and the sandbox-based
+// harness itself, are gone now - see tests/bins-view.test.mjs's own
+// updated comment.
 test("Batch Packet renders both the desktop table and the mobile card list (the markup the original Bins task description expected to find in Bins)", () => {
   const seed = loadSeed();
   const html = renderPacketHtml(seed);

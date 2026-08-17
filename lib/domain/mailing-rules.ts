@@ -2,16 +2,17 @@
  * The mailing business rules: which statuses count as "open," whether a
  * mailing is overdue or due in the next 14 days, and the nearest 1st/15th
  * batch date for a given ship date. The single implementation, imported
- * both client-side (app/crm/legacy-app.js's buildSeedFromSpreadsheet and
- * its own render logic) and server-side (lib/build-dataset-from-tables.ts).
+ * both client-side (`lib/domain/spreadsheet/build-seed.ts`'s
+ * `buildSeedFromSpreadsheet` and every view's own rendering) and
+ * server-side (`lib/build-dataset-from-tables.ts`).
  * tests/mailing-rules.test.mjs locks the exact output for a fixed set of
  * sample inputs.
  *
  * `isOverdueMailing`/`isDueNext14Days`/`todayIso` all take the reference
  * date as an explicit parameter rather than reading the clock themselves -
  * this is what makes a real, deliberate behavior difference between the two
- * call sites possible without needing two implementations: app.js's
- * buildSeedFromSpreadsheet computes `overdue`/`dueNext14Days`/`summary.asOf`
+ * call sites possible without needing two implementations:
+ * `buildSeedFromSpreadsheet` computes `overdue`/`dueNext14Days`/`summary.asOf`
  * once, frozen at spreadsheet-import time (passing `new Date()` at the
  * moment of import), while the server-side reconstruction
  * (lib/build-dataset-from-tables.ts) recomputes these LIVE at query time
@@ -26,14 +27,17 @@ export function isOpenStatus(status: string | null | undefined): boolean {
   return OPEN_STATUSES.has(status ?? "");
 }
 
-// Every valid mailing status, open or not - matches app/crm/legacy-app.js's
-// own `statusOrder` array exactly (OPEN_STATUSES plus the one closed
-// status, "Mailed"). Added for POST /api/shared-state's mailingStatus
-// validation (lib/validate-shared-state.ts) - a status this doesn't
-// recognize is rejected before it reaches a write, rather than silently
-// stored. Not imported by app/crm/legacy-app.js itself (yet) - that's a
-// deliberate scope decision for the server-validation task that added
-// this, not an oversight; see that task's PR for why.
+// Every valid mailing status, open or not (OPEN_STATUSES plus the one
+// closed status, "Mailed"). Added for POST /api/shared-state's
+// mailingStatus validation (lib/validate-shared-state.ts) - a status this
+// doesn't recognize is rejected before it reaches a write, rather than
+// silently stored. Originally written against app/crm/legacy-app.js's own
+// separately-maintained `statusOrder` array (a real, then-live
+// duplication - see app/crm/views/queue/Queue.tsx/app/crm/views/envelope-print/Print.tsx
+// and app/crm/shell/render-shell.ts, which now all import this export
+// directly instead of keeping their own copy) - closed once the monolith
+// that duplication lived in was deleted (Phase 2, CLAUDE.md), not just
+// tested for drift.
 export const MAILING_STATUSES = [...OPEN_STATUSES, "Mailed"];
 
 // The LOCAL calendar date of `now`, as "YYYY-MM-DD". The
