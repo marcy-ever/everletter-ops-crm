@@ -253,7 +253,22 @@ const CASES = [
       syncSubscriptionId: avaMarleySubscription.subscriptionId,
     },
   ],
-  ["automation", "automation", {}],
+  // "automation" was here through step 5 - removed by step 6 (Phase 1's
+  // first view migration, CLAUDE.md), which moved it to a real React
+  // component (app/crm/views/Automation.tsx) hosted outside #viewMount
+  // entirely (app/crm/CrmApp.tsx's portal seam, #reactViewMount in
+  // app/page.tsx). This harness captures #viewMount only, so it has
+  // nothing left to capture for a React-hosted view - #viewMount is
+  // deliberately empty for "automation" now (app/crm/legacy-app.js's
+  // renderView() clears it for any view with no `render` function), which
+  // is exactly why line 268's "rendered empty HTML" guard below would
+  // (correctly) flag it as broken if it were still in this list.
+  // tests/snapshots/automation.html is NOT deleted - it's now the frozen
+  // reference tests/automation-view.test.mjs compares the React
+  // component's own rendered output against, under a normalized
+  // comparison (see that file's header for why byte-identity isn't
+  // achievable there). Every future migrated view leaves this list the
+  // same way.
   // Separate states, not separate views (see the task this harness was built for).
   ["queue-batch-filter", "queue", { batchFilter: "2026-08-15" }],
   ["queue-status-filter", "queue", { statusFilter: "Mailed" }],
