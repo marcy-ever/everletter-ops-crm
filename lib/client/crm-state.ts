@@ -30,11 +30,38 @@
  * `state.activeView` already lives on the object this factory owns, and
  * every caller that already destructures this factory's return value
  * (today, only app/crm/legacy-app.js's own module top level) gets the
- * subscription for free without a second import. Narrow on purpose - this
- * is specifically a "the active view may have changed" signal, not a
- * general state-change event bus; a future view that needs to react to
- * something else (an override changing, say) is a different, later
- * decision, not something to over-generalize for now.
+ * subscription for free without a second import.
+ *
+ * Revised in step 8 (Sync Simulator) from what step 6 originally said
+ * here - worth recording exactly what changed and why, not just the new
+ * shape, since step 6 explicitly deferred this: it called
+ * notifyViewChanged() a narrow "the active view may have changed" signal
+ * and said a future view reacting to something else (an override
+ * changing, a form field changing) would be "a different, later
+ * decision." Step 8 is that later decision, forced by a real case rather
+ * than a speculative one: Sync's four inputs mutate state.syncSubscriberId/
+ * syncPlan/syncOrderDate/syncSubscriptionId, never state.activeView, so a
+ * React view watching only `state.activeView` via useSyncExternalStore
+ * would never re-render on an input change - React's Object.is comparison
+ * on the snapshot sees the same string and correctly (by
+ * useSyncExternalStore's own contract) bails out.
+ *
+ * Fixed by generalizing the signal itself rather than adding a second,
+ * parallel one per concern: getRenderGeneration() is a plain counter,
+ * incremented every time notifyViewChanged() fires (regardless of what
+ * changed - the name describes when it's called, not what it observes,
+ * which was already true before this revision). A React view's snapshot
+ * function can combine `state.activeView` with this counter so
+ * useSyncExternalStore sees a genuinely new value on ANY render-worthy
+ * mutation, not just an active-view switch - see app/crm/CrmApp.tsx's own
+ * getViewSnapshot(). This is the one mechanism every interactive migrated
+ * view (Sync now; Needs Review/Import/Production Queue/QA/Packet/Bins/
+ * Subscribers next) subscribes to, rather than each growing its own
+ * dedicated channel - "the CRM re-rendered, for any reason" was already
+ * what notifyViewChanged() meant in practice (it's called from
+ * renderView(), unconditionally, on every render), this just makes
+ * React's own subscription actually observe that instead of a narrower
+ * slice of it.
  */
 
 import type { Dataset } from "../domain/dataset";
@@ -92,6 +119,11 @@ export interface CrmStateStore {
   // state.activeView unchanged is a correct, harmless no-op.
   notifyViewChanged(): void;
   subscribeViewChanged(listener: () => void): () => void;
+  // A plain counter, bumped once per notifyViewChanged() call - see this
+  // file's own header (the step 8 revision) for why a React view's
+  // useSyncExternalStore snapshot needs to combine this with
+  // state.activeView rather than watching state.activeView alone.
+  getRenderGeneration(): number;
 }
 
 function mailingMonthKey(mailing: { shipDate: string }): string {
@@ -156,8 +188,10 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
   }
 
   const viewChangeListeners = new Set<() => void>();
+  let renderGeneration = 0;
 
   function notifyViewChanged(): void {
+    renderGeneration += 1;
     viewChangeListeners.forEach((listener) => listener());
   }
 
@@ -166,5 +200,17 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     return () => viewChangeListeners.delete(listener);
   }
 
-  return { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus, notifyViewChanged, subscribeViewChanged };
+  function getRenderGeneration(): number {
+    return renderGeneration;
+  }
+
+  return {
+    state,
+    updateMailingStatus,
+    updateComponentStatus,
+    updateEnvelopeStatus,
+    notifyViewChanged,
+    subscribeViewChanged,
+    getRenderGeneration,
+  };
 }
