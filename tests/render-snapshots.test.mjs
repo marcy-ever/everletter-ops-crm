@@ -219,7 +219,19 @@ function compareOrUpdateSnapshot(name, html) {
 }
 
 const CASES = [
-  ["queue", "queue", {}],
+  // "queue" (plus its three filter-state variants, "queue-batch-filter"/
+  // "queue-status-filter"/"queue-search", moved from the bottom of this
+  // array alongside "subscribers-selected" et al.) were here through
+  // step 12. Removed by step 13 (Phase 1's eighth view migration,
+  // CLAUDE.md - the busiest operational screen in the app), same
+  // treatment as every prior migrated view: moved to a real React
+  // component (app/crm/views/queue/Queue.tsx) hosted outside #viewMount
+  // entirely. tests/snapshots/queue.html, queue-batch-filter.html,
+  // queue-status-filter.html, and queue-search.html are NOT deleted -
+  // they're the four frozen references tests/queue-view.test.mjs
+  // compares Queue.tsx's own rendered output against (all four states,
+  // the reason those extra cases were captured in the first place), under
+  // the same normalized comparison every other migrated view uses.
   // "exceptions" was here through step 9. Removed by step 10 (Phase 1's
   // fifth view migration, CLAUDE.md), same treatment as automation/
   // launch/sync/samples: moved to a real React component
@@ -298,10 +310,6 @@ const CASES = [
   // comparison (see that file's header for why byte-identity isn't
   // achievable there). Every future migrated view leaves this list the
   // same way.
-  // Separate states, not separate views (see the task this harness was built for).
-  ["queue-batch-filter", "queue", { batchFilter: "2026-08-15" }],
-  ["queue-status-filter", "queue", { statusFilter: "Mailed" }],
-  ["queue-search", "queue", { query: "Ringo" }],
 ];
 
 for (const [snapshotName, activeView, overrides] of CASES) {
