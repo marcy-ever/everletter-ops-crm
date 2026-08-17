@@ -76,18 +76,50 @@
 //     leftover space character. Scoped to whitespace immediately before
 //     `>`/`/>`; can't touch text content, since escapeHtml() means a
 //     literal, unescaped `>` never appears there.
+//  6. Collapse React's numeric apostrophe entity (`&#x27;`) and legacy's
+//     named-decimal one (`&#039;`) to the same spelling - added in step 9
+//     (Sample Requests), the first migrated view whose real text/attribute
+//     content contains an apostrophe ("Ringo Collector's Path"). Legacy's
+//     escapeHtml() (app/crm/format.ts) hand-escapes `'` as `&#039;`;
+//     React's own automatic text/attribute escaping in
+//     renderToStaticMarkup() uses `&#x27;` instead (verified directly).
+//     Both decode to the identical character (U+0027 APOSTROPHE) in every
+//     browser - this rule doesn't touch `&amp;`/`&lt;`/`&gt;`/`&quot;`,
+//     which are already spelled identically on both sides (also verified
+//     directly), so it's scoped to the one entity that actually differs.
+//  7. Strip React's automatically-injected `<link rel="preload"
+//     as="image" href="...">` tags entirely - also step 9, and the one
+//     rule here that removes real elements rather than normalizing a
+//     spelling. Samples is the first migrated view with an <img> (the
+//     sample-letter thumbnails); react-dom's server renderer emits a
+//     preload hint for every image it encounters (verified directly with
+//     a minimal repro - any <img src="..."> produces a sibling
+//     `<link rel="preload" as="image" href="...">` immediately before
+//     it), a real optimization with nowhere to go but inline since
+//     renderToStaticMarkup() has no `<head>` to route it into. Legacy
+//     never produced these (a raw <img> tag, no preload mechanism at
+//     all), and neither snapshot side should be expected to contain them
+//     - they're genuinely extra elements, not a rewritten spelling of
+//     something already there, so they're removed outright rather than
+//     collapsed into a shared form. Scoped to that exact `rel`/`as` pair
+//     so it can't accidentally eat an unrelated, deliberately-authored
+//     preload link some future view might add for a real reason.
 //
 // What this does NOT paper over: a real structural difference (a missing
 // attribute, reordered/renamed class, different tag, different text)
-// survives all five rules unchanged and still fails the comparison - the
-// rules only ever remove whitespace or normalize one boolean-attribute
-// spelling, never touch markup, real attribute values, or text content.
+// survives all seven rules unchanged and still fails the comparison - the
+// rules only ever remove whitespace, remove React's own auto-injected
+// image-preload hints, or normalize a boolean-attribute or
+// apostrophe-entity spelling; they never touch real markup, real
+// attribute values, or text content.
 export function normalizeHtml(html) {
   return html
+    .replace(/<link rel="preload" as="image"[^>]*\/>/g, "")
     .replace(/>\s+/g, ">")
     .replace(/\s+</g, "<")
     .replace(/\s+/g, " ")
     .replace(/(\s[a-zA-Z-]+)=""/g, "$1")
     .replace(/\s+(\/?>)/g, "$1")
+    .replace(/&#x27;/g, "&#039;")
     .trim();
 }
