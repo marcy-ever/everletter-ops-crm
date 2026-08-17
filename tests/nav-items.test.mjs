@@ -74,17 +74,17 @@ test("every VIEW_REGISTRY entry is either legacy-rendered or react-hosted (never
   }
 });
 
-test("automation, launch, sync, samples, and exceptions are the react-hosted views so far, and carry no legacy render function", async () => {
+test("automation, launch, sync, samples, exceptions, and import are the react-hosted views so far, and carry no legacy render function", async () => {
   const appJs = await loadAppJsSandbox();
-  for (const id of ["automation", "launch", "sync", "samples", "exceptions"]) {
+  for (const id of ["automation", "launch", "sync", "samples", "exceptions", "import"]) {
     assert.equal(appJs.VIEW_REGISTRY[id].react, true, `${id} should be react-hosted`);
     assert.equal(appJs.VIEW_REGISTRY[id].render, undefined, `${id} should carry no legacy render function`);
   }
   // Every other view is still legacy-rendered - a control, so this test
   // can't pass by accident if some future change marks everything react.
-  const reactHosted = new Set(["automation", "launch", "sync", "samples", "exceptions"]);
+  const reactHosted = new Set(["automation", "launch", "sync", "samples", "exceptions", "import"]);
   const stillLegacy = Object.entries(appJs.VIEW_REGISTRY).filter(([id]) => !reactHosted.has(id));
-  assert.equal(stillLegacy.length, 7);
+  assert.equal(stillLegacy.length, 6);
   for (const [id, entry] of stillLegacy) {
     assert.equal(typeof entry.render, "function", `${id} should still be legacy-rendered`);
   }
