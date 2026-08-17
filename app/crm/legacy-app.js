@@ -378,109 +378,6 @@ function metric(icon, label, value, tone) {
   `;
 }
 
-function renderQueue() {
-  const highExceptionMailingIds = new Set(
-    activeExceptions()
-      .filter((item) => item.severity === 'High')
-      .map((item) => item.mailingId),
-  );
-  const batchDate = selectedBatchDate();
-  const rows = effectiveMailings()
-    .filter((mailing) => mailing.activeState === 'Active')
-    .filter((mailing) => !highExceptionMailingIds.has(mailing.mailingId))
-    .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => (state.statusFilter === 'Open' ? isOpenStatus(mailing.status) : state.statusFilter === 'All' ? true : mailing.status === state.statusFilter))
-    .filter((mailing) =>
-      includesText(
-        [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
-        state.query,
-      ),
-    )
-    .slice(0, 120);
-
-  viewMount.innerHTML = `
-    <section class="data-panel" aria-label="Production queue">
-      <div class="panel-head">
-        <div>
-          <h3>${batchDate ? `${formatDate(batchDate)} Mail Batch` : 'Production Queue'}</h3>
-          <p>Active subscribers only. Use the batch filter to focus on the immediate 1st/15th mailing.</p>
-        </div>
-        <span class="panel-count">${rows.length} shown</span>
-      </div>
-      <div class="batch-actions" aria-label="Batch status actions">
-        <span>Update shown rows:</span>
-        <button type="button" data-bulk-status="To Prepare">To Prepare</button>
-        <button type="button" data-bulk-status="Printing">Printing</button>
-        <button type="button" data-bulk-status="Assembling">Assembling</button>
-        <button type="button" data-bulk-status="Ready to Mail">Ready to Mail</button>
-        <button type="button" data-bulk-status="Mailed">Mailed</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Ship Date</th>
-              <th>Status</th>
-              <th>Recipient</th>
-              <th>Character</th>
-              <th>Plan</th>
-              <th>Letter</th>
-              <th>Mailing ID</th>
-              <th>Billing Order</th>
-              <th>Flags</th>
-            </tr>
-          </thead>
-          <tbody>${rows.map(queueRow).join('')}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-status-select]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const row = rows.find((mailing) => mailingKey(mailing) === select.getAttribute('data-status-select'));
-      if (row) {
-        updateMailingStatus(row, select.value);
-        render();
-      }
-    });
-  });
-
-  viewMount.querySelectorAll('[data-bulk-status]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const nextStatus = button.getAttribute('data-bulk-status');
-      rows.forEach((mailing) => updateMailingStatus(mailing, nextStatus));
-      render();
-    });
-  });
-}
-
-function queueRow(mailing) {
-  const flags = [
-    mailing.overdue ? '<span class="flag flag-rose">Overdue</span>' : '',
-    mailing.dueNext14Days ? '<span class="flag flag-amber">Next batch</span>' : '',
-    !mailing.shipDate ? '<span class="flag flag-rose">No date</span>' : '',
-  ].join('');
-
-  return `
-    <tr>
-      <td>${formatDate(mailing.shipDate)}</td>
-      <td>
-        <select class="status-select status-${statusClass(mailing.status)}" data-status-select="${escapeHtml(mailingKey(mailing))}">
-          ${statusOrder.map((status) => `<option ${status === mailing.status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}
-        </select>
-      </td>
-      <td><strong>${escapeHtml(mailing.recipientName)}</strong><span>${escapeHtml(mailing.email || 'Missing email')}</span></td>
-      <td>${escapeHtml(mailing.character)}</td>
-      <td>${escapeHtml(mailing.plan)}</td>
-      <td>${escapeHtml(mailing.letterNumber)}</td>
-      <td class="mono">${escapeHtml(mailing.mailingId)}</td>
-      <td class="mono">${escapeHtml(mailing.orderId)}</td>
-      <td><div class="flag-stack">${flags}</div></td>
-    </tr>
-  `;
-}
-
 function getRecipient(recipientId) {
   return selectGetRecipient(recipientId, state.seed);
 }
@@ -1627,7 +1524,7 @@ function binMobileCard(mailing) {
 // mistake - only the *shape* of a React-hosted entry changes, not whether
 // it exists.
 const VIEW_REGISTRY = {
-  queue: { render: renderQueue, showStatusFilter: true, showBatchFilter: true },
+  queue: { react: true, showStatusFilter: true, showBatchFilter: true },
   exceptions: { react: true, showStatusFilter: false, showBatchFilter: false },
   subscribers: { react: true, showStatusFilter: false, showBatchFilter: false },
   samples: { react: true, showStatusFilter: false, showBatchFilter: false },

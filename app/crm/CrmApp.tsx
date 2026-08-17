@@ -35,6 +35,8 @@ import Import from "./views/import/Import";
 import { computeImportData, defaultAutomationRules, readWorkbookFile } from "./views/import/import-selectors";
 import Subscribers from "./views/subscribers/Subscribers";
 import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriber } from "./views/subscribers/subscribers-selectors";
+import Queue from "./views/queue/Queue";
+import { computeQueueRows } from "./views/queue/queue-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -374,6 +376,49 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           updateEnvelopeStatus(mailing, "In Ashley Box");
           updateMailingStatus(mailing, "Assembling");
           notifyViewChanged();
+        }}
+      />
+    );
+  },
+  // The busiest operational screen in the app, and the most shell-
+  // dependent view yet: state.query/statusFilter/batchFilter are all
+  // owned by shell controls outside this view's mount, and all three
+  // still drive computeQueueRows() below the same way they already drove
+  // renderQueue()'s own filter chain - confirmed directly, not assumed
+  // from Subscribers' (step 12) single-shell-control precedent.
+  //
+  // Both onStatusChange and onBulkStatus call render(), not
+  // notifyViewChanged() - unlike Subscribers' mark-printed/mark-ashley
+  // (step 12), which reproduced legacy's OWN choice to call
+  // renderSubscribers() only, never render(). Here legacy's own
+  // [data-status-select]/[data-bulk-status] handlers both call render()
+  // directly - a real difference between the two views' legacy code, not
+  // an inconsistency introduced by this migration. Confirmed by reading
+  // renderQueue() itself, not inferred from the render()-vs-
+  // notifyViewChanged() "rule" - that rule describes what legacy already
+  // does, per action, and has to be checked against the actual code every
+  // time, not applied as a general policy.
+  //
+  // onBulkStatus is migrated exactly as legacy's own handler: no
+  // confirmation, no restyling, no batching, no undo. rows.forEach(...)
+  // becomes data.rows.forEach(...) - the exact same currently-shown rows
+  // array computeQueueRows() already produced for rendering, not a
+  // fresh query. A single click rewrites every shown row, silently, same
+  // as before this migration. That's Marcy's call to guard or not - see
+  // this step's own task/PR for what's flagged, not fixed.
+  queue: () => {
+    if (!state.seed) return null;
+    const data = computeQueueRows(state.seed, state.statusOverrides, state.reviewed, state.batchFilter, state.statusFilter, state.query, todayIso(new Date()));
+    return (
+      <Queue
+        data={data}
+        onStatusChange={(mailing, status) => {
+          updateMailingStatus(mailing, status);
+          render();
+        }}
+        onBulkStatus={(status) => {
+          data.rows.forEach((mailing) => updateMailingStatus(mailing, status));
+          render();
         }}
       />
     );
