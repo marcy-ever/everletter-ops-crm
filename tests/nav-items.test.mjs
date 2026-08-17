@@ -55,13 +55,29 @@ test("app/crm/legacy-app.js's VIEW_REGISTRY has exactly the same set of view ids
   assert.deepEqual(registryIds, navIds);
 });
 
-test("every VIEW_REGISTRY entry has a render function and explicit filter-visibility flags", async () => {
+// As of Phase 1's first migrated view (step 6 - CLAUDE.md), a registry
+// entry is EITHER legacy-rendered (a `render` function, dispatched by
+// app/crm/legacy-app.js's renderView()) OR React-hosted (`react: true`,
+// dispatched by app/crm/CrmApp.tsx's portal seam) - never both, never
+// neither. Both shapes still carry explicit filter-visibility flags; the
+// registry stays the one place that answers "does this view show the
+// status/batch filter," regardless of who renders its content.
+test("every VIEW_REGISTRY entry is either legacy-rendered or react-hosted (never both, never neither), and has explicit filter-visibility flags", async () => {
   const appJs = await loadAppJsSandbox();
   for (const [id, entry] of Object.entries(appJs.VIEW_REGISTRY)) {
-    assert.equal(typeof entry.render, "function", `${id}'s registry entry is missing a render function`);
+    const isLegacy = typeof entry.render === "function";
+    const isReact = entry.react === true;
+    assert.ok(isLegacy || isReact, `${id}'s registry entry must have a render function or be marked react-hosted`);
+    assert.ok(!(isLegacy && isReact), `${id}'s registry entry must not be both legacy-rendered and react-hosted`);
     assert.equal(typeof entry.showStatusFilter, "boolean", `${id}'s registry entry is missing showStatusFilter`);
     assert.equal(typeof entry.showBatchFilter, "boolean", `${id}'s registry entry is missing showBatchFilter`);
   }
+});
+
+test("automation is the one react-hosted view so far, and carries no legacy render function", async () => {
+  const appJs = await loadAppJsSandbox();
+  assert.equal(appJs.VIEW_REGISTRY.automation.react, true);
+  assert.equal(appJs.VIEW_REGISTRY.automation.render, undefined);
 });
 
 test("exactly queue/print/qa/packet/bins show the batch filter, and only queue shows the status filter - preserving renderView()'s pre-change conditionals", async () => {
