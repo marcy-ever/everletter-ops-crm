@@ -1,0 +1,82 @@
+/**
+ * Subscribers' own derivation, migrated from app/crm/legacy-app.js's
+ * renderSubscribers()/subscriberProfile() (Phase 1 step 12 - CLAUDE.md,
+ * the largest view migrated so far, and the last of the twelve besides
+ * Envelope Print/Production Queue/QA/Packet/Bins). Two separate concerns
+ * kept as two separate functions, matching the view's own two panes:
+ * computeSubscriberRows() (the search-filtered grid, reusing
+ * includesText() the same way every other view's search box does) and
+ * computeSubscriberProfile() (the selected subscriber's open-mailings
+ * table/cards, reusing the already-shared effectiveMailings()/
+ * componentStatus() selectors - the same ones Production Queue/QA/Packet
+ * already call).
+ */
+
+import type { Dataset, DatasetSubscriber } from "@/lib/domain/dataset";
+import { componentStatus, effectiveMailings, includesText, type EffectiveMailing } from "@/lib/client/selectors";
+import { envelopeQuantityForMailing, numericLetter } from "@/lib/domain/plans";
+
+// Same one-line rule as legacy's own printedEnvelopeStatusForMailing()
+// (app/crm/legacy-app.js, still used there by Batch Print/QA's own bulk
+// actions, so left in place rather than deleted) - duplicated here rather
+// than exported, since it's a trivial ternary over an already-shared
+// selector (envelopeQuantityForMailing), not real logic worth threading
+// an extra export through for.
+export function printedEnvelopeStatusForMailing(mailing: { envelopeQuantity: number }): string {
+  return mailing.envelopeQuantity > 1 ? "Both Printed" : "Printed";
+}
+
+export function computeSubscriberRows(seed: Dataset, query: string): DatasetSubscriber[] {
+  return seed.subscribers
+    .filter((subscriber) => includesText([subscriber.displayName, subscriber.email, subscriber.subscriberId, subscriber.status, subscriber.openMailings], query))
+    .slice(0, 80);
+}
+
+// legacy's own fallback: the previously-selected subscriber if they're
+// still in the (possibly search-filtered) row list, else the first row,
+// else nothing selected at all.
+export function selectSubscriber(rows: DatasetSubscriber[], selectedSubscriberId: string): DatasetSubscriber | null {
+  return rows.find((subscriber) => subscriber.subscriberId === selectedSubscriberId) || rows[0] || null;
+}
+
+export interface ProfileMailingRow extends EffectiveMailing {
+  envelopeStatus: string;
+  envelopeQuantity: number;
+}
+
+export interface SubscriberProfileData {
+  subscriber: DatasetSubscriber;
+  openRows: ProfileMailingRow[];
+  recipientCount: number;
+  totalMailings: number;
+  totalEnvelopeCount: number;
+}
+
+export function computeSubscriberProfile(
+  seed: Dataset,
+  statusOverrides: Record<string, string>,
+  reviewed: Set<string>,
+  componentOverrides: Record<string, string>,
+  subscriber: DatasetSubscriber,
+): SubscriberProfileData {
+  const rows = effectiveMailings(seed, statusOverrides)
+    .filter((mailing) => mailing.subscriberId === subscriber.subscriberId)
+    .sort((a, b) => (a.shipDate || "9999").localeCompare(b.shipDate || "9999") || numericLetter(a.letterNumber) - numericLetter(b.letterNumber));
+  const recipientIds = new Set(rows.map((mailing) => mailing.recipientId));
+  const openRows: ProfileMailingRow[] = rows
+    .filter((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active")
+    .map((mailing) => ({
+      ...mailing,
+      envelopeStatus: componentStatus(mailing, "envelope", seed, reviewed, componentOverrides),
+      envelopeQuantity: envelopeQuantityForMailing(mailing),
+    }));
+  const totalEnvelopeCount = openRows.reduce((total, mailing) => total + mailing.envelopeQuantity, 0);
+
+  return {
+    subscriber,
+    openRows,
+    recipientCount: recipientIds.size,
+    totalMailings: rows.length,
+    totalEnvelopeCount,
+  };
+}
