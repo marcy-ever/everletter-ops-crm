@@ -69,9 +69,24 @@ import type { MailingLike } from "../domain/keys";
 import { componentKey, mailingKey } from "../domain/keys";
 import { saveComponentOverrides, saveStatusOverrides } from "./local-overrides";
 import { saveSharedState } from "./shared-state-client";
+import type { SharedDatasetPayload } from "./shared-state-client";
 import { effectiveMailings } from "./selectors";
 import type { SaveFailureStore } from "./save-failures";
 import type { StalenessStore } from "./staleness";
+
+// The shape app/crm/legacy-app.js's readWorkbookFile() (moved to
+// app/crm/views/import/import-selectors.ts in Phase 1 step 10 - CLAUDE.md)
+// produces and state.importPreview holds until published or discarded.
+// Given a real type here (previously `unknown`, since nothing typed ever
+// read this field before the Import view migrated to React) rather than
+// in the view's own module, since lib/client/ can't import from app/ -
+// see this file's own header on import direction.
+export interface ImportPreview {
+  seed: Dataset;
+  sheetName: string;
+  rowCount: number;
+  fileName: string;
+}
 
 export interface CrmState {
   activeView: string;
@@ -87,10 +102,10 @@ export interface CrmState {
   syncOrderDate: string;
   sampleType: string;
   selectedSubscriberId: string;
-  importPreview: unknown;
+  importPreview: ImportPreview | null;
   importStatus: string;
   importBusy: boolean;
-  importInfo: unknown;
+  importInfo: SharedDatasetPayload | null;
   reviewed: Set<string>;
   statusOverrides: Record<string, string>;
   componentOverrides: Record<string, string>;

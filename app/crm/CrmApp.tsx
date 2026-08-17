@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
-import { saveSharedState } from "@/lib/client/shared-state-client";
+import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import { getRenderGeneration, initCrmApp, notifyViewChanged, render, saveFailures, staleness, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
@@ -17,6 +17,8 @@ import Samples from "./views/samples/Samples";
 import { computeSamplesData } from "./views/samples/samples-selectors";
 import Exceptions from "./views/exceptions/Exceptions";
 import { computeExceptionRows } from "./views/exceptions/exceptions-selectors";
+import Import from "./views/import/Import";
+import { computeImportData, defaultAutomationRules, readWorkbookFile } from "./views/import/import-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -239,6 +241,66 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           saveReviewedExceptions(state.reviewed);
           saveSharedState("reviewedException", key, "1", saveFailures, staleness);
           render();
+        }}
+      />
+    );
+  },
+  // The first async, multi-stage view (select a file -> preview ->
+  // publish) and the most destructive action in the app - publishing
+  // replaces the dataset (writeImport() deletes every row not in the
+  // payload). onFileSelect/onPublish mirror the removed legacy
+  // #spreadsheetUpload/#publishImport handlers exactly, including a
+  // three-way split on which of notifyViewChanged()/render() each state
+  // change needs - the same question step 10 (Needs Review) first
+  // answered, just with three answers instead of one this time:
+  //  - reading a file (onFileSelect, both its "now reading" status and
+  //    its eventual preview-or-error result) touches only
+  //    state.importPreview/importStatus - nothing outside this view's
+  //    own mount, so notifyViewChanged() alone, matching legacy's
+  //    renderImport()-only calls there.
+  //  - a REJECTED publish also touches only import-local state
+  //    (importBusy/importStatus) - notifyViewChanged() alone again,
+  //    matching legacy's renderImport()-only call in that catch branch.
+  //  - a SUCCESSFUL publish replaces state.seed itself, which affects
+  //    the shell's metrics/topbar the same way step 10's reviewedException
+  //    write affected the "Needs review" card - render(), matching
+  //    legacy's own render() call in that one branch.
+  import: () => {
+    if (!state.seed) return null;
+    const data = computeImportData(state.seed, state.reviewed, state.importInfo, state.importPreview, state.importStatus, state.importBusy);
+    return (
+      <Import
+        data={data}
+        onFileSelect={async (file) => {
+          state.importStatus = "Reading spreadsheet...";
+          state.importPreview = null;
+          notifyViewChanged();
+          try {
+            const automationRules = defaultAutomationRules(state.seed);
+            state.importPreview = await readWorkbookFile(file, new Date(), automationRules);
+            state.importStatus = "Preview ready. Review the counts, then publish when it looks right.";
+          } catch (error) {
+            state.importStatus = error instanceof Error ? error.message : "Could not read that spreadsheet.";
+          }
+          notifyViewChanged();
+        }}
+        onPublish={async () => {
+          if (!state.importPreview) return;
+          state.importBusy = true;
+          state.importStatus = "Publishing spreadsheet to the shared CRM...";
+          notifyViewChanged();
+          try {
+            state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName, staleness);
+            state.seed = state.importPreview.seed;
+            state.importPreview = null;
+            state.importBusy = false;
+            state.importStatus = "Imported. This is now the shared CRM data.";
+            render();
+          } catch (error) {
+            state.importBusy = false;
+            state.importStatus = error instanceof Error ? error.message : "Could not publish that spreadsheet.";
+            notifyViewChanged();
+          }
         }}
       />
     );
