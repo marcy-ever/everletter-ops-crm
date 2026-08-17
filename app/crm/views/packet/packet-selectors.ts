@@ -6,7 +6,13 @@
  * order view covering four grouped work cards, two role checklists, a
  * held-rows table, a desktop final-mailing-rows table, AND (under
  * bin-themed names, a real, pre-existing oddity - see this step's PR) a
- * mobile card list with its own component-status writes.
+ * mobile card list. That mobile card's three selects are rendered here
+ * (PacketMobileRow.fieldValues, below) but deliberately left inert at the
+ * component level - see app/crm/views/packet/Packet.tsx's own header for
+ * why: legacy never wired a change listener for them either, and this
+ * step's own snapshot proof can't distinguish a wired select from an
+ * unwired one, so wiring one here would have been an invisible behavior
+ * change. Left for Ashley Bins (step 16) to wire for real.
  *
  * Reused, not reimplemented, from lib/client/selectors.ts (per this step's
  * own task): packetRows/packetProblemRows (shared since step 7 - Launch

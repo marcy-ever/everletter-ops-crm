@@ -526,36 +526,30 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // component's own header for why that's real, pre-existing, and
   // preserved rather than renamed at the DOM-reaching level.
   //
-  // A real gap found while migrating, not assumed: legacy's own
-  // renderPacket() rendered the mobile cards' [data-bin-select] selects
+  // A real gap found while migrating, deliberately NOT fixed here: legacy's
+  // own renderPacket() rendered the mobile cards' [data-bin-select] selects
   // but NEVER wired a change listener for them - confirmed by reading
-  // renderPacket() in full (it wires data-packet-scope/data-packet-print/
-  // data-packet-envelopes/data-drive-url only) and grepping every
-  // [data-bin-select] listener in the file (exactly one exists, inside
-  // renderBins() - Ashley Bins, step 16, still legacy - for ITS OWN
-  // elements, never Packet's). Changing a mobile card's status in the
-  // live legacy app currently does nothing. This conflicts directly with
-  // this step's own task (requirement 3: mobile writes must produce
-  // correct POSTs) and would be worse in React than in legacy if left
-  // unwired (a controlled <select value=...> with no onChange blocks the
-  // browser's own native update, unlike legacy's silent no-op). Wired for
-  // real, reconstructed from the ONE actual precedent for this exact
-  // attribute format anywhere in the app - Ashley Bins' own handler,
-  // which calls plain updateComponentStatus unconditionally (never
-  // updateEnvelopeStatus, even for the envelope field - Bins rows are
-  // always prepaid, so the Month-to-month fan-out branch never applies
-  // there anyway). Matched exactly rather than reused QA's own
-  // envelope-branching onFieldChange, since that would be inventing
-  // behavior no real code in this app has ever had for this attribute.
-  // Reported plainly in the PR, not silently patched.
+  // renderPacket() in full and grepping every [data-bin-select] listener in
+  // the file (exactly one exists, inside renderBins() - Ashley Bins, step
+  // 16, still legacy - for ITS OWN elements, never Packet's). Changing a
+  // mobile card's status in the live legacy app currently does nothing.
+  // An earlier version of this step wired a handler anyway, reconstructed
+  // from Ashley Bins' own [data-bin-select] mechanism - caught in review:
+  // this step's own task asserted the mobile selects write, a wrong
+  // premise, and the right move on a wrong premise is to report the
+  // conflict, not resolve it unilaterally inside a branch whose whole
+  // point is "no behavior change" - especially here, where the snapshot
+  // proof can't see the difference either way (identical markup whether
+  // the select writes or not), so a fix would have been invisible to the
+  // one safety net this migration relies on. Left inert instead -
+  // Packet.tsx's own header has the full reasoning. Wiring a real handler
+  // is Ashley Bins' (step 16) to do, off its own real, working mechanism.
   //
-  // onScopeChange/onFieldChange call notifyViewChanged() alone, matching
-  // legacy's own renderPacket()'s [data-packet-scope] handler (renderPacket()
-  // only) and Ashley Bins' own [data-bin-select] handler (renderBins()
-  // only) respectively - neither write touches shell metrics. onPrint/
-  // onPrintEnvelopes/onOpenDriveLink are pure browser actions (matching
-  // step 9's onOpenSample precedent) - nothing rendered depends on them,
-  // so no notifyViewChanged() call at all.
+  // onScopeChange calls notifyViewChanged() alone, matching legacy's own
+  // renderPacket()'s [data-packet-scope] handler (renderPacket() only) -
+  // it doesn't touch shell metrics. onPrint/onPrintEnvelopes/onOpenDriveLink
+  // are pure browser actions (matching step 9's onOpenSample precedent) -
+  // nothing rendered depends on them, so no notifyViewChanged() call at all.
   packet: () => {
     if (!state.seed) return null;
     const data = computePacketData(
@@ -577,10 +571,6 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         printReadyFolderUrl={driveConfig.printReadyFolderUrl}
         onScopeChange={(scope) => {
           state.packetScope = scope;
-          notifyViewChanged();
-        }}
-        onFieldChange={(mailing, field, value) => {
-          updateComponentStatus(mailing, field, value);
           notifyViewChanged();
         }}
         onPrint={() => window.print()}
