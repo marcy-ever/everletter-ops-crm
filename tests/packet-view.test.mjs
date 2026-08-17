@@ -12,13 +12,17 @@
 // snapshots, so this file's own "scope toggle composes correctly" test
 // below is what proves that composition.
 //
-// The mobile card selects are deliberately inert - see Packet.tsx's own
-// header for why (a real, pre-existing gap: legacy never wired a change
-// listener for them either, and a fix would have been invisible to this
-// file's own snapshot proof, so it's left for Ashley Bins/step 16 to wire
-// for real off its own working mechanism). This file's own test below
-// proves that inertness directly (no onChange handler at all, real
-// defaultValue), rather than proving a write path that doesn't exist.
+// The mobile card selects were deliberately inert through step 15 (a
+// real, pre-existing gap: legacy never wired a change listener for them
+// either, and a fix would have been invisible to this file's own
+// snapshot proof - see Packet.tsx's own header). Wired for real in step
+// 16 (Ashley Bins, second commit) - a deliberate, separately-reviewed
+// behavior change the snapshot test above still can't see (it stays
+// green either way). This file's own test below proves the component-level
+// wiring; tests/packet-bins-select-parity.test.mjs proves it writes the
+// same key/value shape Bins' own reference handler would;
+// tests/bins-write-path.e2e.test.mjs proves the shared handler itself
+// against a real Postgres.
 //
 // The print/envelope/Drive actions' write paths ARE real and testable
 // here at the component level (their real onClick calls) - no e2e file
@@ -35,6 +39,7 @@ import Packet from "../app/crm/views/packet/Packet.tsx";
 import { computePacketData } from "../app/crm/views/packet/packet-selectors.ts";
 import { componentStatus } from "../lib/client/selectors.ts";
 import { envelopeQuantityForMailing } from "../lib/domain/plans.ts";
+import { mailingKey } from "../lib/domain/keys.ts";
 import { buildSeedFromSpreadsheet } from "../lib/domain/spreadsheet/build-seed.ts";
 import { normalizeHtml } from "./html-normalize.mjs";
 
@@ -77,6 +82,7 @@ function renderPacketHtml(seed, { batchFilter = "all", packetScope = "all", quer
       packetScope,
       printReadyFolderUrl: "",
       onScopeChange: NOOP,
+      onFieldChange: NOOP,
       onPrint: NOOP,
       onPrintEnvelopes: NOOP,
       onOpenDriveLink: NOOP,
@@ -154,7 +160,7 @@ test("the scope buttons' real onClick calls onScopeChange with that button's exa
   const reviewed = new Set();
   const data = computePacketData(seed, {}, reviewed, {}, "all", "all", "", TODAY, NO_LETTER_FOLDER, realEnvelopePrintRows(seed, reviewed));
   const calls = [];
-  const element = Packet({ data, packetScope: "all", printReadyFolderUrl: "", onScopeChange: (scope) => calls.push(scope), onPrint: NOOP, onPrintEnvelopes: NOOP, onOpenDriveLink: NOOP });
+  const element = Packet({ data, packetScope: "all", printReadyFolderUrl: "", onScopeChange: (scope) => calls.push(scope), onFieldChange: NOOP, onPrint: NOOP, onPrintEnvelopes: NOOP, onOpenDriveLink: NOOP });
 
   const scopeButtons = findAll(element, (node) => node.type === "button" && node.props["data-packet-scope"] !== undefined);
   assert.equal(scopeButtons.length, 2);
@@ -174,6 +180,7 @@ test("print/envelope/Drive actions' real onClick call their own callback with th
     packetScope: "all",
     printReadyFolderUrl: "",
     onScopeChange: NOOP,
+    onFieldChange: NOOP,
     onPrint: () => (printCalls += 1),
     onPrintEnvelopes: () => (envelopeCalls += 1),
     onOpenDriveLink: (url) => driveUrls.push(url),
@@ -188,18 +195,38 @@ test("print/envelope/Drive actions' real onClick call their own callback with th
   assert.deepEqual(driveUrls, [""], "no real Drive folder URL is ever committed to this repo - reproduces the empty-URL alert path exactly");
 });
 
-test("each mobile card's three selects are genuinely inert - defaultValue, no onChange handler at all - matching legacy's own real (non-)behavior exactly", () => {
+// As of step 16 (Ashley Bins, second commit), the mobile card's three
+// selects are wired for real - see Packet.tsx's own header and
+// CrmApp.tsx's REACT_VIEWS.packet comment for why this is a deliberate,
+// separately-reviewed behavior change the snapshot gate above can't see
+// (packet.html stays byte-identical either way). This test proves the
+// component-level wiring is real; tests/packet-bins-select-parity.test.mjs
+// proves it writes the identical key/value shape Bins' own reference
+// handler would for the equivalent row; tests/bins-write-path.e2e.test.mjs
+// proves the shared handler itself against a real Postgres.
+test("each mobile card's real onChange calls onFieldChange with that row's exact mailing, the field key, and the selected value", () => {
   const seed = loadSeed();
   const reviewed = new Set();
   const data = computePacketData(seed, {}, reviewed, {}, "all", "all", "", TODAY, NO_LETTER_FOLDER, realEnvelopePrintRows(seed, reviewed));
   assert.ok(data.mobileRows.length > 0, "fixture invariant: at least one row should be shown by default");
-  const element = Packet({ data, packetScope: "all", printReadyFolderUrl: "", onScopeChange: NOOP, onPrint: NOOP, onPrintEnvelopes: NOOP, onOpenDriveLink: NOOP });
+  const calls = [];
+  const element = Packet({
+    data,
+    packetScope: "all",
+    printReadyFolderUrl: "",
+    onScopeChange: NOOP,
+    onFieldChange: (mailing, field, value) => calls.push([mailing, field, value]),
+    onPrint: NOOP,
+    onPrintEnvelopes: NOOP,
+    onOpenDriveLink: NOOP,
+  });
 
   const selects = findAll(element, (node) => node.type === "select" && node.props["data-bin-select"] !== undefined);
   assert.equal(selects.length, data.mobileRows.length * 3, "three fields (envelope/letter/location) per mobile card");
-  for (const select of selects) {
-    assert.equal(select.props.onChange, undefined, "no onChange at all - an uncontrolled, unwired select, same as legacy never having attached a listener");
-    assert.equal(select.props.value, undefined, "defaultValue, not value - deliberately uncontrolled, verified (not assumed) to render identical static markup to value in tests/packet-view.test.mjs's own snapshot-equivalence test above");
-    assert.notEqual(select.props.defaultValue, undefined, "still reflects the row's current status as its initial selection");
-  }
+
+  selects[0].props.onChange({ target: { value: "Printed" } });
+  assert.equal(calls.length, 1);
+  assert.equal(mailingKey(calls[0][0]), mailingKey(data.mobileRows[0].mailing));
+  assert.equal(calls[0][1], "envelope", "the first select column is always the envelope field");
+  assert.equal(calls[0][2], "Printed");
 });

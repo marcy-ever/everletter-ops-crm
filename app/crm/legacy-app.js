@@ -19,7 +19,7 @@ import { isOpenStatus, todayIso } from '@/lib/domain/mailing-rules';
 // their only call sites were inside buildSeedFromSpreadsheet/
 // spreadsheetExceptionReasons, which now live in
 // lib/domain/spreadsheet/build-seed.ts and import these themselves.
-import { printModeForPlan, envelopeQuantityForMailing, numericLetter } from '@/lib/domain/plans';
+import { printModeForPlan, envelopeQuantityForMailing } from '@/lib/domain/plans';
 import { driveCharacterKey, letterNumberKey, envelopeStockForCharacter } from '@/lib/domain/characters';
 import { storageBinForMailing } from '@/lib/domain/batch-dates';
 // formatDate/titleCase moved to lib/domain/format.ts (step 3c) once
@@ -27,7 +27,7 @@ import { storageBinForMailing } from '@/lib/domain/batch-dates';
 // turned out to be real domain logic rather than display chrome - see
 // that module's header. escapeHtml/includesText/statusClass/number stay
 // view-only, in app/crm/format.ts.
-import { formatDate, titleCase } from '@/lib/domain/format';
+import { formatDate } from '@/lib/domain/format';
 import { escapeHtml, statusClass, number } from './format';
 // buildSeedFromSpreadsheet (the 206-line seed builder) and
 // spreadsheetExceptionReasons (the exception-reason checks it calls) are
@@ -54,11 +54,9 @@ import { createStalenessStore } from '@/lib/client/staleness';
 import {
   activeExceptions as selectActiveExceptions,
   availableBatchDates as selectAvailableBatchDates,
-  binStatus as selectBinStatus,
   componentStatus as selectComponentStatus,
   effectiveMailings as selectEffectiveMailings,
   getRecipient as selectGetRecipient,
-  groupedWork,
   includesText,
   nextBatchDate as selectNextBatchDate,
   pastBatchDates as selectPastBatchDates,
@@ -819,189 +817,6 @@ function componentStatus(mailing, field) {
   return selectComponentStatus(mailing, field, state.seed, state.reviewed, state.componentOverrides);
 }
 
-function binRows() {
-  const batchDate = selectedBatchDate();
-  return effectiveMailings()
-    .filter((mailing) => mailing.activeState === 'Active')
-    .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => mailing.status !== 'Mailed')
-    .filter((mailing) => printModeForPlan(mailing.plan) === 'Prepaid bulk')
-    .filter((mailing) =>
-      includesText(
-        [mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId],
-        state.query,
-      ),
-    )
-    .sort((a, b) => (
-      driveCharacterKey(a.character).localeCompare(driveCharacterKey(b.character))
-      || numericLetter(a.letterNumber) - numericLetter(b.letterNumber)
-      || String(a.recipientName).localeCompare(String(b.recipientName))
-    ));
-}
-
-function binGroups(rows) {
-  return groupedWork(
-    rows,
-    (mailing) => `${formatDate(mailing.shipDate)} Â· ${titleCase(driveCharacterKey(mailing.character))} Â· Letter ${mailing.letterNumber}`,
-  ).map((group) => ({
-    ...group,
-    ready: group.rows.filter((mailing) => binStatus(mailing).label === 'Ready in Ashley Bin').length,
-    needsCheck: group.rows.filter((mailing) => binStatus(mailing).label !== 'Ready in Ashley Bin').length,
-  }));
-}
-
-// Adapter, not architecture - see the comment above availableBatchDates()
-// for what that means and when it goes away. Moved to
-// lib/client/selectors.ts in Phase 1 step 15 (Batch Packet - CLAUDE.md),
-// once Batch Packet's binMobileCard() needed the exact same classification
-// Ashley Bins' own binGroups()/renderBins()/binRow() (below, still legacy)
-// already did.
-function binStatus(mailing) {
-  return selectBinStatus(mailing, state.seed, state.reviewed, state.componentOverrides);
-}
-
-function renderBins() {
-  const batchDate = selectedBatchDate();
-  const rows = binRows();
-  const groups = binGroups(rows);
-  const readyCount = rows.filter((mailing) => binStatus(mailing).label === 'Ready in Ashley Bin').length;
-  const needsCheckCount = rows.length - readyCount;
-  const missingEnvelopeCount = rows.filter((mailing) => binStatus(mailing).label === 'Missing Envelope').length;
-  const missingLetterCount = rows.filter((mailing) => binStatus(mailing).label === 'Missing Letter').length;
-  const characterGroups = groupedWork(rows, (mailing) => titleCase(driveCharacterKey(mailing.character)));
-
-  viewMount.innerHTML = `
-    <section class="data-panel bins-panel" aria-label="Ashley bins">
-      <div class="panel-head">
-        <div>
-          <h3>${batchDate ? `${formatDate(batchDate)} Ashley Bins` : 'Ashley Bins'}</h3>
-          <p>Physical inventory for prepaid 6- and 12-month mailings that should already be stuffed, labeled, and stored by batch date.</p>
-        </div>
-        <span class="panel-count">${number(rows.length)} bin rows</span>
-      </div>
-
-      <div class="print-summary bin-summary">
-        <div><span>Prebuilt rows</span><strong>${number(rows.length)}</strong></div>
-        <div><span>Ready in bins</span><strong>${number(readyCount)}</strong></div>
-        <div><span>Needs bin check</span><strong>${number(needsCheckCount)}</strong></div>
-        <div><span>Missing env / letter</span><strong>${number(missingEnvelopeCount)} / ${number(missingLetterCount)}</strong></div>
-      </div>
-
-      <div class="batch-actions" aria-label="Bin actions">
-        <span>Update shown rows:</span>
-        <button type="button" data-bin-mark="ready">Mark In Ashley Box + Stuffed</button>
-        <button type="button" data-bin-mark="check">Mark Needs Bin Check</button>
-        <button type="button" data-bin-print>Print Bin Checklist</button>
-      </div>
-
-      <div class="packet-grid bin-group-grid">
-        ${groups.map(binGroupCard).join('') || '<article class="packet-card"><h4>No prepaid rows</h4><p>Nothing is expected in Ashley bins for this batch.</p></article>'}
-      </div>
-
-      <div class="packet-section">
-        <div class="panel-head packet-section-head">
-          <div>
-            <h3>Bin Row Checklist</h3>
-            <p>Use this to verify each prebuilt piece is physically in the right dated bin.</p>
-          </div>
-          <span class="panel-count">${number(rows.length)} rows</span>
-        </div>
-        <div class="table-wrap">
-          <table class="packet-table">
-            <thead>
-              <tr>
-                <th>Ship Date</th>
-                <th>Recipient</th>
-                <th>Character</th>
-                <th>Letter</th>
-                <th>Bin Status</th>
-                <th>Envelope</th>
-                <th>Letter Status</th>
-                <th>Location</th>
-                <th>Bin</th>
-              </tr>
-            </thead>
-            <tbody>${rows.length ? rows.map(binRow).join('') : '<tr><td colspan="9" class="empty-state">No Ashley bin rows for this batch.</td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-bin-select]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const [key, field] = select.getAttribute('data-bin-select').split('::field::');
-      const row = rows.find((mailing) => mailingKey(mailing) === key);
-      if (row) {
-        updateComponentStatus(row, field, select.value);
-        renderBins();
-      }
-    });
-  });
-
-  viewMount.querySelectorAll('[data-bin-mark]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const mode = button.getAttribute('data-bin-mark');
-      rows.forEach((mailing) => {
-        if (mode === 'ready') {
-          updateComponentStatus(mailing, 'envelope', 'In Ashley Box');
-          updateComponentStatus(mailing, 'letter', 'Stuffed');
-          updateComponentStatus(mailing, 'location', 'Ashley');
-        } else {
-          updateComponentStatus(mailing, 'envelope', 'Need Print');
-          updateComponentStatus(mailing, 'letter', 'Need Print');
-          updateComponentStatus(mailing, 'location', 'Marcy');
-        }
-      });
-      renderBins();
-    });
-  });
-
-  viewMount.querySelector('[data-bin-print]').addEventListener('click', () => window.print());
-}
-
-function binGroupCard(group) {
-  return `
-    <article class="packet-card bin-card">
-      <h4>${escapeHtml(group.label)}</h4>
-      <p>${number(group.total)} pieces expected in this dated bin group.</p>
-      <div class="bin-card-counts">
-        <div><span>Confirmed</span><strong>${number(group.ready)}</strong></div>
-        <div><span>Check</span><strong>${number(group.needsCheck)}</strong></div>
-      </div>
-    </article>
-  `;
-}
-
-function binRow(mailing) {
-  const status = binStatus(mailing);
-  return `
-    <tr>
-      <td>${formatDate(mailing.shipDate)}</td>
-      <td><strong>${escapeHtml(mailing.recipientName)}</strong><span>${escapeHtml(mailing.plan)}</span></td>
-      <td>${escapeHtml(mailing.character)}</td>
-      <td>${escapeHtml(mailing.letterNumber)}</td>
-      <td><span class="pill status-${statusClass(status.label)}">${escapeHtml(status.label)}</span><span>${escapeHtml(status.detail)}</span></td>
-      <td>
-        <select class="qa-select qa-${statusClass(componentStatus(mailing, 'envelope'))}" data-bin-select="${escapeHtml(mailingKey(mailing))}::field::envelope">
-          ${['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'].map((option) => `<option ${option === componentStatus(mailing, 'envelope') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-        </select>
-      </td>
-      <td>
-        <select class="qa-select qa-${statusClass(componentStatus(mailing, 'letter'))}" data-bin-select="${escapeHtml(mailingKey(mailing))}::field::letter">
-          ${['Need Print', 'Printed', 'Stuffed', 'Not Needed'].map((option) => `<option ${option === componentStatus(mailing, 'letter') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-        </select>
-      </td>
-      <td>
-        <select class="qa-select qa-${statusClass(componentStatus(mailing, 'location'))}" data-bin-select="${escapeHtml(mailingKey(mailing))}::field::location">
-          ${['Marcy', 'Ashley', 'Batch Bin', 'Mailed'].map((option) => `<option ${option === componentStatus(mailing, 'location') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-        </select>
-      </td>
-      <td>${escapeHtml(storageBinForMailing(mailing))}</td>
-    </tr>
-  `;
-}
-
 // The view registry: one entry per sidebar view (see
 // app/crm/shell/nav-items.ts, the sidebar's own source of truth - kept in
 // agreement with this object's keys by tests/nav-items.test.mjs), naming
@@ -1030,7 +845,7 @@ const VIEW_REGISTRY = {
   print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
   qa: { react: true, showStatusFilter: false, showBatchFilter: true },
   packet: { react: true, showStatusFilter: false, showBatchFilter: true },
-  bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
+  bins: { react: true, showStatusFilter: false, showBatchFilter: true },
   launch: { react: true, showStatusFilter: false, showBatchFilter: false },
   sync: { react: true, showStatusFilter: false, showBatchFilter: false },
   automation: { react: true, showStatusFilter: false, showBatchFilter: false },

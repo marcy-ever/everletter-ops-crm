@@ -3,7 +3,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { todayIso } from "@/lib/domain/mailing-rules";
-import { effectiveMailings } from "@/lib/client/selectors";
+import { effectiveMailings, type EffectiveMailing } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import {
@@ -45,6 +45,8 @@ import Qa from "./views/qa/Qa";
 import { computeQaData, printedEnvelopeStatusForMailing as qaPrintedEnvelopeStatusForMailing } from "./views/qa/qa-selectors";
 import Packet from "./views/packet/Packet";
 import { computePacketData } from "./views/packet/packet-selectors";
+import Bins from "./views/bins/Bins";
+import { computeBinsData } from "./views/bins/bins-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -125,6 +127,20 @@ import { computePacketData } from "./views/packet/packet-selectors";
 // fall back to - and neither legacy views nor Automation actually show
 // anything before state.seed loads either (nothing calls render() until
 // then), so "render nothing yet" is the existing behavior, not a new one.
+// The one, shared [data-bin-select] write handler - Ashley Bins' own
+// reference implementation (step 16, CLAUDE.md), reused as-is by Batch
+// Packet's mobile cards (wired in this same step, second commit) rather
+// than each view carrying its own copy. Plain updateComponentStatus, no
+// envelope-status fan-out - matches legacy's own real [data-bin-select]
+// handler (app/crm/legacy-app.js's former renderBins()) exactly, and is
+// now the only place this exact write shape is implemented at all.
+// notifyViewChanged() alone: legacy's own handler called renderBins()
+// only, never render() - this write never touches shell metrics.
+function updateBinComponentStatus(mailing: EffectiveMailing, field: string, value: string) {
+  updateComponentStatus(mailing, field, value);
+  notifyViewChanged();
+}
+
 const REACT_VIEWS: Record<string, () => ReactNode> = {
   automation: () => {
     const automationRules = (state.seed?.automationRules as AutomationRule[] | undefined) ?? [];
@@ -526,29 +542,27 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // component's own header for why that's real, pre-existing, and
   // preserved rather than renamed at the DOM-reaching level.
   //
-  // A real gap found while migrating, deliberately NOT fixed here: legacy's
-  // own renderPacket() rendered the mobile cards' [data-bin-select] selects
-  // but NEVER wired a change listener for them - confirmed by reading
-  // renderPacket() in full and grepping every [data-bin-select] listener in
-  // the file (exactly one exists, inside renderBins() - Ashley Bins, step
-  // 16, still legacy - for ITS OWN elements, never Packet's). Changing a
-  // mobile card's status in the live legacy app currently does nothing.
-  // An earlier version of this step wired a handler anyway, reconstructed
-  // from Ashley Bins' own [data-bin-select] mechanism - caught in review:
-  // this step's own task asserted the mobile selects write, a wrong
-  // premise, and the right move on a wrong premise is to report the
-  // conflict, not resolve it unilaterally inside a branch whose whole
-  // point is "no behavior change" - especially here, where the snapshot
-  // proof can't see the difference either way (identical markup whether
-  // the select writes or not), so a fix would have been invisible to the
-  // one safety net this migration relies on. Left inert instead -
-  // Packet.tsx's own header has the full reasoning. Wiring a real handler
-  // is Ashley Bins' (step 16) to do, off its own real, working mechanism.
+  // A real gap found while migrating (step 15), wired for real here (step
+  // 16, second commit) - **a deliberate, separately-reviewed behavior
+  // change, not a markup change.** Legacy's own renderPacket() rendered
+  // the mobile cards' [data-bin-select] selects but never wired a change
+  // listener for them; step 15 left them inert rather than reconstructing
+  // a handler with no real precedent to verify against (see Packet.tsx's
+  // own header, and that step's PR, for the full story of catching this
+  // mid-branch). onFieldChange here is updateBinComponentStatus (above) -
+  // Ashley Bins' own real, working [data-bin-select] handler, now shared
+  // rather than duplicated. **The snapshot gate does not cover this
+  // change** - packet.html stays byte-identical through this commit
+  // (value/onChange and defaultValue render identical static markup,
+  // verified in step 15), so the proof this write is correct is
+  // tests/packet-bins-select-parity.test.mjs and
+  // tests/bins-write-path.e2e.test.mjs, not a green snapshot.
   //
-  // onScopeChange calls notifyViewChanged() alone, matching legacy's own
-  // renderPacket()'s [data-packet-scope] handler (renderPacket() only) -
-  // it doesn't touch shell metrics. onPrint/onPrintEnvelopes/onOpenDriveLink
-  // are pure browser actions (matching step 9's onOpenSample precedent) -
+  // onScopeChange/onFieldChange call notifyViewChanged() alone, matching
+  // legacy's own renderPacket()'s [data-packet-scope] handler and Ashley
+  // Bins' own [data-bin-select] handler respectively - neither write
+  // touches shell metrics. onPrint/onPrintEnvelopes/onOpenDriveLink are
+  // pure browser actions (matching step 9's onOpenSample precedent) -
   // nothing rendered depends on them, so no notifyViewChanged() call at all.
   packet: () => {
     if (!state.seed) return null;
@@ -573,9 +587,52 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           state.packetScope = scope;
           notifyViewChanged();
         }}
+        onFieldChange={updateBinComponentStatus}
         onPrint={() => window.print()}
         onPrintEnvelopes={() => openEnvelopePrint(envelopePrintRows(data.rows))}
         onOpenDriveLink={(url) => openDriveLink(url)}
+      />
+    );
+  },
+  // Desktop-only, deliberately - no mobile card list here despite the
+  // view's own name (that markup lives in Batch Packet - step 15's own
+  // PR, and bins-selectors.ts's header, have the full story). onFieldChange
+  // is updateBinComponentStatus (above) - the REFERENCE implementation
+  // this migration's whole [data-bin-select] mechanism is built on, not a
+  // Bins-specific callback.
+  //
+  // onBulkMark reproduces legacy's own [data-bin-mark] handler exactly:
+  // three updateComponentStatus calls per shown row (envelope/letter/
+  // location), no confirmation/restyling/batching/undo - same rule
+  // steps 13-15's bulk buttons were migrated under, and the second of the
+  // two sets Marcy owns the decision on. notifyViewChanged() only,
+  // matching legacy's own renderBins() call, not render() - a component-
+  // status write never touches shell metrics. onPrint is a pure browser
+  // action (matching step 9's onOpenSample precedent) - no
+  // notifyViewChanged() call at all.
+  bins: () => {
+    if (!state.seed) return null;
+    const data = computeBinsData(state.seed, state.statusOverrides, state.reviewed, state.componentOverrides, state.batchFilter, state.query, todayIso(new Date()));
+    return (
+      <Bins
+        data={data}
+        onFieldChange={updateBinComponentStatus}
+        onBulkMark={(mode) => {
+          data.rows.forEach((row) => {
+            const mailing = row.mailing;
+            if (mode === "ready") {
+              updateComponentStatus(mailing, "envelope", "In Ashley Box");
+              updateComponentStatus(mailing, "letter", "Stuffed");
+              updateComponentStatus(mailing, "location", "Ashley");
+            } else {
+              updateComponentStatus(mailing, "envelope", "Need Print");
+              updateComponentStatus(mailing, "letter", "Need Print");
+              updateComponentStatus(mailing, "location", "Marcy");
+            }
+          });
+          notifyViewChanged();
+        }}
+        onPrint={() => window.print()}
       />
     );
   },
