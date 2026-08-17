@@ -34,20 +34,34 @@ listens on the standard **5432** internally
 (`devops/docker-compose.yml`: `"5433:5432"`). Which one you need depends on
 where you're connecting *from*:
 
-- **Inside the Docker network** (the app container talking to the `postgres`
+- **Inside the Docker network** (any container talking to the `postgres`
   service) - port **5432**. `devops/docker-compose.app.yml` builds the app
-  container's own `DATABASE_URL` as `postgres://...@postgres:5432/...`.
+  container's own `DATABASE_URL` as `postgres://...@postgres:5432/...`, and
+  every container spawned from that service definition - including a one-off
+  `devops/devops.sh migrate` (`compose run --rm app ...`) - gets it
+  automatically. This is why `devops.sh migrate` needs no manual URL
+  handling and works identically on a dev box and the NAS: it runs *inside*
+  the app container, never touching the host's own idea of `DATABASE_URL` at
+  all.
 - **From the host** - anything you run directly on the machine, not inside a
-  container - port **5433**. This includes `drizzle-kit migrate`
-  (`devops/devops.sh migrate` / `pnpm db:migrate`), `psql` run from the host
-  if you have a client installed, and any ad hoc script that connects via
-  `DATABASE_URL`.
+  container - port **5433**. This is `pnpm db:migrate` (`drizzle-kit`,
+  used for iterating on a migration you just generated locally - see
+  `devops/migrate/migrate.mjs`'s own header for why that script and
+  `drizzle-kit` are two different things, not the same command wrapped
+  twice), `psql` run from the host if you have a client installed, and any
+  ad hoc script that connects via `DATABASE_URL` directly.
 
-`.env.example`'s `DATABASE_URL` already points at `localhost:5433`, correctly,
-for host-side tools. **This exact mismatch is live in the NAS's
-`.env.local` right now** - its `DATABASE_URL` needs to say `5433`, not
-`5432`, or a migration run from the NAS's own shell (not from inside a
-container) connects to nothing. Check this before running `migrate` there.
+`.env.example`'s `DATABASE_URL` already points at `localhost:5433`,
+correctly, for host-side tools. **This exact mismatch was live in the NAS's
+`.env.local` at one point** (`5432` where host-side tooling needed `5433`)
+and directly contributed to a real incident - a deploy that ran for weeks
+against an unmigrated database with nothing catching it. It no longer
+matters for deploys specifically (`devops/deploy.sh` now runs migrations
+through the containerized path above, which never reads the host's
+`DATABASE_URL`), but a wrong value there would still break anything that
+*does* connect from the NAS's own host shell - worth checking directly with
+`echo $DATABASE_URL` after sourcing `.env.local` if a host-side script or
+manual `psql` connection there is ever unexpectedly refused.
 
 ## psql basics
 

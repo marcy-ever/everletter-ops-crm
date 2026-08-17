@@ -1,0 +1,9 @@
+{
+  "name": "everletter-migrate",
+  "private": true,
+  "description": "Isolated, minimal dependency set for devops/migrate/migrate.mjs - deliberately not part of the main pnpm workspace. See that file's own header for why.",
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "pg": "^8.22.0"
+  }
+}

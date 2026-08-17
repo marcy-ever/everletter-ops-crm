@@ -2,6 +2,26 @@
 set -e
 export PATH="/usr/local/bin:$PATH"
 
+# Log setup and the log/failure/success helpers come before the re-exec
+# block below, deliberately - they used to come after it. A failure inside
+# the re-exec block itself (the noexec incident this comment used to
+# describe alone - see the block's own comment now) died completely
+# silently as far as deploy.txt was concerned: LOGFILE wasn't defined yet,
+# so there was nothing to write to. deploy.txt showed nothing at all for a
+# week while deploys were actually failing on line 15, every time, looking
+# indistinguishable from "no deploy was attempted." This ERR trap now
+# covers the whole script, re-exec included, so any failure before or after
+# it gets the same real, timestamped line in deploy.txt.
+DATE=$(date +%F_%H:%M:%S)
+REPO_DIR=~/lyra/everletter-ops-crm
+LOGFILE="${REPO_DIR}/devops/deploy.txt"
+
+log()     { local msg="[${DATE}] $*";          echo "$msg"; echo "$msg" >> "$LOGFILE"; }
+success() { local msg="[${DATE}] SUCCESS: $*"; echo "$msg"; echo "$msg" >> "$LOGFILE"; }
+failure() { local msg="[${DATE}] FAILURE: $*"; echo "$msg" >&2; echo "$msg" >> "$LOGFILE"; }
+
+trap 'failure "Everletter deploy failed at line: ${LINENO}."' ERR
+
 # This script's own repo gets `git reset --hard`'d below, and bash reads a
 # running script incrementally by byte offset from disk - if `git reset`
 # replaces this file with a different-length version mid-run, bash can jump
@@ -26,16 +46,7 @@ if [ -z "${DEPLOY_SH_REEXEC:-}" ]; then
 fi
 trap 'rm -f "$0"' EXIT
 
-DATE=$(date +%F_%H:%M:%S)
-REPO_DIR=~/lyra/everletter-ops-crm
-LOGFILE="${REPO_DIR}/devops/deploy.txt"
-
-log()     { local msg="[${DATE}] $*";          echo "$msg"; echo "$msg" >> "$LOGFILE"; }
-success() { local msg="[${DATE}] SUCCESS: $*"; echo "$msg"; echo "$msg" >> "$LOGFILE"; }
-failure() { local msg="[${DATE}] FAILURE: $*"; echo "$msg" >&2; echo "$msg" >> "$LOGFILE"; }
-
 cd "$REPO_DIR"
-trap 'failure "Everletter deploy failed at line: ${LINENO}."' ERR
 
 log "=== Everletter deploy started ==="
 git fetch
@@ -44,14 +55,35 @@ git reset --hard origin/main
 
 COMPOSE="docker-compose -f devops/docker-compose.yml -f devops/docker-compose.app.yml -p everletter-ops-crm --project-directory . --env-file .env.local"
 
+# Migrations run as a one-off against the freshly pulled image, before the
+# new app container starts serving traffic - not at container start, and
+# not skipped entirely (which is how this repo ended up running for weeks
+# against a database that still had the old, pre-migration schema and
+# nothing to show for it - see app/api/health/route.ts and CLAUDE.md §7/§8).
+# `compose run --rm app` starts postgres first if it isn't already running
+# (verified directly: it respects the app service's own `depends_on:
+# postgres: condition: service_healthy`, waiting for it) and uses that same
+# service's own `environment:` block for DATABASE_URL - the correct
+# container-internal one, not a host-side value this script would have to
+# get right itself. A failed migration here is a real command failure under
+# `set -e`, so the existing `trap ... ERR` above fails the whole deploy
+# loudly, before anything user-facing changes - not a container that boots,
+# passes its healthcheck, and breaks on first real write. See
+# devops/migrate/migrate.mjs's own header for why this needs its own image
+# stage rather than reusing `drizzle-kit` (no Node toolchain lives on the
+# NAS at all - it only ever pulls this same image).
 if [ "$COMPOSE_CHANGED" -gt "0" ]; then
     log "compose files changed - full down/up..."
     $COMPOSE down
     $COMPOSE pull
+    log "Applying database migrations before starting the new app container..."
+    $COMPOSE run --rm app node devops/migrate/migrate.mjs
     $COMPOSE up -d
 else
     log "No compose changes - pulling and recreating app only..."
     $COMPOSE pull app
+    log "Applying database migrations before starting the new app container..."
+    $COMPOSE run --rm app node devops/migrate/migrate.mjs
     $COMPOSE up -d app
 fi
 

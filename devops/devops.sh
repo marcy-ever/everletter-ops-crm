@@ -67,11 +67,11 @@ require_env_file() {
 }
 
 # Loads .env.local into this process's own environment - needed for
-# subcommands (db-shell, db-clear, migrate) that talk to Postgres directly
-# rather than only through Compose, which loads --env-file itself. Same
-# `set -a; source ...; set +a` pattern CLAUDE.md's own setup instructions
-# already use by hand, so a var missing here fails the same way a manual
-# `pnpm db:migrate` run already would.
+# subcommands (db-shell, db-clear) that talk to Postgres directly via a raw
+# `docker exec`, rather than only through Compose, which loads --env-file
+# itself. `migrate` doesn't need this - it runs through Compose (`run --rm
+# app`), which resolves the container's environment from --env-file on its
+# own, the same as `up`/`up-full`/etc. already do.
 load_env_file() {
   require_env_file
   set -a
@@ -106,13 +106,18 @@ Usage: devops/devops.sh <subcommand> [args]
   restart     Recreate the app container only (e.g. after a manual image pull)
   db-shell    Open an interactive psql session inside the Postgres container
   db-clear    TRUNCATE every normalized table - asks for confirmation first
-  migrate     Run drizzle-kit migrate against DATABASE_URL from .env.local
+  migrate     Apply pending drizzle/ migrations, via the app image itself -
+              works on the NAS too, which has no Node toolchain (needs the
+              app's full environment, same as up-full/restart/ps)
   health      curl the app's /api/health endpoint and print the result
 
 See docs/postgres.md for what each database-facing subcommand actually does
-and the host-vs-container port gotcha (5433 vs 5432) that `migrate`
-(host-side DATABASE_URL) depends on getting right - db-shell/db-clear are
-unaffected, since docker exec runs psql inside the container itself.
+and the host-vs-container port gotcha (5433 vs 5432) - db-shell/db-clear/
+migrate are all unaffected by it (db-shell/db-clear run psql inside the
+Postgres container itself; migrate runs inside the app container, which
+already has the correct container-internal DATABASE_URL baked into its own
+environment). Only host-side tools connecting directly (a local psql client,
+a script reading .env.local's DATABASE_URL) need port 5433 instead of 5432.
 USAGE
 }
 
@@ -123,7 +128,18 @@ cmd_up() {
 
 cmd_up_full() {
   require_env_file
-  compose_full up -d --build
+  compose_base up -d
+  compose_full build app
+  # Same docker-compose 1.29.2 recreate bug documented in cmd_restart above
+  # (`KeyError: 'ContainerConfig'`) - a plain `up -d` after `build` still
+  # tries to recreate the app container in place if one already exists with
+  # a different image, hitting the identical failure. `rm -f` unconditionally
+  # first sidesteps it the same way: nothing left to inspect, so `up -d`
+  # only ever creates fresh. `|| true` on the stop/rm because there may be no
+  # existing app container at all (first run) - that's not a failure here.
+  compose_full stop app 2>/dev/null || true
+  compose_full rm -f app 2>/dev/null || true
+  compose_full up -d app
 }
 
 cmd_down() {
@@ -203,15 +219,23 @@ cmd_db_clear() {
 }
 
 cmd_migrate() {
-  load_env_file
-  if [ -z "${DATABASE_URL:-}" ]; then
-    echo "error: DATABASE_URL is not set in $ENV_FILE" >&2
-    exit 1
-  fi
-  # Run from REPO_ROOT regardless of caller's cwd - drizzle-kit needs its
-  # own node_modules/config resolved from there, and pnpm resolves that from
-  # the current directory, not from this script's own location.
-  (cd "$REPO_ROOT" && pnpm db:migrate)
+  require_env_file
+  # `compose run --rm app node devops/migrate/migrate.mjs`, not `pnpm
+  # db:migrate` - this has to work on the NAS, which has no Node/pnpm
+  # toolchain at all (it only ever pulls a prebuilt image). Running the
+  # migrate script inside the already-built/pulled app image itself means
+  # this subcommand needs nothing on the host but Docker - identical on a
+  # dev box and the NAS. The `app` service's own `environment:` block
+  # (devops/docker-compose.app.yml) already constructs the correct
+  # container-internal DATABASE_URL (postgres:5432, not the host's 5433 -
+  # see docs/postgres.md's port gotcha) automatically for any container
+  # spawned from it, `run` included - no manual URL construction needed
+  # here. For active schema development (iterating on a migration you just
+  # generated with `pnpm db:generate`), use `pnpm db:migrate` directly
+  # instead - it talks straight to Postgres from the host and doesn't need
+  # an image rebuild first; this subcommand is for applying
+  # already-committed migrations the same way a real deploy does.
+  compose_full run --rm app node devops/migrate/migrate.mjs
 }
 
 cmd_health() {
