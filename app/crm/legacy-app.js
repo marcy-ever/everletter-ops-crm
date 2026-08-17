@@ -54,17 +54,14 @@ import { createStalenessStore } from '@/lib/client/staleness';
 import {
   activeExceptions as selectActiveExceptions,
   availableBatchDates as selectAvailableBatchDates,
+  binStatus as selectBinStatus,
   componentStatus as selectComponentStatus,
   effectiveMailings as selectEffectiveMailings,
-  exceptionsForMailing as selectExceptionsForMailing,
   getRecipient as selectGetRecipient,
+  groupedWork,
   includesText,
   nextBatchDate as selectNextBatchDate,
-  packetProblemRows as selectPacketProblemRows,
-  packetRows as selectPacketRows,
   pastBatchDates as selectPastBatchDates,
-  qaIsReady as selectQaIsReady,
-  qaNeedsAttention as selectQaNeedsAttention,
   selectedBatchDate as selectSelectedBatchDate,
 } from '@/lib/client/selectors';
 
@@ -469,10 +466,6 @@ function envelopePrintRows(rows) {
   ));
 }
 
-function envelopePrintCount(rows) {
-  return envelopePrintRows(rows).length;
-}
-
 function envelopeHtml(rows) {
   const pages = rows.map((mailing) => {
     const lines = addressLines(mailing);
@@ -822,294 +815,8 @@ function printRow(mailing) {
   `;
 }
 
-function exceptionsForMailing(mailing) {
-  return selectExceptionsForMailing(mailing, state.seed, state.reviewed);
-}
-
 function componentStatus(mailing, field) {
   return selectComponentStatus(mailing, field, state.seed, state.reviewed, state.componentOverrides);
-}
-
-// Adapters, not architecture - see the comment above availableBatchDates()
-// for what that means and when each one goes away. Moved to
-// lib/client/selectors.ts in Phase 1 step 14 (Mailing QA - CLAUDE.md), once
-// QA needed the same ready/attention classification packetFinalRow()
-// (Batch Packet, below - still legacy, step 15/16 to migrate) already did.
-// These two disappear once Batch Packet migrates and calls the pure
-// selectors directly, same as every other adapter here.
-function qaIsReady(mailing) {
-  return selectQaIsReady(mailing, state.seed, state.reviewed, state.componentOverrides);
-}
-
-function qaNeedsAttention(mailing) {
-  return selectQaNeedsAttention(mailing, state.seed, state.reviewed, state.componentOverrides);
-}
-
-// Adapter, not architecture - see the comment above availableBatchDates()
-// for what that means and when it goes away. Moved to
-// lib/client/selectors.ts in Phase 1 step 7 (CLAUDE.md), once Launch Plan
-// needed the same derivation Batch Packet already did.
-function packetRows() {
-  return selectPacketRows(effectiveMailings(), selectedBatchDate(), state.packetScope, state.query);
-}
-
-function groupedWork(rows, keyFn, countFn = () => 1) {
-  const groups = rows.reduce((map, row) => {
-    const key = keyFn(row);
-    const existing = map.get(key) || { label: key, total: 0, remaining: 0, rows: [] };
-    existing.total += countFn(row);
-    existing.rows.push(row);
-    map.set(key, existing);
-    return map;
-  }, new Map());
-  return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
-}
-
-function packetEnvelopeGroups(rows) {
-  return groupedWork(rows, (mailing) => envelopeStockForCharacter(mailing.character), envelopeQuantityForMailing).map((group) => ({
-    ...group,
-    remaining: group.rows
-      .filter((mailing) => componentStatus(mailing, 'envelope') === 'Need Print')
-      .reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0),
-  }));
-}
-
-function packetLetterGroups(rows) {
-  return groupedWork(
-    rows,
-    (mailing) => `${titleCase(driveCharacterKey(mailing.character))} Â· Letter ${mailing.letterNumber}`,
-  ).map((group) => ({
-    ...group,
-    remaining: group.rows.filter((mailing) => componentStatus(mailing, 'letter') === 'Need Print').length,
-    missingLinks: group.rows.filter((mailing) => !letterFolderUrl(mailing)).length,
-  }));
-}
-
-function packetComponentGroups(rows, field) {
-  const dueRows = rows.filter((mailing) => componentStatus(mailing, field) !== 'Not Needed');
-  return groupedWork(dueRows, (mailing) => titleCase(driveCharacterKey(mailing.character))).map((group) => ({
-    ...group,
-    remaining: group.rows.filter((mailing) => ['Need Check', 'Need Print', 'Needs Check'].includes(componentStatus(mailing, field))).length,
-  }));
-}
-
-// Adapter, not architecture - same as packetRows() above.
-function packetProblemRows(rows) {
-  return selectPacketProblemRows(rows, state.seed, state.reviewed, state.componentOverrides);
-}
-
-function packetChecklist(rows, owner) {
-  const envelopeCount = rows.reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0);
-  const printableEnvelopeCount = envelopePrintCount(rows);
-  const letterCount = rows.length;
-  const artifactCount = rows.filter((mailing) => componentStatus(mailing, 'artifact') !== 'Not Needed').length;
-  const insertCount = rows.filter((mailing) => componentStatus(mailing, 'insert') !== 'Not Needed').length;
-  const problemCount = packetProblemRows(rows).length;
-
-  if (owner === 'Marcy') {
-    return [
-      `Print ${number(printableEnvelopeCount)} envelopes needed now by stock/color`,
-      `Print or pull ${number(letterCount)} letters by character and letter #`,
-      `Resolve ${number(problemCount)} do-not-mail rows before anything leaves`,
-      'Mark envelope and letter statuses in Mailing QA',
-    ];
-  }
-  return [
-    `Pack/check ${number(artifactCount)} artifact rows`,
-    `Pack/check ${number(insertCount)} map or insert rows`,
-    'Move finished pieces into the correct dated bin',
-    'Final scan: every mailed row must be QA Ready',
-  ];
-}
-
-function renderPacket() {
-  const batchDate = selectedBatchDate();
-  const rows = packetRows();
-  const problemRows = packetProblemRows(rows);
-  const envelopeCount = rows.reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0);
-  const printableEnvelopeCount = envelopePrintCount(rows);
-  const envelopeGroups = packetEnvelopeGroups(rows);
-  const letterGroups = packetLetterGroups(rows);
-  const artifactGroups = packetComponentGroups(rows, 'artifact');
-  const insertGroups = packetComponentGroups(rows, 'insert');
-
-  viewMount.innerHTML = `
-    <section class="data-panel packet-panel" aria-label="Batch packet">
-      <div class="panel-head">
-        <div>
-          <h3>${batchDate ? `${formatDate(batchDate)} Batch Packet` : 'Batch Packet'}</h3>
-          <p>Printable work order for the whole mailing: what to print, pack, check, hold, and mark ready.</p>
-        </div>
-        <span class="panel-count">${rows.length} mailings / ${number(envelopeCount)} envelopes</span>
-      </div>
-
-      <div class="print-summary packet-summary">
-        <div><span>Mailings</span><strong>${number(rows.length)}</strong></div>
-        <div><span>Total envelopes</span><strong>${number(envelopeCount)}</strong></div>
-        <div><span>Need print now</span><strong>${number(printableEnvelopeCount)}</strong></div>
-        <div><span>Do Not Mail</span><strong>${number(problemRows.length)}</strong></div>
-      </div>
-
-      <div class="print-toolbar" aria-label="Packet scope">
-        <span>Show:</span>
-        <button type="button" class="${state.packetScope === 'all' ? 'active' : ''}" data-packet-scope="all">All open mailings</button>
-        <button type="button" class="${state.packetScope === 'monthly' ? 'active' : ''}" data-packet-scope="monthly">Month-to-month only</button>
-      </div>
-
-      <div class="batch-actions" aria-label="Packet actions">
-        <span>Packet actions:</span>
-        <button type="button" data-packet-print>Print Packet</button>
-        <button type="button" data-packet-envelopes>Print Needed Envelopes (${number(printableEnvelopeCount)})</button>
-        <button type="button" data-drive-url="${escapeHtml(driveConfig.printReadyFolderUrl)}">Open Print-Ready Folder</button>
-      </div>
-
-      <div class="packet-grid">
-        ${packetWorkCard('Envelope Run', 'Print grouped by envelope stock so you only change paper once per group.', envelopeGroups, 'envelopes')}
-        ${packetWorkCard('Letter Run', 'Print or pull these letter files before assembly starts.', letterGroups, 'letters')}
-        ${packetWorkCard('Artifacts', 'Physical extras that need a pack/check pass.', artifactGroups, 'rows')}
-        ${packetWorkCard('Maps / Inserts', 'Character-specific inserts that should be checked before stuffing.', insertGroups, 'rows')}
-      </div>
-
-      <div class="packet-grid packet-grid-two">
-        ${packetChecklistCard('Marcy Checklist', packetChecklist(rows, 'Marcy'))}
-        ${packetChecklistCard('Ashley Checklist', packetChecklist(rows, 'Ashley'))}
-      </div>
-
-      <div class="packet-section">
-        <div class="panel-head packet-section-head">
-          <div>
-            <h3>Do Not Mail Yet</h3>
-            <p>Rows here need a decision before they go into a bin.</p>
-          </div>
-          <span class="panel-count">${problemRows.length} held</span>
-        </div>
-        <div class="table-wrap">
-          <table class="packet-table">
-            <thead>
-              <tr>
-                <th>Recipient</th>
-                <th>Character</th>
-                <th>Plan</th>
-                <th>Letter</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>${problemRows.length ? problemRows.map(packetProblemRow).join('') : '<tr><td colspan="5" class="empty-state">No held rows for this packet.</td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="packet-section">
-        <div class="panel-head packet-section-head">
-          <div>
-            <h3>Final Mailing Rows</h3>
-            <p>Use this as the physical pack list for the dated bin.</p>
-          </div>
-          <span class="panel-count">${rows.length} shown</span>
-        </div>
-        <div class="table-wrap">
-          <table class="packet-table packet-final-table">
-            <thead>
-              <tr>
-                <th>Recipient</th>
-                <th>Character</th>
-                <th>Plan</th>
-                <th>Letter</th>
-                <th>Env Qty</th>
-                <th>Envelope</th>
-                <th>Letter</th>
-                <th>Artifact</th>
-                <th>Insert</th>
-                <th>QA</th>
-              </tr>
-            </thead>
-            <tbody>${rows.length ? rows.map(packetFinalRow).join('') : '<tr><td colspan="10" class="empty-state">Nothing in this packet.</td></tr>'}</tbody>
-          </table>
-        </div>
-        <div class="mobile-card-list bins-mobile-cards">
-          ${rows.length ? rows.map(binMobileCard).join('') : '<div class="empty-state">No Ashley bin rows for this batch.</div>'}
-        </div>
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-packet-scope]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.packetScope = button.getAttribute('data-packet-scope');
-      renderPacket();
-    });
-  });
-
-  viewMount.querySelector('[data-packet-print]').addEventListener('click', () => window.print());
-  viewMount.querySelector('[data-packet-envelopes]').addEventListener('click', () => openEnvelopePrint(envelopePrintRows(rows)));
-  viewMount.querySelectorAll('[data-drive-url]').forEach((button) => {
-    button.addEventListener('click', () => openDriveLink(button.getAttribute('data-drive-url')));
-  });
-}
-
-function packetWorkCard(title, copy, groups, unit) {
-  return `
-    <article class="packet-card">
-      <div>
-        <h4>${escapeHtml(title)}</h4>
-        <p>${escapeHtml(copy)}</p>
-      </div>
-      <div class="packet-list">
-        ${groups.length ? groups.map((group) => `
-          <div>
-            <strong>${escapeHtml(group.label)}</strong>
-            <span>${number(group.total)} ${escapeHtml(unit)}${group.remaining ? ` Â· ${number(group.remaining)} open` : ''}${group.missingLinks ? ` Â· ${number(group.missingLinks)} missing links` : ''}</span>
-          </div>
-        `).join('') : '<div><strong>None</strong><span>No rows for this packet.</span></div>'}
-      </div>
-    </article>
-  `;
-}
-
-function packetChecklistCard(title, items) {
-  return `
-    <article class="packet-card packet-checklist-card">
-      <h4>${escapeHtml(title)}</h4>
-      <ul class="packet-checklist">
-        ${items.map((item) => `<li><span></span>${escapeHtml(item)}</li>`).join('')}
-      </ul>
-    </article>
-  `;
-}
-
-function packetProblemRow(mailing) {
-  const reasons = [
-    ...exceptionsForMailing(mailing).map((item) => item.reason),
-    componentStatus(mailing, 'payment') !== 'Active' ? `Payment: ${componentStatus(mailing, 'payment')}` : '',
-    componentStatus(mailing, 'qa') === 'Problem' ? 'QA marked Problem' : '',
-    !mailing.shipDate ? 'Missing ship date' : '',
-  ].filter(Boolean);
-  return `
-    <tr>
-      <td><strong>${escapeHtml(mailing.recipientName)}</strong><span>${escapeHtml(mailing.email || 'Missing email')}</span></td>
-      <td>${escapeHtml(mailing.character)}</td>
-      <td>${escapeHtml(mailing.plan)}</td>
-      <td>${escapeHtml(mailing.letterNumber)}</td>
-      <td><div class="flag-stack">${reasons.map((reason) => `<span class="flag flag-rose">${escapeHtml(reason)}</span>`).join('')}</div></td>
-    </tr>
-  `;
-}
-
-function packetFinalRow(mailing) {
-  return `
-    <tr class="${qaIsReady(mailing) ? 'qa-ready-row' : qaNeedsAttention(mailing) ? 'qa-attention-row' : ''}">
-      <td><strong>${escapeHtml(mailing.recipientName)}</strong><span>${escapeHtml(mailing.email || 'Missing email')}</span></td>
-      <td>${escapeHtml(mailing.character)}</td>
-      <td>${escapeHtml(mailing.plan)}</td>
-      <td>${escapeHtml(mailing.letterNumber)}</td>
-      <td><strong>${number(envelopeQuantityForMailing(mailing))}</strong></td>
-      <td><span class="pill status-${statusClass(componentStatus(mailing, 'envelope'))}">${escapeHtml(componentStatus(mailing, 'envelope'))}</span></td>
-      <td><span class="pill status-${statusClass(componentStatus(mailing, 'letter'))}">${escapeHtml(componentStatus(mailing, 'letter'))}</span></td>
-      <td><span class="pill status-${statusClass(componentStatus(mailing, 'artifact'))}">${escapeHtml(componentStatus(mailing, 'artifact'))}</span></td>
-      <td><span class="pill status-${statusClass(componentStatus(mailing, 'insert'))}">${escapeHtml(componentStatus(mailing, 'insert'))}</span></td>
-      <td><span class="pill status-${statusClass(componentStatus(mailing, 'qa'))}">${escapeHtml(componentStatus(mailing, 'qa'))}</span></td>
-    </tr>
-  `;
 }
 
 function binRows() {
@@ -1143,19 +850,14 @@ function binGroups(rows) {
   }));
 }
 
+// Adapter, not architecture - see the comment above availableBatchDates()
+// for what that means and when it goes away. Moved to
+// lib/client/selectors.ts in Phase 1 step 15 (Batch Packet - CLAUDE.md),
+// once Batch Packet's binMobileCard() needed the exact same classification
+// Ashley Bins' own binGroups()/renderBins()/binRow() (below, still legacy)
+// already did.
 function binStatus(mailing) {
-  const missing = [];
-  if (componentStatus(mailing, 'envelope') !== 'In Ashley Box') missing.push('Missing Envelope');
-  if (componentStatus(mailing, 'letter') !== 'Stuffed') missing.push('Missing Letter');
-  if (componentStatus(mailing, 'location') !== 'Ashley') missing.push('Wrong Location');
-
-  if (!missing.length) {
-    return { label: 'Ready in Ashley Bin', detail: 'Envelope, letter, and location are confirmed.' };
-  }
-  if (missing.length === 1) {
-    return { label: missing[0], detail: 'Fix this before mailing day.' };
-  }
-  return { label: 'Needs Bin Check', detail: missing.join(' Â· ') };
+  return selectBinStatus(mailing, state.seed, state.reviewed, state.componentOverrides);
 }
 
 function renderBins() {
@@ -1300,46 +1002,6 @@ function binRow(mailing) {
   `;
 }
 
-function binMobileCard(mailing) {
-  const status = binStatus(mailing);
-  return `
-    <article class="mobile-action-card">
-      <div class="mobile-card-head">
-        <div>
-          <strong>${escapeHtml(mailing.recipientName)}</strong>
-          <span>${formatDate(mailing.shipDate)} Â· ${escapeHtml(mailing.character)} Â· Letter ${escapeHtml(mailing.letterNumber)}</span>
-        </div>
-        <span class="pill status-${statusClass(status.label)}">${escapeHtml(status.label)}</span>
-      </div>
-      <p>${escapeHtml(status.detail)}</p>
-      <dl>
-        <div><dt>Plan</dt><dd>${escapeHtml(mailing.plan)}</dd></div>
-        <div><dt>Bin</dt><dd>${escapeHtml(storageBinForMailing(mailing))}</dd></div>
-      </dl>
-      <div class="mobile-select-grid">
-        <label>
-          <span>Envelope</span>
-          <select class="qa-select qa-${statusClass(componentStatus(mailing, 'envelope'))}" data-bin-select="${escapeHtml(mailingKey(mailing))}::field::envelope">
-            ${['Need Print', 'Printed', 'Both Printed', 'In Ashley Box', 'Not Needed'].map((option) => `<option ${option === componentStatus(mailing, 'envelope') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-          </select>
-        </label>
-        <label>
-          <span>Letter</span>
-          <select class="qa-select qa-${statusClass(componentStatus(mailing, 'letter'))}" data-bin-select="${escapeHtml(mailingKey(mailing))}::field::letter">
-            ${['Need Print', 'Printed', 'Stuffed', 'Not Needed'].map((option) => `<option ${option === componentStatus(mailing, 'letter') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-          </select>
-        </label>
-        <label>
-          <span>Location</span>
-          <select class="qa-select qa-${statusClass(componentStatus(mailing, 'location'))}" data-bin-select="${escapeHtml(mailingKey(mailing))}::field::location">
-            ${['Marcy', 'Ashley', 'Batch Bin', 'Mailed'].map((option) => `<option ${option === componentStatus(mailing, 'location') ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
-          </select>
-        </label>
-      </div>
-    </article>
-  `;
-}
-
 // The view registry: one entry per sidebar view (see
 // app/crm/shell/nav-items.ts, the sidebar's own source of truth - kept in
 // agreement with this object's keys by tests/nav-items.test.mjs), naming
@@ -1367,7 +1029,7 @@ const VIEW_REGISTRY = {
   import: { react: true, showStatusFilter: false, showBatchFilter: false },
   print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
   qa: { react: true, showStatusFilter: false, showBatchFilter: true },
-  packet: { render: renderPacket, showStatusFilter: false, showBatchFilter: true },
+  packet: { react: true, showStatusFilter: false, showBatchFilter: true },
   bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
   launch: { react: true, showStatusFilter: false, showBatchFilter: false },
   sync: { react: true, showStatusFilter: false, showBatchFilter: false },
@@ -1603,4 +1265,17 @@ export {
   // step owns or rewrites - same category as envelopePrintRows/
   // openEnvelopePrint above.
   letterFolderUrl,
+  // driveConfig/openDriveLink are Batch Print/Batch Packet/Ashley Bins'
+  // shared Drive plumbing - exported unchanged for step 15 (Batch Packet -
+  // CLAUDE.md), whose "Open Print-Ready Folder" button
+  // (driveConfig.printReadyFolderUrl) and Drive-URL click handling
+  // (openDriveLink - alerts when no URL is configured, same as every
+  // other Drive lookup in this sanitized repo) are the one piece of
+  // renderPacket()'s original logic that isn't a per-mailing lookup like
+  // letterFolderUrl above. A shared dependency app/crm/CrmApp.tsx's
+  // REACT_VIEWS.packet entry calls, not something this step owns or
+  // rewrites - same category as envelopePrintRows/openEnvelopePrint/
+  // letterFolderUrl.
+  driveConfig,
+  openDriveLink,
 };

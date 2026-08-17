@@ -7,11 +7,13 @@ import { effectiveMailings } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import {
+  driveConfig,
   envelopePrintRows,
   getRenderGeneration,
   initCrmApp,
   letterFolderUrl,
   notifyViewChanged,
+  openDriveLink,
   openEnvelopePrint,
   render,
   saveFailures,
@@ -41,6 +43,8 @@ import Queue from "./views/queue/Queue";
 import { computeQueueRows } from "./views/queue/queue-selectors";
 import Qa from "./views/qa/Qa";
 import { computeQaData, printedEnvelopeStatusForMailing as qaPrintedEnvelopeStatusForMailing } from "./views/qa/qa-selectors";
+import Packet from "./views/packet/Packet";
+import { computePacketData } from "./views/packet/packet-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -513,6 +517,75 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           data.rows.filter((row) => row.isReady).forEach((row) => updateMailingStatus(row.mailing, "Mailed"));
           render();
         }}
+      />
+    );
+  },
+  // The largest snapshot in the whole suite, and the first view whose
+  // markup ALSO carries a mobile card list under bin-themed names
+  // (PacketMobileCard, app/crm/views/packet/Packet.tsx) - see this
+  // component's own header for why that's real, pre-existing, and
+  // preserved rather than renamed at the DOM-reaching level.
+  //
+  // A real gap found while migrating, not assumed: legacy's own
+  // renderPacket() rendered the mobile cards' [data-bin-select] selects
+  // but NEVER wired a change listener for them - confirmed by reading
+  // renderPacket() in full (it wires data-packet-scope/data-packet-print/
+  // data-packet-envelopes/data-drive-url only) and grepping every
+  // [data-bin-select] listener in the file (exactly one exists, inside
+  // renderBins() - Ashley Bins, step 16, still legacy - for ITS OWN
+  // elements, never Packet's). Changing a mobile card's status in the
+  // live legacy app currently does nothing. This conflicts directly with
+  // this step's own task (requirement 3: mobile writes must produce
+  // correct POSTs) and would be worse in React than in legacy if left
+  // unwired (a controlled <select value=...> with no onChange blocks the
+  // browser's own native update, unlike legacy's silent no-op). Wired for
+  // real, reconstructed from the ONE actual precedent for this exact
+  // attribute format anywhere in the app - Ashley Bins' own handler,
+  // which calls plain updateComponentStatus unconditionally (never
+  // updateEnvelopeStatus, even for the envelope field - Bins rows are
+  // always prepaid, so the Month-to-month fan-out branch never applies
+  // there anyway). Matched exactly rather than reused QA's own
+  // envelope-branching onFieldChange, since that would be inventing
+  // behavior no real code in this app has ever had for this attribute.
+  // Reported plainly in the PR, not silently patched.
+  //
+  // onScopeChange/onFieldChange call notifyViewChanged() alone, matching
+  // legacy's own renderPacket()'s [data-packet-scope] handler (renderPacket()
+  // only) and Ashley Bins' own [data-bin-select] handler (renderBins()
+  // only) respectively - neither write touches shell metrics. onPrint/
+  // onPrintEnvelopes/onOpenDriveLink are pure browser actions (matching
+  // step 9's onOpenSample precedent) - nothing rendered depends on them,
+  // so no notifyViewChanged() call at all.
+  packet: () => {
+    if (!state.seed) return null;
+    const data = computePacketData(
+      state.seed,
+      state.statusOverrides,
+      state.reviewed,
+      state.componentOverrides,
+      state.batchFilter,
+      state.packetScope,
+      state.query,
+      todayIso(new Date()),
+      letterFolderUrl,
+      envelopePrintRows,
+    );
+    return (
+      <Packet
+        data={data}
+        packetScope={state.packetScope}
+        printReadyFolderUrl={driveConfig.printReadyFolderUrl}
+        onScopeChange={(scope) => {
+          state.packetScope = scope;
+          notifyViewChanged();
+        }}
+        onFieldChange={(mailing, field, value) => {
+          updateComponentStatus(mailing, field, value);
+          notifyViewChanged();
+        }}
+        onPrint={() => window.print()}
+        onPrintEnvelopes={() => openEnvelopePrint(envelopePrintRows(data.rows))}
+        onOpenDriveLink={(url) => openDriveLink(url)}
       />
     );
   },
