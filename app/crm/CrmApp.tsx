@@ -3,7 +3,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { todayIso } from "@/lib/domain/mailing-rules";
-import { effectiveMailings } from "@/lib/client/selectors";
+import { effectiveMailings, type EffectiveMailing } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import {
@@ -45,6 +45,8 @@ import Qa from "./views/qa/Qa";
 import { computeQaData, printedEnvelopeStatusForMailing as qaPrintedEnvelopeStatusForMailing } from "./views/qa/qa-selectors";
 import Packet from "./views/packet/Packet";
 import { computePacketData } from "./views/packet/packet-selectors";
+import Bins from "./views/bins/Bins";
+import { computeBinsData } from "./views/bins/bins-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -125,6 +127,20 @@ import { computePacketData } from "./views/packet/packet-selectors";
 // fall back to - and neither legacy views nor Automation actually show
 // anything before state.seed loads either (nothing calls render() until
 // then), so "render nothing yet" is the existing behavior, not a new one.
+// The one, shared [data-bin-select] write handler - Ashley Bins' own
+// reference implementation (step 16, CLAUDE.md), reused as-is by Batch
+// Packet's mobile cards (wired in this same step, second commit) rather
+// than each view carrying its own copy. Plain updateComponentStatus, no
+// envelope-status fan-out - matches legacy's own real [data-bin-select]
+// handler (app/crm/legacy-app.js's former renderBins()) exactly, and is
+// now the only place this exact write shape is implemented at all.
+// notifyViewChanged() alone: legacy's own handler called renderBins()
+// only, never render() - this write never touches shell metrics.
+function updateBinComponentStatus(mailing: EffectiveMailing, field: string, value: string) {
+  updateComponentStatus(mailing, field, value);
+  notifyViewChanged();
+}
+
 const REACT_VIEWS: Record<string, () => ReactNode> = {
   automation: () => {
     const automationRules = (state.seed?.automationRules as AutomationRule[] | undefined) ?? [];
@@ -576,6 +592,48 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         onPrint={() => window.print()}
         onPrintEnvelopes={() => openEnvelopePrint(envelopePrintRows(data.rows))}
         onOpenDriveLink={(url) => openDriveLink(url)}
+      />
+    );
+  },
+  // Desktop-only, deliberately - no mobile card list here despite the
+  // view's own name (that markup lives in Batch Packet - step 15's own
+  // PR, and bins-selectors.ts's header, have the full story). onFieldChange
+  // is updateBinComponentStatus (above) - the REFERENCE implementation
+  // this migration's whole [data-bin-select] mechanism is built on, not a
+  // Bins-specific callback.
+  //
+  // onBulkMark reproduces legacy's own [data-bin-mark] handler exactly:
+  // three updateComponentStatus calls per shown row (envelope/letter/
+  // location), no confirmation/restyling/batching/undo - same rule
+  // steps 13-15's bulk buttons were migrated under, and the second of the
+  // two sets Marcy owns the decision on. notifyViewChanged() only,
+  // matching legacy's own renderBins() call, not render() - a component-
+  // status write never touches shell metrics. onPrint is a pure browser
+  // action (matching step 9's onOpenSample precedent) - no
+  // notifyViewChanged() call at all.
+  bins: () => {
+    if (!state.seed) return null;
+    const data = computeBinsData(state.seed, state.statusOverrides, state.reviewed, state.componentOverrides, state.batchFilter, state.query, todayIso(new Date()));
+    return (
+      <Bins
+        data={data}
+        onFieldChange={updateBinComponentStatus}
+        onBulkMark={(mode) => {
+          data.rows.forEach((row) => {
+            const mailing = row.mailing;
+            if (mode === "ready") {
+              updateComponentStatus(mailing, "envelope", "In Ashley Box");
+              updateComponentStatus(mailing, "letter", "Stuffed");
+              updateComponentStatus(mailing, "location", "Ashley");
+            } else {
+              updateComponentStatus(mailing, "envelope", "Need Print");
+              updateComponentStatus(mailing, "letter", "Need Print");
+              updateComponentStatus(mailing, "location", "Marcy");
+            }
+          });
+          notifyViewChanged();
+        }}
+        onPrint={() => window.print()}
       />
     );
   },
