@@ -57,6 +57,16 @@
  * unchanged: same field list (COMPONENT_FIELD_OPTIONS' keys, verified
  * identical to legacy's own qaFields order by
  * tests/component-fields-parity.test.mjs), same status-value lists.
+ *
+ * binStatus moved here in Phase 1 step 15 (Batch Packet - CLAUDE.md), for
+ * exactly the same reason as qaIsReady/qaNeedsAttention: it isn't Batch
+ * Packet's own derivation at all (legacy's binMobileCard(), the mobile
+ * card list, is the one piece of renderPacket() that reaches into it),
+ * but Ashley Bins' still-legacy binGroups()/renderBins()/binRow() (step
+ * 16, next) need the identical classification - discovered by tracing
+ * binMobileCard()'s own call graph during step 15, not assumed from
+ * naming. A real promotion this step's own PR reports, not a speculative
+ * one.
  */
 
 import type { Dataset, DatasetException, DatasetMailing, DatasetRecipient, DatasetSubscription } from "../domain/dataset";
@@ -145,6 +155,30 @@ export function qaIsReady(mailing: DatasetMailing, seed: Dataset, reviewed: Set<
 export function qaNeedsAttention(mailing: DatasetMailing, seed: Dataset, reviewed: Set<string>, componentOverrides: Record<string, string>): boolean {
   const statuses = Object.keys(COMPONENT_FIELD_OPTIONS).map((field) => componentStatus(mailing, field, seed, reviewed, componentOverrides));
   return statuses.some((status) => ["Need Print", "Need Check", "Needs Check", "CC Failed", "Paused", "Problem", "Open"].includes(status));
+}
+
+export interface BinStatus {
+  label: string;
+  detail: string;
+}
+
+// A prepaid mailing's physical-storage readiness: envelope stuffed and
+// boxed, letter stuffed, and the mailing physically at Ashley's - or, if
+// not, exactly which of those three is missing (a single label naming the
+// one gap) or a generic "Needs Bin Check" once more than one is missing.
+export function binStatus(mailing: DatasetMailing, seed: Dataset, reviewed: Set<string>, componentOverrides: Record<string, string>): BinStatus {
+  const missing: string[] = [];
+  if (componentStatus(mailing, "envelope", seed, reviewed, componentOverrides) !== "In Ashley Box") missing.push("Missing Envelope");
+  if (componentStatus(mailing, "letter", seed, reviewed, componentOverrides) !== "Stuffed") missing.push("Missing Letter");
+  if (componentStatus(mailing, "location", seed, reviewed, componentOverrides) !== "Ashley") missing.push("Wrong Location");
+
+  if (!missing.length) {
+    return { label: "Ready in Ashley Bin", detail: "Envelope, letter, and location are confirmed." };
+  }
+  if (missing.length === 1) {
+    return { label: missing[0], detail: "Fix this before mailing day." };
+  }
+  return { label: "Needs Bin Check", detail: missing.join(" Â· ") };
 }
 
 export function availableBatchDates(mailings: EffectiveMailing[], today: string): string[] {
@@ -241,4 +275,34 @@ export function packetProblemRows(
       componentStatus(mailing, "qa", seed, reviewed, componentOverrides) === "Problem" ||
       !mailing.shipDate,
   );
+}
+
+export interface WorkGroup<T> {
+  label: string;
+  total: number;
+  remaining: number;
+  rows: T[];
+}
+
+// Buckets rows by an arbitrary label (envelope stock, character, a dated
+// bin key - whatever keyFn returns), summing countFn per bucket (defaults
+// to a plain row count) and sorting buckets alphabetically by label.
+// Promoted here in Phase 1 step 15 (Batch Packet - CLAUDE.md), same
+// reasoning as qaIsReady/qaNeedsAttention/binStatus above: Ashley Bins'
+// still-legacy binGroups() (step 16, next) needs the identical bucketing
+// Batch Packet's own envelope/letter/artifact/insert groupings do. Unlike
+// those three, groupedWork never read `state` in the first place - it
+// already took every input as a parameter - so it needs no adapter at
+// all; app/crm/legacy-app.js imports this exact function under its own
+// name and every existing call site keeps working unchanged.
+export function groupedWork<T>(rows: T[], keyFn: (row: T) => string, countFn: (row: T) => number = () => 1): WorkGroup<T>[] {
+  const groups = new Map<string, WorkGroup<T>>();
+  for (const row of rows) {
+    const key = keyFn(row);
+    const existing = groups.get(key) || { label: key, total: 0, remaining: 0, rows: [] };
+    existing.total += countFn(row);
+    existing.rows.push(row);
+    groups.set(key, existing);
+  }
+  return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
 }

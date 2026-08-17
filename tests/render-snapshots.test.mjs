@@ -273,7 +273,14 @@ const CASES = [
   // it's the frozen reference tests/qa-view.test.mjs compares Qa.tsx's
   // own rendered output against, under the same normalized comparison
   // every other migrated view uses.
-  ["packet", "packet", {}],
+  // "packet" was here through step 14. Removed by step 15 (Phase 1's
+  // tenth view migration, CLAUDE.md - the largest snapshot in the whole
+  // suite): moved to a real React component (app/crm/views/packet/Packet.tsx)
+  // hosted outside #viewMount entirely. tests/snapshots/packet.html is NOT
+  // deleted - it's the frozen reference tests/packet-view.test.mjs
+  // compares Packet.tsx's own rendered output against (covering both the
+  // desktop tables AND the mobile card list in one capture), under the
+  // same normalized comparison every other migrated view uses.
   ["bins", "bins", {}],
   // "launch" removed by step 7 (Phase 1's second view migration -
   // CLAUDE.md), same reasoning as "automation" below: moved to a real
@@ -350,22 +357,17 @@ for (const [snapshotName, activeView, overrides] of [...CASES].reverse()) {
 // instruction to confirm rather than assume it. Checking found the
 // opposite: renderBins() (app/crm/legacy-app.js) has no mobile-card markup at all -
 // only two desktop sections, the summary bin-group cards and the detailed
-// checklist table. The mobile card list (and the binMobileCard() function
-// that renders it) lives in renderPacket() instead, under the confusingly
-// bin-themed class name "bins-mobile-cards" and function name
-// "binMobileCard" - a real naming/placement oddity in the current code,
-// not a snapshotting gap, and not something this task fixes (no production
-// code changes). Both assertions below check what's actually true, in the
-// views that actually do it.
+// checklist table. The mobile card list lived in renderPacket() instead,
+// under the confusingly bin-themed class name "bins-mobile-cards" - a real
+// naming/placement oddity in the current code, not a snapshotting gap.
+// Migrated to React in step 15 (Batch Packet - CLAUDE.md), which is why
+// this file's own equivalent of "Batch Packet renders both the desktop
+// table and the mobile card list" moved to tests/packet-view.test.mjs
+// (Packet.tsx's own rendered output now, not this legacy sandbox) - the
+// Ashley Bins half below is unaffected (still legacy, step 16 to migrate).
 test("Ashley Bins renders its two desktop sections (summary cards and the detailed checklist table) - no mobile cards, verified rather than assumed", async () => {
   const html = await renderCase("bins", {});
   assert.match(html, /class="packet-grid bin-group-grid"/, "expected the summary bin-group cards");
   assert.match(html, /<table class="packet-table">/, "expected the desktop bin-row checklist table");
   assert.doesNotMatch(html, /mobile-card-list|binMobileCard/, "renderBins() has no mobile-card markup - if this starts matching, the finding above is stale and this test (and its comment) need updating");
-});
-
-test("Batch Packet renders both the desktop table and the mobile card list (the markup the Bins task description expected to find in Bins)", async () => {
-  const html = await renderCase("packet", {});
-  assert.match(html, /<table class="packet-table packet-final-table">/, "expected the desktop final-mailing-rows table");
-  assert.match(html, /class="mobile-card-list bins-mobile-cards"/, "expected the mobile card list container");
 });

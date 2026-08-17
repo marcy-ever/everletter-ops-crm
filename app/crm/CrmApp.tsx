@@ -7,11 +7,13 @@ import { effectiveMailings } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import {
+  driveConfig,
   envelopePrintRows,
   getRenderGeneration,
   initCrmApp,
   letterFolderUrl,
   notifyViewChanged,
+  openDriveLink,
   openEnvelopePrint,
   render,
   saveFailures,
@@ -41,6 +43,8 @@ import Queue from "./views/queue/Queue";
 import { computeQueueRows } from "./views/queue/queue-selectors";
 import Qa from "./views/qa/Qa";
 import { computeQaData, printedEnvelopeStatusForMailing as qaPrintedEnvelopeStatusForMailing } from "./views/qa/qa-selectors";
+import Packet from "./views/packet/Packet";
+import { computePacketData } from "./views/packet/packet-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -513,6 +517,65 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           data.rows.filter((row) => row.isReady).forEach((row) => updateMailingStatus(row.mailing, "Mailed"));
           render();
         }}
+      />
+    );
+  },
+  // The largest snapshot in the whole suite, and the first view whose
+  // markup ALSO carries a mobile card list under bin-themed names
+  // (PacketMobileCard, app/crm/views/packet/Packet.tsx) - see this
+  // component's own header for why that's real, pre-existing, and
+  // preserved rather than renamed at the DOM-reaching level.
+  //
+  // A real gap found while migrating, deliberately NOT fixed here: legacy's
+  // own renderPacket() rendered the mobile cards' [data-bin-select] selects
+  // but NEVER wired a change listener for them - confirmed by reading
+  // renderPacket() in full and grepping every [data-bin-select] listener in
+  // the file (exactly one exists, inside renderBins() - Ashley Bins, step
+  // 16, still legacy - for ITS OWN elements, never Packet's). Changing a
+  // mobile card's status in the live legacy app currently does nothing.
+  // An earlier version of this step wired a handler anyway, reconstructed
+  // from Ashley Bins' own [data-bin-select] mechanism - caught in review:
+  // this step's own task asserted the mobile selects write, a wrong
+  // premise, and the right move on a wrong premise is to report the
+  // conflict, not resolve it unilaterally inside a branch whose whole
+  // point is "no behavior change" - especially here, where the snapshot
+  // proof can't see the difference either way (identical markup whether
+  // the select writes or not), so a fix would have been invisible to the
+  // one safety net this migration relies on. Left inert instead -
+  // Packet.tsx's own header has the full reasoning. Wiring a real handler
+  // is Ashley Bins' (step 16) to do, off its own real, working mechanism.
+  //
+  // onScopeChange calls notifyViewChanged() alone, matching legacy's own
+  // renderPacket()'s [data-packet-scope] handler (renderPacket() only) -
+  // it doesn't touch shell metrics. onPrint/onPrintEnvelopes/onOpenDriveLink
+  // are pure browser actions (matching step 9's onOpenSample precedent) -
+  // nothing rendered depends on them, so no notifyViewChanged() call at all.
+  packet: () => {
+    if (!state.seed) return null;
+    const data = computePacketData(
+      state.seed,
+      state.statusOverrides,
+      state.reviewed,
+      state.componentOverrides,
+      state.batchFilter,
+      state.packetScope,
+      state.query,
+      todayIso(new Date()),
+      letterFolderUrl,
+      envelopePrintRows,
+    );
+    return (
+      <Packet
+        data={data}
+        packetScope={state.packetScope}
+        printReadyFolderUrl={driveConfig.printReadyFolderUrl}
+        onScopeChange={(scope) => {
+          state.packetScope = scope;
+          notifyViewChanged();
+        }}
+        onPrint={() => window.print()}
+        onPrintEnvelopes={() => openEnvelopePrint(envelopePrintRows(data.rows))}
+        onOpenDriveLink={(url) => openDriveLink(url)}
       />
     );
   },
