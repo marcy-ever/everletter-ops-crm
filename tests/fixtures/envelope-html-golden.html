@@ -1,0 +1,147 @@
+<!doctype html>
+    <html>
+      <head>
+        <title>Everletter Envelopes</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Allura&family=Anonymous+Pro&family=Caveat&family=Coming+Soon&family=Dancing+Script&family=EB+Garamond&family=Gloria+Hallelujah&family=Quicksand:wght@400;500;600&family=Schoolbell&display=swap');
+          @page { size: 7.25in 5.25in; margin: 0; }
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #1f2d2a; }
+          .envelope-page {
+            position: relative;
+            width: 7.25in;
+            height: 5.25in;
+            page-break-after: always;
+            background: #fff;
+          }
+          .return-address {
+            position: absolute;
+            top: 0.38in;
+            left: 0.45in;
+            font: 10pt Arial, sans-serif;
+            line-height: 1.25;
+            color: #4c5654;
+          }
+          .mail-to {
+            position: absolute;
+            top: 2.12in;
+            left: 1.42in;
+            width: 4.55in;
+            color: var(--envelope-color);
+            text-align: center;
+          }
+          .mail-to strong,
+          .mail-to span {
+            display: block;
+          }
+          .mail-to strong {
+            margin-bottom: 0.08in;
+            color: var(--envelope-color);
+            font-family: var(--name-font);
+            font-size: var(--name-size);
+            font-weight: 400;
+            line-height: var(--line-height);
+            letter-spacing: var(--letter-spacing);
+          }
+          .mail-to span {
+            color: var(--envelope-color);
+            font-family: var(--address-font);
+            font-size: var(--address-size);
+            font-weight: 400;
+            line-height: var(--line-height);
+            letter-spacing: var(--letter-spacing);
+          }
+          .envelope-meta {
+            display: none;
+          }
+          .corner-art {
+            position: absolute;
+            left: 0.12in;
+            bottom: 0.12in;
+            width: 0.86in;
+            max-height: 1.28in;
+            object-fit: contain;
+            object-position: left bottom;
+          }
+          .corner-art.art-harper {
+            left: 0;
+            bottom: 0;
+            width: 1.8in;
+            max-height: 1.45in;
+          }
+          .corner-art.art-oliver {
+            left: 0;
+            bottom: 0;
+            width: 1.08in;
+            max-height: 1.62in;
+          }
+          .corner-art.art-marley {
+            width: 0.95in;
+            max-height: 1.34in;
+          }
+          .corner-art.art-ringo {
+            width: 0.88in;
+            max-height: 1.28in;
+          }
+          @media screen {
+            body { background: #ecebe6; padding: 24px; }
+            .envelope-page { margin: 0 auto 24px; box-shadow: 0 8px 28px rgba(0,0,0,.16); }
+          }
+        </style>
+      </head>
+      <body>
+      <section class="envelope-page" style="--name-font:&quot;Quicksand&quot;, sans-serif;--address-font:&quot;Quicksand&quot;, sans-serif;--name-size:24pt;--address-size:17pt;--envelope-color:#8D164D;--line-height:1.35;--letter-spacing:0">
+        <img class="corner-art art-marley" src="http://localhost:3000/assets/marley-corner.png" alt="" />
+        <div class="mail-to">
+          <strong>Ava Example</strong>
+          <span>123 Main St</span><span>Springfield, IL 62704</span>
+        </div>
+        <div class="envelope-meta">Marley Â· Envelope 1 of 1 Â· Aug 15, 2026</div>
+      </section>
+    
+      <section class="envelope-page" style="--name-font:&quot;Schoolbell&quot;, cursive;--address-font:&quot;Schoolbell&quot;, cursive;--name-size:24pt;--address-size:17pt;--envelope-color:#E86600;--line-height:1.35;--letter-spacing:0">
+        <img class="corner-art art-ringo" src="http://localhost:3000/assets/ringo-corner.png" alt="" />
+        <div class="mail-to">
+          <strong>Ben Sample</strong>
+          <span>456 Oak Ave</span><span>Apt 3B, Portland, OR, 97201</span>
+        </div>
+        <div class="envelope-meta">Ringo Â· Envelope 1 of 1 Â· Sep 1, 2026</div>
+      </section>
+    
+      <section class="envelope-page" style="--name-font:&quot;Anonymous Pro&quot;, monospace;--address-font:&quot;Anonymous Pro&quot;, monospace;--name-size:15pt;--address-size:12.5pt;--envelope-color:#465FD9;--line-height:1.32;--letter-spacing:0">
+        <img class="corner-art art-harper" src="http://localhost:3000/assets/harper-corner.png" alt="" />
+        <div class="mail-to">
+          <strong>Cora Test</strong>
+          <span>Missing address</span>
+        </div>
+        <div class="envelope-meta">Harper Â· Envelope 1 of 1 Â· Aug 20, 2026</div>
+      </section>
+    
+      <section class="envelope-page" style="--name-font:&quot;Coming Soon&quot;, cursive;--address-font:&quot;Coming Soon&quot;, cursive;--name-size:16pt;--address-size:13pt;--envelope-color:#26312d;--line-height:1.35;--letter-spacing:0">
+        <img class="corner-art art-oliver" src="http://localhost:3000/assets/oliver-corner.png" alt="" />
+        <div class="mail-to">
+          <strong>Drew Instance</strong>
+          <span>789 Pine Rd</span><span>Austin, TX 78701</span>
+        </div>
+        <div class="envelope-meta">Oliver Â· Envelope 1 of 2 Â· Aug 18, 2026</div>
+      </section>
+    
+      <section class="envelope-page" style="--name-font:&quot;Coming Soon&quot;, cursive;--address-font:&quot;Coming Soon&quot;, cursive;--name-size:16pt;--address-size:13pt;--envelope-color:#26312d;--line-height:1.35;--letter-spacing:0">
+        <img class="corner-art art-oliver" src="http://localhost:3000/assets/oliver-corner.png" alt="" />
+        <div class="mail-to">
+          <strong>Drew Instance</strong>
+          <span>789 Pine Rd</span><span>Austin, TX 78701</span>
+        </div>
+        <div class="envelope-meta">Oliver Â· Envelope 2 of 2 Â· Aug 18, 2026</div>
+      </section>
+    
+      <section class="envelope-page" style="--name-font:&quot;Allura&quot;, &quot;Segoe Script&quot;, &quot;Brush Script MT&quot;, cursive;--address-font:&quot;EB Garamond&quot;, serif;--name-size:24pt;--address-size:13.5pt;--envelope-color:#3B2A1E;--line-height:1.35;--letter-spacing:0">
+        
+        <div class="mail-to">
+          <strong>Iris Adultgram</strong>
+          <span>12 Elm Ct</span><span>Boston, MA 02108</span>
+        </div>
+        <div class="envelope-meta">Penelope Â· Envelope 1 of 1 Â· Aug 22, 2026</div>
+      </section>
+    </body>
+    </html>
