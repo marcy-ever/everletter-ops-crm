@@ -6,23 +6,10 @@ import { todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings, type EffectiveMailing } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
-import {
-  driveConfig,
-  getRenderGeneration,
-  initCrmApp,
-  letterFolderUrl,
-  notifyViewChanged,
-  openDriveLink,
-  render,
-  saveFailures,
-  staleness,
-  state,
-  subscribeViewChanged,
-  updateComponentStatus,
-  updateEnvelopeStatus,
-  updateMailingStatus,
-  VIEW_REGISTRY,
-} from "./legacy-app.js";
+import { getRenderGeneration, notifyViewChanged, saveFailures, staleness, state, subscribeViewChanged, updateComponentStatus, updateEnvelopeStatus, updateMailingStatus } from "./shell/crm-app-state";
+import { render } from "./shell/render-shell";
+import { initCrmApp } from "./shell/init-crm-app";
+import { driveConfig, letterFolderUrl, openDriveLink } from "./shell/drive-links";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
 import LaunchPlan from "./views/launch-plan/LaunchPlan";
@@ -49,27 +36,31 @@ import Print from "./views/envelope-print/Print";
 import { computePrintData } from "./views/envelope-print/print-selectors";
 import { envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
 
-// Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
-// renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
-// loading it as a separate <Script> tag, AND - as of Phase 1, step 6 of
-// the app.js decomposition (CLAUDE.md) - hosts migrated React views
-// alongside the eleven still-legacy ones.
+// Mounts every CRM view. This component is the sole consumer of
+// app/crm/shell/ (init-crm-app.ts/render-shell.ts/crm-app-state.ts/
+// drive-links.ts) and hosts all twelve views, each a real React component
+// under app/crm/views/ - the end state of the app.js decomposition
+// (CLAUDE.md): Phase 1 (steps 6-17) migrated the twelve views one at a
+// time onto this same seam; Phase 2 deleted the vanilla-JS monolith
+// (app/crm/legacy-app.js) those steps migrated views OUT of, once nothing
+// legacy-rendered was left for it to hold. What's described below is that
+// end state, not a hybrid - there is no more "legacy" half of this file's
+// hosting story.
 //
 // The hosting seam, and why it's built this way:
 //
-//  - state.activeView (app/crm/legacy-app.js) stays the single source of
-//    truth for which view is showing, mutated directly by legacy nav
-//    handlers exactly as before this change. This component does NOT
-//    duplicate it into React state (a second source of truth for "which
-//    view is showing" is exactly the kind of problem this project's
-//    guidance rules out) - it OBSERVES it, via useSyncExternalStore, the
-//    real React API for subscribing to state that lives outside React's
-//    own tree. subscribeViewChanged() (lib/client/crm-state.ts, exported
-//    from legacy-app.js) is called every time app/crm/legacy-app.js's
-//    renderView() runs - i.e. every time the active view might have
-//    changed, regardless of which code path changed it - so this
-//    component doesn't need to know about individual nav-click/hash-load
-//    call sites, only that a render happened.
+//  - state.activeView (app/crm/shell/crm-app-state.ts) is the single
+//    source of truth for which view is showing, mutated directly by the
+//    shell's own nav click handlers (app/crm/shell/init-crm-app.ts). This
+//    component does NOT duplicate it into React state (a second source of
+//    truth for "which view is showing" is exactly the kind of problem
+//    this project's guidance rules out) - it OBSERVES it, via
+//    useSyncExternalStore, the real React API for subscribing to state
+//    that lives outside React's own tree. subscribeViewChanged() is
+//    called every time the shell's renderView() runs - i.e. every time
+//    the active view might have changed, regardless of which code path
+//    changed it - so this component doesn't need to know about individual
+//    nav-click/hash-load call sites, only that a render happened.
 //  - getSnapshot and getServerSnapshot are the same function
 //    (getViewSnapshot) rather than two: whatever it returns is identical
 //    at SSR time and at the moment of React's first client render
@@ -78,48 +69,35 @@ import { envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/env
 //    disagree on - using one function makes that guarantee explicit
 //    instead of hoping two separately-written functions stay in sync.
 //    The snapshot itself combines state.activeView with
-//    getRenderGeneration() (lib/client/crm-state.ts) rather than watching
-//    state.activeView alone - added in step 8 (Sync Simulator), the first
-//    interactive migrated view: a form-control change mutates
-//    state.syncSubscriberId/etc., never state.activeView, so a snapshot
-//    of state.activeView alone would never look different to
+//    getRenderGeneration() rather than watching state.activeView alone -
+//    necessary because a form-control change (e.g. Sync's inputs) mutates
+//    a different state field entirely, never state.activeView itself, so
+//    a snapshot of state.activeView alone would never look different to
 //    useSyncExternalStore's Object.is check and React would correctly (by
 //    that hook's own contract) skip re-rendering. getRenderGeneration()
 //    changes on every notifyViewChanged() call regardless of what
 //    prompted it, so the combined snapshot always looks new when a render
 //    might actually be needed. See lib/client/crm-state.ts's own header
-//    for the full before/after reasoning - this was a real gap step 6/7
-//    never hit because neither Automation nor Launch Plan had inputs.
-//  - React gets its own mount element, #reactViewMount (app/page.tsx),
-//    separate from #viewMount. Legacy code writes into #viewMount via
-//    raw innerHTML; if React also owned that same node, legacy's next
-//    innerHTML write and React's next reconciliation pass would fight
-//    over it - a real bug, not a theoretical one. Rendered via
-//    createPortal so this component's actual position in the React tree
-//    (a sibling of the legacy DOM apparatus, not inside it) doesn't have
-//    to match where its output visually needs to appear.
-//    app/crm/legacy-app.js's renderView() clears #viewMount whenever the
-//    active view is React-hosted (has no `render` function in
-//    VIEW_REGISTRY), and this component returns null - which React
-//    correctly reconciles as "remove whatever was in #reactViewMount" -
-//    for every view that isn't. Exactly one of the two mounts holds
-//    content at any moment, by construction on both sides.
-//  - VIEW_REGISTRY (app/crm/legacy-app.js) is read here too, not
-//    duplicated - a view is React-hosted according to the *same* single
-//    registry renderView() already checks, so this component and
-//    renderView() can never disagree about which views are which.
+//    for the full reasoning.
+//  - React's mount is #reactViewMount (app/page.tsx), via createPortal so
+//    this component's actual position in the React tree (a sibling of the
+//    shell's own hand-written DOM apparatus, not inside it) doesn't have
+//    to match where its output visually needs to appear. There used to be
+//    a second mount, #viewMount, that legacy render functions wrote into
+//    via raw innerHTML - removed (Phase 2) once no view wrote there
+//    anymore; #reactViewMount was always kept separate from it specifically
+//    so React reconciling a subtree legacy code just mutated out from
+//    under it could never happen - a real bug the split prevented, not a
+//    theoretical one, worth remembering even though the other half of that
+//    split is gone now.
 //
-// REACT_VIEWS (added in step 7, alongside Launch Plan) is the same lesson
-// this codebase already learned once, one layer over: step 5 replaced
-// renderView()'s per-view if-chain with VIEW_REGISTRY once enough legacy
-// views existed that the chain was real, not speculative, duplication.
-// Two React-hosted views is exactly that same moment for this dispatch -
-// a second `if (activeView === "launch") {...}` here would be the
-// beginning of the identical chain, so it's a lookup table from the
-// start instead. Each entry computes its own props from `state` (the
-// single explicit place `new Date()` is ever called for a migrated view -
-// see launch-selectors.ts's own header on why the view itself never
-// reaches for the clock) and returns the element to portal.
+// REACT_VIEWS is a lookup table (view id -> a function computing that
+// view's props from `state` and returning the element to portal) rather
+// than an if-chain - the same reasoning that made app/crm/shell/
+// view-registry.ts's VIEW_REGISTRY a table instead of per-view
+// conditionals. `new Date()` is called explicitly here, once per view that
+// needs it (see e.g. launch-selectors.ts's own header on why the view
+// itself never reaches for the clock), not inside any selector.
 //
 // Guards on `state.seed` being non-null for views that need real data:
 // Automation degrades gracefully with an empty rules array (its 7 static
@@ -166,9 +144,9 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // fix. Lazy-initializes state.syncSubscriberId/syncSubscriptionId on
   // first render exactly like the removed legacy renderSync() did inline
   // ("if (!state.syncSubscriberId) {...}") - a real `state` mutation, so
-  // it happens here (the one place besides legacy-app.js allowed to touch
-  // `state` for a React-hosted view), not inside the pure
-  // defaultSyncSubscriberId()/defaultSyncSubscriptionId() selectors those
+  // it happens here (the one place besides app/crm/shell/init-crm-app.ts
+  // allowed to touch `state` directly for a React-hosted view), not inside the
+  // pure defaultSyncSubscriberId()/defaultSyncSubscriptionId() selectors those
   // values come from. Each onXxxChange handler mirrors exactly what the
   // legacy <select>/<input> onchange handlers it replaces did: write into
   // `state`, then notifyViewChanged() - the same signal renderView()
@@ -245,9 +223,9 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // [data-review] handler called render() (renderShell() + renderView()),
   // not renderView() alone - calling only notifyViewChanged() here would
   // have silently dropped the metric-card refresh, a real regression from
-  // legacy, not just a style mismatch. render() is already exported (see
-  // legacy-app.js's own export list) and its renderView() half still ends
-  // in notifyViewChanged(), so this one call reproduces legacy's exact
+  // legacy, not just a style mismatch. render() is imported from
+  // app/crm/shell/render-shell.ts, and its renderView() half still ends in
+  // notifyViewChanged(), so this one call reproduces legacy's exact
   // behavior: the shell's counts update AND this component re-renders
   // with the reviewed exception now excluded from activeExceptions().
   //
@@ -256,10 +234,10 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // direct `state` write in this file), persist to localStorage
   // (saveReviewedExceptions - the local cache every override already
   // uses), POST to the server (saveSharedState, imported directly from
-  // lib/client/ rather than re-exported from legacy-app.js, since nothing
-  // else needs it there - unlike saveFailures/staleness, which ARE
-  // imported from legacy-app.js because they must be the exact same
-  // store instances legacy's own #saveFailureBanner/#stalenessBanner
+  // lib/client/ rather than through app/crm/shell/crm-app-state.ts, since
+  // nothing else needs it there - unlike saveFailures/staleness, which ARE
+  // imported from crm-app-state.ts because they must be the exact same
+  // store instances the shell's own #saveFailureBanner/#stalenessBanner
   // subscriptions already read from), then render(). The optimistic-
   // update shape (state mutated and rendered before the POST resolves) is
   // unchanged from legacy - see CLAUDE.md's Known Issues on
@@ -283,7 +261,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           state.reviewed.add(key);
           saveReviewedExceptions(state.reviewed);
           saveSharedState("reviewedException", key, "1", saveFailures, staleness);
-          render();
+          render(state, notifyViewChanged);
         }}
       />
     );
@@ -338,7 +316,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
             state.importPreview = null;
             state.importBusy = false;
             state.importStatus = "Imported. This is now the shared CRM data.";
-            render();
+            render(state, notifyViewChanged);
           } catch (error) {
             state.importBusy = false;
             state.importStatus = error instanceof Error ? error.message : "Could not publish that spreadsheet.";
@@ -441,11 +419,11 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         data={data}
         onStatusChange={(mailing, status) => {
           updateMailingStatus(mailing, status);
-          render();
+          render(state, notifyViewChanged);
         }}
         onBulkStatus={(status) => {
           data.rows.forEach((mailing) => updateMailingStatus(mailing, status));
-          render();
+          render(state, notifyViewChanged);
         }}
       />
     );
@@ -453,10 +431,10 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // The densest write surface migrated so far: seven independently-
   // editable component-status fields per row, across up to 180 rows, plus
   // two batch actions and a scope toggle. letterFolderUrl is imported from
-  // legacy-app.js unchanged (Drive-config lookup - see its own export
-  // comment there) and threaded into computeQaData() as an explicit
-  // function parameter, same as every other clock/dependency this seam
-  // passes in rather than letting a lib-shaped selector reach for a
+  // app/crm/shell/drive-links.ts (Drive-config lookup - see its own module
+  // header) and threaded into computeQaData() as an explicit function
+  // parameter, same as every other clock/dependency this seam passes in
+  // rather than letting a lib-shaped selector reach for a
   // global.
   //
   // onFieldChange calls notifyViewChanged() alone, not render() - reading
@@ -468,12 +446,13 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // handler also calls renderQa() only.
   //
   // onScopeChange mutates state.printScope directly - the SAME field
-  // Batch Print's still-legacy renderPrint() reads for its own scope
-  // toggle (app/crm/legacy-app.js, data-print-scope). Preserved exactly,
-  // not a bug: toggling QA's scope here changes what Batch Print shows
-  // too, next time that still-legacy view renders - the identical shape
-  // of surprise step 7 (Launch Plan) first documented for state.query/
-  // packetScope/batchFilter.
+  // the print view's own REACT_VIEWS entry (below) reads for its own
+  // scope toggle. Preserved exactly, not a bug: toggling QA's scope here
+  // changes what Batch Print shows too, next time it renders - the
+  // identical shape of surprise step 7 (Launch Plan) first documented for
+  // state.query/packetScope/batchFilter, true of two React-hosted views
+  // sharing one state field just as it was true of a React view and a
+  // still-legacy one at the time this was written.
   //
   // onMarkReady reproduces legacy's [data-qa-mark-ready] handler exactly:
   // per-row conditional writes against each row's ALREADY-COMPUTED
@@ -534,7 +513,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         onMarkMailed={() => {
           data.rows.filter((row) => row.isReady).forEach((row) => updateMailingStatus(row.mailing, "Mailed"));
-          render();
+          render(state, notifyViewChanged);
         }}
       />
     );
@@ -747,8 +726,9 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
 };
 
 // Runs initCrmApp() inside a browser-only effect specifically so nothing
-// in legacy-app.js executes during SSR, where document/window/localStorage
-// don't exist (a "use client" component's render still runs once on the
+// in app/crm/shell/init-crm-app.ts executes during SSR, where
+// document/window/localStorage don't exist (a "use client" component's
+// render still runs once on the
 // server to produce the initial HTML - only its effects are browser-only).
 // initCrmApp() itself guards against being called twice, which covers
 // React StrictMode double-invoking effects in development.
@@ -768,9 +748,8 @@ export default function CrmApp() {
   const mount = document.getElementById("reactViewMount");
   if (!mount) return null;
 
-  const entry = (VIEW_REGISTRY as Record<string, { react?: boolean }>)[activeView];
   const renderReactView = REACT_VIEWS[activeView];
-  if (!entry?.react || !renderReactView) return null;
+  if (!renderReactView) return null;
 
   return createPortal(renderReactView(), mount);
 }

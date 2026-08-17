@@ -1,8 +1,8 @@
 /**
  * Tracks whether recent writes to /api/shared-state actually reached the
  * server, and whether the initial shared-state load did - the two things
- * app/crm/legacy-app.js's UI has no visibility into today. A save that
- * fails is currently pixel-identical to one that succeeds: local state
+ * the CRM's UI had no visibility into before this store existed. A save
+ * that fails is currently pixel-identical to one that succeeds: local state
  * and localStorage update optimistically either way (see
  * lib/client/shared-state-client.ts's saveSharedState), so the only sign
  * anything went wrong is that the change quietly reverts on the next
@@ -11,11 +11,8 @@
  *
  * Pure, no DOM - same shape as the rest of lib/client/. A factory, not a
  * module-level singleton, for the same reason lib/client/crm-state.ts's
- * createCrmState() is: tests/e2e-helpers.mjs's loadAppJsSandbox() gives
- * each snapshot case a fresh legacy-app.js module instance via a
- * cache-buster, which only works if everything module-scoped state
- * depends on is created fresh inside that module too, not shared across
- * "fresh" imports via an importable singleton here.
+ * createCrmState() is - see that module's own header, and
+ * app/crm/shell/crm-app-state.ts's, for the full reasoning.
  *
  * Counts, doesn't enumerate: a bulk action can fail (or succeed) many
  * times in one click, and the UI this feeds says "12 changes couldn't be

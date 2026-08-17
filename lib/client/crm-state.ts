@@ -6,31 +6,31 @@
  * CLAUDE.md).
  *
  * createCrmState() is a factory, not a module-level singleton, and that's
- * deliberate: tests/e2e-helpers.mjs's loadAppJsSandbox() gives each snapshot
- * case a fresh legacy-app.js module instance via a `?t=<counter>`
- * cache-buster, which only works because state lives inside that
- * per-import-evaluated module. A singleton exported directly from this file
- * would be created once, the first time any specifier resolving here is
- * imported, and then be silently SHARED across every "fresh" sandbox
- * afterward - state would leak between snapshot cases even though each one
- * looks like it's calling into a brand-new app.js. app/crm/legacy-app.js
- * calls createCrmState() itself, at its own module top level, so a fresh
- * import of *that* module (which the cache-buster does guarantee) really
- * does produce a fresh state object every time. See
- * tests/crm-state-isolation.test.mjs for the test that locks this in.
+ * deliberate: app/crm/shell/crm-app-state.ts's createAppState() bundles it
+ * with createSaveFailureStore()/createStalenessStore() and exposes the
+ * factory directly, so a good number of e2e write-path tests can each get
+ * their own fresh, isolated instance with a plain function call - no
+ * shared globalThis, no module-cache trickery. A singleton exported
+ * directly from this file would defeat that: it would be created once, the
+ * first time any specifier resolving here is imported, and then be
+ * silently SHARED across every "fresh" instance a caller thought it was
+ * creating. See tests/crm-app-state-isolation.test.mjs for the test that
+ * locks this in, and app/crm/shell/crm-app-state.ts's own header for the
+ * full reasoning (including how this replaced the pre-Phase-2 sandbox's
+ * cache-busting dynamic import() trick).
  *
  * notifyViewChanged()/subscribeViewChanged() (added for the app.js
  * decomposition's Phase 1 - CLAUDE.md - once a view is React-hosted,
  * something has to tell React when it might need to re-render) exist so
  * `app/crm/CrmApp.tsx` can *observe* `state.activeView` instead of
  * duplicating it into React state - `state.activeView` stays the single
- * source of truth, mutated directly by legacy nav handlers exactly as
- * before, and this is just a signal that a mutation may have happened.
- * Deliberately colocated here rather than in a new standalone module:
- * `state.activeView` already lives on the object this factory owns, and
- * every caller that already destructures this factory's return value
- * (today, only app/crm/legacy-app.js's own module top level) gets the
- * subscription for free without a second import.
+ * source of truth, mutated directly by the shell's own nav handlers
+ * (app/crm/shell/init-crm-app.ts), and this is just a signal that a
+ * mutation may have happened. Deliberately colocated here rather than in a
+ * new standalone module: `state.activeView` already lives on the object
+ * this factory owns, and every caller that already destructures this
+ * factory's return value (app/crm/shell/crm-app-state.ts's own module top
+ * level) gets the subscription for free without a second import.
  *
  * Revised in step 8 (Sync Simulator) from what step 6 originally said
  * here - worth recording exactly what changed and why, not just the new
@@ -126,8 +126,8 @@ export interface CrmStateStore {
   updateMailingStatus(mailing: MailingLike, status: string): void;
   updateComponentStatus(mailing: MailingLike, field: string, status: string): void;
   updateEnvelopeStatus(mailing: EnvelopeMailingLike, status: string): void;
-  // Called by app/crm/legacy-app.js's renderView() every time it runs
-  // (which is every time the active view might have changed, regardless
+  // Called by app/crm/shell/render-shell.ts's renderView() every time it
+  // runs (which is every time the active view might have changed, regardless
   // of which code path changed it - nav click, hash-based initial load,
   // etc.) - a subscriber doesn't need to know why, only that it might be
   // stale. Safe to call more than necessary: a subscriber reading

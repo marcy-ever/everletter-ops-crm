@@ -12,12 +12,12 @@
  * exactly what shipped before, not a guess at what it should be.
  *
  * `id` matches a view's `data-view` attribute and its key in
- * app/crm/legacy-app.js's view registry (see renderView()) - never rename
- * these, they're persisted in window.location.hash and users have
- * bookmarks. tests/nav-items.test.mjs locks both the exact id set and this
- * exact order; a second test asserts this set matches the view registry's
- * keys exactly, so a view can never have a nav button without a renderer
- * or a renderer without a nav button.
+ * app/crm/shell/view-registry.ts's VIEW_REGISTRY - never rename these,
+ * they're persisted in window.location.hash and users have bookmarks.
+ * tests/nav-items.test.mjs locks both the exact id set and this exact
+ * order; a second test asserts this set matches VIEW_REGISTRY's keys
+ * exactly, so a view can never have a nav button without a registry entry
+ * or a registry entry without a nav button.
  */
 
 export interface NavItem {

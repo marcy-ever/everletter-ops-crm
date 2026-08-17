@@ -29,7 +29,7 @@ export default async function Home() {
         data-user-role/data-user-email: not read anywhere yet. Future
         per-feature restrictions (still pending Marcy specifying what Ashley
         should be restricted from) can read these off the DOM from
-        app/crm/legacy-app.js without another server round trip.
+        app/crm/shell/init-crm-app.ts without another server round trip.
       */}
       <div className="ops-shell" data-user-role={session?.role ?? ""} data-user-email={session?.user?.email ?? ""}>
         <aside className="sidebar">
@@ -80,11 +80,10 @@ export default async function Home() {
           </header>
 
           {/*
-            Deliberately outside #viewMount (which tests/render-snapshots.test.mjs
-            captures for all 17 committed snapshots) and independent of
-            which view is active - a save failure during a bulk action in
-            Production Queue must still be visible after switching tabs.
-            Rendered by app/crm/legacy-app.js's renderSaveFailureBanner(),
+            Independent of which view is active - a save failure during a
+            bulk action in Production Queue must still be visible after
+            switching tabs. Rendered by app/crm/shell/init-crm-app.ts via
+            app/crm/shell/banners.ts's formatSaveFailureBannerHtml(),
             subscribed to lib/client/save-failures.ts's store. Empty (and
             so invisible) whenever nothing has failed.
           */}
@@ -95,7 +94,8 @@ export default async function Home() {
             deliberately separate element - "your change didn't save" and
             "someone else changed something" are different problems and
             shouldn't share a banner (see CLAUDE.md §8's staleness item).
-            Rendered by app/crm/legacy-app.js's renderStalenessBanner(),
+            Rendered by app/crm/shell/init-crm-app.ts via
+            app/crm/shell/banners.ts's formatStalenessBannerHtml(),
             subscribed to lib/client/staleness.ts's store, fed by a
             background poll against GET /api/change-marker. Empty (and so
             invisible) unless the server's change marker has moved past
@@ -133,19 +133,16 @@ export default async function Home() {
             </label>
           </section>
 
-          <section id="viewMount"></section>
           {/*
-            React's own mount for a migrated view (Phase 1 of the app.js
-            decomposition - CLAUDE.md), separate from #viewMount on
-            purpose: legacy code writes into #viewMount via innerHTML,
-            and React reconciling a subtree something else just mutated
-            out from under it is a real bug, not a theoretical one -
-            app/crm/CrmApp.tsx portals into this element instead
-            (createPortal), and app/crm/legacy-app.js's renderView()
-            clears #viewMount when the active view is React-hosted so
-            the two mounts never both hold content at once. Empty (and
-            so invisible - no layout impact) whenever the active view is
-            still legacy-rendered.
+            React's mount for the active view (app/crm/CrmApp.tsx portals
+            into this element via createPortal). There used to be a second
+            mount, #viewMount, that legacy render functions wrote into via
+            raw innerHTML - removed once the app.js decomposition's Phase 2
+            (CLAUDE.md) deleted that monolith and nothing wrote there
+            anymore. Kept as its own element (rather than, say, rendering
+            CrmApp directly in place) mainly as a stable anchor point in
+            this markup - see app/crm/CrmApp.tsx's own header for why the
+            two-mount split existed in the first place.
           */}
           <section id="reactViewMount"></section>
         </main>

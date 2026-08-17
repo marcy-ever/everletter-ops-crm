@@ -112,7 +112,8 @@ export default async function SomePage() {
 **In `proxy.ts`**, the session is available as `req.auth` (populated by the
 `auth(...)` wrapper the whole file is built on) - e.g. `req.auth.role`.
 
-**In `app/crm/legacy-app.js`** (client-side, plain browser JS - no direct access to
+**In the CRM's client-side views** (`app/crm/views/`, all React components as
+of the app.js decomposition's Phase 1/2 - CLAUDE.md - no direct access to
 the server session): `app/page.tsx` embeds the resolved role and email as
 data attributes on the app's root element:
 
@@ -123,18 +124,14 @@ const session = await auth();
 <div className="ops-shell" data-user-role={session?.role ?? ""} data-user-email={session?.user?.email ?? ""}>
 ```
 
-Nothing in `app/crm/legacy-app.js` reads these yet. To read them from `app.js`,
-follow the same inline-ternary-in-template-literal pattern already used
-throughout the file for conditional rendering (e.g. the disabled/label
-toggle on the publish button in `renderImport()`'s Import Sheet markup:
-`${state.importBusy ? 'disabled' : ''}`). Something
-like:
-
-```js
-const userRole = document.querySelector('.ops-shell')?.dataset.userRole || '';
-// ...later, in an HTML-string-building function:
-${userRole === 'owner' ? '<button ...>Owner-only action</button>' : ''}
-```
+Nothing reads these yet. The most direct way, consistent with how
+`app/crm/shell/init-crm-app.ts` already reads other DOM state at boot: query
+the attribute once in `initCrmApp()`/`bootCrmApp()`
+(`document.querySelector(".ops-shell")?.dataset.userRole`) and store it on
+`AppState` (`app/crm/shell/crm-app-state.ts`) alongside `state`, so any
+React view can read it the same explicit-parameter way it already reads
+`state.seed`/etc. - not a new pattern, the one every view in this migration
+already uses.
 
 ## Adding a new allowed user
 
@@ -148,9 +145,9 @@ this is intentionally just an env var for now.
 
 ## NOT YET DONE: per-feature restrictions
 
-The role is resolved, attached to the session, and reachable from
-`app/crm/legacy-app.js` (see above) - but **nothing currently checks it to
-show/hide or enable/disable any specific button or feature**. Right now,
+The role is resolved and attached to the session, and reachable client-side
+the way described above - but **nothing currently checks it to show/hide or
+enable/disable any specific button or feature**. Right now,
 any allowlisted user (`owner` or `staff`, or any other role someone adds)
 gets full, identical access to everything in the CRM once past the
 allowlist gate.
@@ -162,10 +159,10 @@ not a human) should:
 
 1. Get the specific restriction requirements from Marcy first - don't
    guess at what "staff" should or shouldn't see.
-2. Read `role` from `app/crm/legacy-app.js` as shown above (or add an equivalent
-   server-side check for any restrictions that need to be enforced in
+2. Read `role` client-side as shown above (or add an equivalent server-side
+   check for any restrictions that need to be enforced in
    `app/api/shared-state/route.ts` too, not just hidden in the UI - a
    client-side-only hide is not real enforcement).
-3. Gate the relevant UI using the same inline-ternary pattern already used
-   throughout `app/crm/legacy-app.js` for conditional rendering, rather than
-   introducing a new pattern.
+3. Gate the relevant UI the normal React way (a conditional in the view
+   component reading the role off `AppState`), rather than introducing a
+   new pattern.
