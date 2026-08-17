@@ -265,7 +265,19 @@ const CASES = [
   // frozen reference tests/import-view.test.mjs compares Import.tsx's
   // own rendered output against, under the same normalized comparison
   // automation/launch/sync/samples/exceptions use.
-  ["print", "print", {}],
+  // "print" was here through step 16 - the last case in CASES, since it
+  // was the last view still legacy-rendered. Removed by step 17 (Phase
+  // 1's twelfth and final view migration, CLAUDE.md - the only view
+  // whose output lands on physical paper, deliberately migrated last):
+  // moved to a real React component (app/crm/views/envelope-print/Print.tsx)
+  // hosted outside #viewMount entirely. tests/snapshots/print.html is NOT
+  // deleted - it's the frozen reference tests/print-view.test.mjs
+  // compares Print.tsx's own rendered output against, under the same
+  // normalized comparison every other migrated view uses. Phase 1 (the
+  // app.js decomposition's twelve-view migration) is complete as of this
+  // step - no case in CASES below corresponds to a still-legacy view
+  // anymore; every removal comment in this array is now purely
+  // historical record.
   // "qa" was here through step 13. Removed by step 14 (Phase 1's ninth
   // view migration, CLAUDE.md - the densest write surface in the app):
   // moved to a real React component (app/crm/views/qa/Qa.tsx) hosted

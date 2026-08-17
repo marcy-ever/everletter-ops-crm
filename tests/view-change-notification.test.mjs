@@ -79,25 +79,27 @@ test("getRenderGeneration() increments on every notifyViewChanged() call, regard
   assert.equal(appJs.getRenderGeneration(), before + 2);
 });
 
-test("switching to a react-hosted view (automation) clears #viewMount instead of leaving the previous legacy view's content", async () => {
+// "print" (Envelope Print) was the last of the twelve views to migrate
+// (step 17, CLAUDE.md - its correctness lands on physical paper, so it
+// was deliberately migrated last). With it done, every VIEW_REGISTRY
+// entry is now { react: true } - there is no still-legacy view left to
+// demonstrate "switching to a react-hosted view clears the previous
+// legacy view's stale content" against, so that's no longer the
+// property this test can prove. What's still true and worth guarding
+// until Phase 2 deletes app/crm/legacy-app.js and this test file's own
+// sandbox harness entirely (CLAUDE.md's own "after this merges" note):
+// #viewMount stays empty across every view switch, for every view, since
+// renderView() no longer writes to it at all. A regression here (some
+// future VIEW_REGISTRY entry accidentally losing react: true, or a stray
+// direct #viewMount write) would be exactly the kind of legacy-content
+// leak the original version of this test caught.
+test("#viewMount stays empty across every view - renderView() no longer writes to it for any view, now that all twelve are react-hosted", async () => {
   const appJs = await loadAppJsSandbox(undefined, { captureRenders: true });
-  // "print" (Envelope Print) - deliberately last of the twelve views to
-  // migrate (step 17, CLAUDE.md - its correctness lands on physical
-  // paper), so it's the one still-legacy example that survives every
-  // migration step between now and the teardown branch that removes this
-  // test's own legacy-vs-react distinction entirely. "queue" was this
-  // test's original example (broke at step 13, fixed to "qa"); "qa"
-  // itself broke the same way at step 14 when THIS step made it
-  // react-hosted too - "print" is chosen specifically so this line
-  // doesn't need touching a third time. Whichever view is used here has
-  // to be still legacy-rendered (VIEW_REGISTRY[id].render, not
-  // { react: true }) or this sanity check fails correctly, by design.
-  appJs.state.activeView = "print";
   appJs.state.seed = minimalSeed();
-  appJs.renderView();
-  assert.ok(appJs.getCapturedHtml("#viewMount").length > 0, "sanity check: the legacy print view actually wrote something first");
 
-  appJs.state.activeView = "automation";
-  appJs.renderView();
-  assert.equal(appJs.getCapturedHtml("#viewMount"), "", "#viewMount must be cleared, not left showing the previous legacy view's stale content, once the active view is react-hosted");
+  for (const activeView of Object.keys(appJs.VIEW_REGISTRY)) {
+    appJs.state.activeView = activeView;
+    appJs.renderView();
+    assert.equal(appJs.getCapturedHtml("#viewMount"), "", `#viewMount should stay empty for view "${activeView}" - every VIEW_REGISTRY entry is react-hosted now`);
+  }
 });
