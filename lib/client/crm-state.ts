@@ -18,6 +18,23 @@
  * import of *that* module (which the cache-buster does guarantee) really
  * does produce a fresh state object every time. See
  * tests/crm-state-isolation.test.mjs for the test that locks this in.
+ *
+ * notifyViewChanged()/subscribeViewChanged() (added for the app.js
+ * decomposition's Phase 1 - CLAUDE.md - once a view is React-hosted,
+ * something has to tell React when it might need to re-render) exist so
+ * `app/crm/CrmApp.tsx` can *observe* `state.activeView` instead of
+ * duplicating it into React state - `state.activeView` stays the single
+ * source of truth, mutated directly by legacy nav handlers exactly as
+ * before, and this is just a signal that a mutation may have happened.
+ * Deliberately colocated here rather than in a new standalone module:
+ * `state.activeView` already lives on the object this factory owns, and
+ * every caller that already destructures this factory's return value
+ * (today, only app/crm/legacy-app.js's own module top level) gets the
+ * subscription for free without a second import. Narrow on purpose - this
+ * is specifically a "the active view may have changed" signal, not a
+ * general state-change event bus; a future view that needs to react to
+ * something else (an override changing, say) is a different, later
+ * decision, not something to over-generalize for now.
  */
 
 import type { Dataset } from "../domain/dataset";
@@ -67,6 +84,14 @@ export interface CrmStateStore {
   updateMailingStatus(mailing: MailingLike, status: string): void;
   updateComponentStatus(mailing: MailingLike, field: string, status: string): void;
   updateEnvelopeStatus(mailing: EnvelopeMailingLike, status: string): void;
+  // Called by app/crm/legacy-app.js's renderView() every time it runs
+  // (which is every time the active view might have changed, regardless
+  // of which code path changed it - nav click, hash-based initial load,
+  // etc.) - a subscriber doesn't need to know why, only that it might be
+  // stale. Safe to call more than necessary: a subscriber reading
+  // state.activeView unchanged is a correct, harmless no-op.
+  notifyViewChanged(): void;
+  subscribeViewChanged(listener: () => void): () => void;
 }
 
 function mailingMonthKey(mailing: { shipDate: string }): string {
@@ -130,5 +155,16 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     monthlyEnvelopeTargets(mailing).forEach((target) => updateComponentStatus(target, "envelope", status));
   }
 
-  return { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus };
+  const viewChangeListeners = new Set<() => void>();
+
+  function notifyViewChanged(): void {
+    viewChangeListeners.forEach((listener) => listener());
+  }
+
+  function subscribeViewChanged(listener: () => void): () => void {
+    viewChangeListeners.add(listener);
+    return () => viewChangeListeners.delete(listener);
+  }
+
+  return { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus, notifyViewChanged, subscribeViewChanged };
 }

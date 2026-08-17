@@ -134,6 +134,20 @@ export default async function Home() {
           </section>
 
           <section id="viewMount"></section>
+          {/*
+            React's own mount for a migrated view (Phase 1 of the app.js
+            decomposition - CLAUDE.md), separate from #viewMount on
+            purpose: legacy code writes into #viewMount via innerHTML,
+            and React reconciling a subtree something else just mutated
+            out from under it is a real bug, not a theoretical one -
+            app/crm/CrmApp.tsx portals into this element instead
+            (createPortal), and app/crm/legacy-app.js's renderView()
+            clears #viewMount when the active view is React-hosted so
+            the two mounts never both hold content at once. Empty (and
+            so invisible - no layout impact) whenever the active view is
+            still legacy-rendered.
+          */}
+          <section id="reactViewMount"></section>
         </main>
       </div>
 

@@ -80,7 +80,7 @@ const saveFailures = createSaveFailureStore();
 // saveFailures above - see lib/client/staleness.ts's own header for the
 // mechanism this feeds (the "someone else changed something" banner).
 const staleness = createStalenessStore();
-const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus } = createCrmState(saveFailures, staleness);
+const { state, updateMailingStatus, updateComponentStatus, updateEnvelopeStatus, notifyViewChanged, subscribeViewChanged } = createCrmState(saveFailures, staleness);
 
 const statusOrder = ['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'];
 const qaFields = [
@@ -2375,41 +2375,6 @@ function renderSync() {
   });
 }
 
-function renderAutomation() {
-  const rules = state.seed.automationRules;
-  viewMount.innerHTML = `
-    <section class="automation-layout" aria-label="Automation map">
-      <div class="automation-column">
-        <h3>Live order flow</h3>
-        <ol class="flow-list">
-          ${flowStep('1', 'Squarespace order arrives', 'Webhook or scheduled API sync captures the raw order exactly once.')}
-          ${flowStep('2', 'Match account', 'Use Squarespace customer ID first, email second. One email can own multiple subscriptions.')}
-          ${flowStep('3', 'Match subscription sequence', 'Use recipient, address, character, and plan to find the exact subscription under that account.')}
-          ${flowStep('4', 'Continue letter sequence', 'Find the highest existing letter number for that exact subscription sequence.')}
-          ${flowStep('5', 'Calculate 1st/15th batches', 'Apply the 3-day cutoff and two-letter monthly cadence automatically.')}
-          ${flowStep('6', 'Generate mailings', 'Month-to-month creates two monthly mailings. 6-month creates 12. 12-month creates 24.')}
-          ${flowStep('7', 'Gate exceptions', 'Missing dates, addresses, characters, emails, or unclear subscription matches stop before production.')}
-        </ol>
-      </div>
-      <div class="automation-column">
-        <h3>Rules to lock before connecting Squarespace</h3>
-        <div class="rule-stack">
-          ${rules.map((rule) => `<article class="rule-item"><strong>${escapeHtml(rule.rule)}</strong><p>${escapeHtml(rule.logic)}</p></article>`).join('')}
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function flowStep(icon, title, copy) {
-  return `
-    <li>
-      <span class="step-icon">${icon}</span>
-      <div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(copy)}</span></div>
-    </li>
-  `;
-}
-
 // The view registry: one entry per sidebar view (see
 // app/crm/shell/nav-items.ts, the sidebar's own source of truth - kept in
 // agreement with this object's keys by tests/nav-items.test.mjs), naming
@@ -2419,6 +2384,16 @@ function flowStep(icon, title, copy) {
 // migrating a view is now a one-place change instead of three.
 // pastBatchFilterWrap has no entry of its own: it always follows
 // batchFilterWrap's computed display, same coupling as before this step.
+//
+// `automation` is `react: true` instead of carrying a `render` function -
+// the first view migrated to a real React component (app/crm/views/
+// Automation.tsx, hosted by app/crm/CrmApp.tsx). Deliberately still a
+// full entry here, not removed from the registry: tests/nav-items.test.mjs
+// asserts this object's keys match app/crm/shell/nav-items.ts's ids
+// exactly, and that invariant (no nav button without a registry entry) is
+// exactly what protects the next eleven view migrations from the same
+// mistake - only the *shape* of a React-hosted entry changes, not whether
+// it exists.
 const VIEW_REGISTRY = {
   queue: { render: renderQueue, showStatusFilter: true, showBatchFilter: true },
   exceptions: { render: renderExceptions, showStatusFilter: false, showBatchFilter: false },
@@ -2431,7 +2406,7 @@ const VIEW_REGISTRY = {
   bins: { render: renderBins, showStatusFilter: false, showBatchFilter: true },
   launch: { render: renderLaunch, showStatusFilter: false, showBatchFilter: false },
   sync: { render: renderSync, showStatusFilter: false, showBatchFilter: false },
-  automation: { render: renderAutomation, showStatusFilter: false, showBatchFilter: false },
+  automation: { react: true, showStatusFilter: false, showBatchFilter: false },
 };
 
 function renderView() {
@@ -2442,7 +2417,23 @@ function renderView() {
   statusFilterWrap.style.display = entry?.showStatusFilter ? 'flex' : 'none';
   batchFilterWrap.style.display = entry?.showBatchFilter ? 'flex' : 'none';
   pastBatchFilterWrap.style.display = batchFilterWrap.style.display;
-  entry?.render();
+  if (entry?.render) {
+    entry.render();
+  } else {
+    // A React-hosted view (or an unrecognized activeView, same as before
+    // this change) owns nothing in #viewMount - clear it explicitly
+    // rather than leaving whatever the previous legacy view last wrote.
+    // Every legacy render() function already replaces viewMount.innerHTML
+    // wholesale on its own turn, so this is the one gap that needs
+    // covering: switching FROM a legacy view TO a React-hosted one.
+    viewMount.innerHTML = '';
+  }
+  // Tells app/crm/CrmApp.tsx a view switch may have happened, so it can
+  // re-render (and, via React's own reconciliation, clear its own mount
+  // when leaving automation) - see lib/client/crm-state.ts's own comment
+  // on notifyViewChanged() for why this lives here rather than at every
+  // individual state.activeView assignment site.
+  notifyViewChanged();
 }
 
 function render() {
@@ -2598,4 +2589,13 @@ export {
   // already wired internally.
   staleness,
   pollNow,
+  // subscribeViewChanged is a real runtime export, consumed by
+  // app/crm/CrmApp.tsx (the React-hosting seam - see its own header) to
+  // observe state.activeView without duplicating it into React state.
+  // VIEW_REGISTRY is exported for two runtime callers now, not just
+  // tests: CrmApp.tsx reads a view's `react` flag to decide whether to
+  // render anything, the same way renderView() above does - both read
+  // the one registry rather than each hand-maintaining "which views are
+  // React-hosted."
+  subscribeViewChanged,
 };
