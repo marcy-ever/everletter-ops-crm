@@ -6,7 +6,21 @@ import { todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
-import { getRenderGeneration, initCrmApp, notifyViewChanged, render, saveFailures, staleness, state, subscribeViewChanged, VIEW_REGISTRY } from "./legacy-app.js";
+import {
+  envelopePrintRows,
+  getRenderGeneration,
+  initCrmApp,
+  notifyViewChanged,
+  openEnvelopePrint,
+  render,
+  saveFailures,
+  staleness,
+  state,
+  subscribeViewChanged,
+  updateEnvelopeStatus,
+  updateMailingStatus,
+  VIEW_REGISTRY,
+} from "./legacy-app.js";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
 import LaunchPlan from "./views/launch-plan/LaunchPlan";
@@ -19,6 +33,8 @@ import Exceptions from "./views/exceptions/Exceptions";
 import { computeExceptionRows } from "./views/exceptions/exceptions-selectors";
 import Import from "./views/import/Import";
 import { computeImportData, defaultAutomationRules, readWorkbookFile } from "./views/import/import-selectors";
+import Subscribers from "./views/subscribers/Subscribers";
+import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriber } from "./views/subscribers/subscribers-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -301,6 +317,63 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
             state.importStatus = error instanceof Error ? error.message : "Could not publish that spreadsheet.";
             notifyViewChanged();
           }
+        }}
+      />
+    );
+  },
+  // The largest migrated view, and the first that reads state.query
+  // without owning the control that sets it - the shell's own
+  // #searchInput (initCrmApp()) still calls renderView() on every
+  // keystroke, which still ends in notifyViewChanged() unchanged by this
+  // migration, so the existing signal already covers a shell-driven
+  // search the same way it covers everything else. See
+  // app/crm/views/subscribers/Subscribers.tsx's own header.
+  //
+  // Three actions, two of them writes - and a real, reported finding on
+  // which signal each needs: legacy's own [data-profile-mark-envelope]/
+  // [data-profile-mark-ashley] handlers (the removed renderSubscribers())
+  // called renderSubscribers() only, never render() - even though
+  // updateEnvelopeStatus()/updateMailingStatus() mutate
+  // state.componentOverrides/statusOverrides, which renderShell()'s
+  // status-strip breakdown (effectiveMailings().filter(mailing =>
+  // mailing.status === status)) does read. Per step 10/11's own rule
+  // ("does this action's effect reach outside the view's own mount?"),
+  // this LOOKS like it should call render() - but legacy never did, and
+  // "no behavior change" means reproducing what the code actually does,
+  // not what the rule would predict. Flagged here rather than silently
+  // "fixed" by adding a render() call legacy never had.
+  //
+  // onPrintEnvelope calls the still-legacy envelopePrintRows()/
+  // openEnvelopePrint() (exported unchanged from legacy-app.js - the
+  // envelope print generator itself is step 17's, not this step's, to
+  // touch) with the exact same argument shape the removed handler used
+  // (a one-mailing array).
+  subscribers: () => {
+    if (!state.seed) return null;
+    const rows = computeSubscriberRows(state.seed, state.query);
+    const selected = selectSubscriber(rows, state.selectedSubscriberId);
+    if (selected) state.selectedSubscriberId = selected.subscriberId;
+    const profile = selected ? computeSubscriberProfile(state.seed, state.statusOverrides, state.reviewed, state.componentOverrides, selected) : null;
+    return (
+      <Subscribers
+        rows={rows}
+        selected={selected}
+        onSelect={(subscriberId) => {
+          state.selectedSubscriberId = subscriberId;
+          notifyViewChanged();
+        }}
+        profile={profile}
+        onPrintEnvelope={(mailing) => {
+          openEnvelopePrint(envelopePrintRows([mailing]));
+        }}
+        onMarkPrinted={(mailing) => {
+          updateEnvelopeStatus(mailing, printedEnvelopeStatusForMailing(mailing));
+          notifyViewChanged();
+        }}
+        onMarkAshley={(mailing) => {
+          updateEnvelopeStatus(mailing, "In Ashley Box");
+          updateMailingStatus(mailing, "Assembling");
+          notifyViewChanged();
         }}
       />
     );

@@ -163,9 +163,6 @@ const rows = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
 const seedBuilderSandbox = await loadAppJsSandbox(FIXED_NOW);
 const seed = seedBuilderSandbox.buildSeedFromSpreadsheet(rows, "synthetic-rows.json (tests/fixtures)", FIXED_NOW, AUTOMATION_RULES);
 
-const avaSubscriber = seed.subscribers.find((subscriber) => subscriber.email === "ava.example@example.test");
-assert.ok(avaSubscriber, "fixture invariant: Ava's subscriber should exist in the built seed");
-
 // Common baseline every case starts from, then overrides only what that
 // case is actually about - see the module comment above for why nothing is
 // left to app/crm/legacy-app.js's own defaults.
@@ -235,7 +232,19 @@ const CASES = [
   // "exceptions-empty-search" case that used to live at the bottom of
   // this array (alongside the other separate-states-not-separate-views
   // entries) moved there too.
-  ["subscribers", "subscribers", {}],
+  // "subscribers" was here through step 11. Removed by step 12 (Phase
+  // 1's seventh view migration, CLAUDE.md - the largest view migrated so
+  // far), same treatment as automation/launch/sync/samples/exceptions/
+  // import: moved to real React components
+  // (app/crm/views/subscribers/{Subscribers,SubscriberProfile}.tsx)
+  // hosted outside #viewMount entirely. tests/snapshots/subscribers.html
+  // and tests/snapshots/subscribers-selected.html are NOT deleted -
+  // they're the frozen references tests/subscribers-view.test.mjs
+  // compares Subscribers.tsx's own rendered output against (both cases,
+  // both including the mobile card list), under the same normalized
+  // comparison every other migrated view uses. The "subscribers-selected"
+  // case that used to live at the bottom of this array (alongside the
+  // other separate-states-not-separate-views entries) moved there too.
   // "import" was here through step 10. Removed by step 11 (Phase 1's
   // sixth view migration, CLAUDE.md), same treatment as automation/
   // launch/sync/samples/exceptions: moved to a real React component
@@ -292,7 +301,6 @@ const CASES = [
   // Separate states, not separate views (see the task this harness was built for).
   ["queue-batch-filter", "queue", { batchFilter: "2026-08-15" }],
   ["queue-status-filter", "queue", { statusFilter: "Mailed" }],
-  ["subscribers-selected", "subscribers", { selectedSubscriberId: avaSubscriber.subscriberId }],
   ["queue-search", "queue", { query: "Ringo" }],
 ];
 

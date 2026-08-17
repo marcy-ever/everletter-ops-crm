@@ -481,183 +481,6 @@ function queueRow(mailing) {
   `;
 }
 
-function renderSubscribers() {
-  const rows = state.seed.subscribers
-    .filter((subscriber) =>
-      includesText([subscriber.displayName, subscriber.email, subscriber.subscriberId, subscriber.status, subscriber.openMailings], state.query),
-    )
-    .slice(0, 80);
-  const selected = rows.find((subscriber) => subscriber.subscriberId === state.selectedSubscriberId)
-    || rows[0]
-    || null;
-  if (selected) state.selectedSubscriberId = selected.subscriberId;
-
-  viewMount.innerHTML = `
-    <section class="data-panel" aria-label="Subscribers">
-      <div class="panel-head">
-        <div>
-          <h3>Subscribers</h3>
-          <p>Stable subscriber records inferred from email and recipient data. Archived subscribers are kept, not deleted.</p>
-        </div>
-        <span class="panel-count">${rows.length} shown</span>
-      </div>
-      <div class="subscriber-layout">
-        <div class="subscriber-grid">${rows.map((subscriber) => subscriberCard(subscriber, selected?.subscriberId)).join('')}</div>
-        ${selected ? subscriberProfile(selected) : '<div class="empty-state">No subscriber selected.</div>'}
-      </div>
-    </section>
-  `;
-
-  viewMount.querySelectorAll('[data-subscriber-select]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.selectedSubscriberId = button.getAttribute('data-subscriber-select');
-      renderSubscribers();
-    });
-  });
-
-  viewMount.querySelectorAll('[data-profile-print-envelope]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const row = effectiveMailings().find((mailing) => mailingKey(mailing) === button.getAttribute('data-profile-print-envelope'));
-      if (row) openEnvelopePrint(envelopePrintRows([row]));
-    });
-  });
-
-  viewMount.querySelectorAll('[data-profile-mark-envelope]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const row = effectiveMailings().find((mailing) => mailingKey(mailing) === button.getAttribute('data-profile-mark-envelope'));
-      if (row) {
-        updateEnvelopeStatus(row, printedEnvelopeStatusForMailing(row));
-        renderSubscribers();
-      }
-    });
-  });
-
-  viewMount.querySelectorAll('[data-profile-mark-ashley]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const row = effectiveMailings().find((mailing) => mailingKey(mailing) === button.getAttribute('data-profile-mark-ashley'));
-      if (row) {
-        updateEnvelopeStatus(row, 'In Ashley Box');
-        updateMailingStatus(row, 'Assembling');
-        renderSubscribers();
-      }
-    });
-  });
-}
-
-function subscriberCard(subscriber, selectedSubscriberId = '') {
-  return `
-    <article class="subscriber-card ${subscriber.subscriberId === selectedSubscriberId ? 'subscriber-card-active' : ''}">
-      <div class="subscriber-card-head">
-        <div>
-          <h4>${escapeHtml(subscriber.displayName)}</h4>
-          <p>${escapeHtml(subscriber.email || 'Needs email')}</p>
-        </div>
-        <span class="mono">${escapeHtml(subscriber.subscriberId)}</span>
-      </div>
-      <dl>
-        <div><dt>Status</dt><dd>${escapeHtml(subscriber.status)}</dd></div>
-        <div><dt>Open</dt><dd>${number(subscriber.openMailings)}</dd></div>
-        <div><dt>Total</dt><dd>${number(subscriber.totalMailings)}</dd></div>
-        <div><dt>Issues</dt><dd>${number(subscriber.issueCount)}</dd></div>
-        <div><dt>Next ship</dt><dd>${formatDate(subscriber.nextShipDate)}</dd></div>
-      </dl>
-      <button type="button" class="profile-button" data-subscriber-select="${escapeHtml(subscriber.subscriberId)}"><span class="desktop-label">View Profile</span><span class="mobile-label">View</span></button>
-    </article>
-  `;
-}
-
-function subscriberProfile(subscriber) {
-  const rows = effectiveMailings()
-    .filter((mailing) => mailing.subscriberId === subscriber.subscriberId)
-    .sort((a, b) => (a.shipDate || '9999').localeCompare(b.shipDate || '9999') || numericLetter(a.letterNumber) - numericLetter(b.letterNumber));
-  const openRows = rows.filter((mailing) => mailing.status !== 'Mailed' && mailing.activeState === 'Active');
-  const recipientIds = new Set(rows.map((mailing) => mailing.recipientId));
-  const totalEnvelopeCount = openRows.reduce((total, mailing) => total + envelopeQuantityForMailing(mailing), 0);
-
-  return `
-    <aside class="subscriber-profile" aria-label="Subscriber profile">
-      <div class="subscriber-profile-head">
-        <div>
-          <p class="section-label">Customer Profile</p>
-          <h3>${escapeHtml(subscriber.displayName)}</h3>
-          <p>${escapeHtml(subscriber.email || 'Needs email')}</p>
-        </div>
-        <span class="panel-count">${number(openRows.length)} open</span>
-      </div>
-      <dl class="profile-stats">
-        <div><dt>Status</dt><dd>${escapeHtml(subscriber.status)}</dd></div>
-        <div><dt>Recipients</dt><dd>${number(recipientIds.size)}</dd></div>
-        <div><dt>Total mailings</dt><dd>${number(rows.length)}</dd></div>
-        <div><dt>Open envelopes</dt><dd>${number(totalEnvelopeCount)}</dd></div>
-      </dl>
-      <div class="table-wrap profile-mailings">
-        <table>
-          <thead>
-            <tr>
-              <th>Ship Date</th>
-              <th>Character</th>
-              <th>Plan</th>
-              <th>Letter</th>
-              <th>Status</th>
-              <th>Envelope Status</th>
-              <th>Envelope</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${openRows.length ? openRows.map(profileMailingRow).join('') : '<tr><td colspan="7" class="empty-state">No open mailings for this customer.</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-      <div class="mobile-card-list profile-mobile-cards">
-        ${openRows.length ? openRows.map(profileMailingCard).join('') : '<div class="empty-state">No open mailings for this customer.</div>'}
-      </div>
-    </aside>
-  `;
-}
-
-function profileMailingRow(mailing) {
-  return `
-    <tr>
-      <td>${formatDate(mailing.shipDate)}</td>
-      <td>${escapeHtml(mailing.character)}</td>
-      <td>${escapeHtml(mailing.plan)}</td>
-      <td>${escapeHtml(mailing.letterNumber)}</td>
-      <td><span class="pill status-${statusClass(mailing.status)}">${escapeHtml(mailing.status)}</span></td>
-      <td><span class="pill status-${statusClass(componentStatus(mailing, 'envelope'))}">${escapeHtml(componentStatus(mailing, 'envelope'))}</span></td>
-      <td>
-        <button type="button" class="link-button" data-profile-print-envelope="${escapeHtml(mailingKey(mailing))}">Print Envelope</button>
-        <button type="button" class="link-button" data-profile-mark-envelope="${escapeHtml(mailingKey(mailing))}">Mark Printed</button>
-        <button type="button" class="link-button" data-profile-mark-ashley="${escapeHtml(mailingKey(mailing))}">Mark At Ashley</button>
-        <span>${number(envelopeQuantityForMailing(mailing))} envelope${envelopeQuantityForMailing(mailing) === 1 ? '' : 's'}</span>
-      </td>
-    </tr>
-  `;
-}
-
-function profileMailingCard(mailing) {
-  return `
-    <article class="mobile-action-card">
-      <div class="mobile-card-head">
-        <div>
-          <strong>${formatDate(mailing.shipDate)}</strong>
-          <span>${escapeHtml(mailing.character)} Â· Letter ${escapeHtml(mailing.letterNumber)}</span>
-        </div>
-        <span class="pill status-${statusClass(mailing.status)}">${escapeHtml(mailing.status)}</span>
-      </div>
-      <dl>
-        <div><dt>Plan</dt><dd>${escapeHtml(mailing.plan)}</dd></div>
-        <div><dt>Envelope</dt><dd>${escapeHtml(componentStatus(mailing, 'envelope'))}</dd></div>
-        <div><dt>Qty</dt><dd>${number(envelopeQuantityForMailing(mailing))}</dd></div>
-      </dl>
-      <div class="mobile-card-actions">
-        <button type="button" class="link-button" data-profile-print-envelope="${escapeHtml(mailingKey(mailing))}">Print Envelope</button>
-        <button type="button" class="link-button" data-profile-mark-envelope="${escapeHtml(mailingKey(mailing))}">Mark Printed</button>
-        <button type="button" class="link-button" data-profile-mark-ashley="${escapeHtml(mailingKey(mailing))}">At Ashley</button>
-      </div>
-    </article>
-  `;
-}
-
 function getRecipient(recipientId) {
   return selectGetRecipient(recipientId, state.seed);
 }
@@ -1806,7 +1629,7 @@ function binMobileCard(mailing) {
 const VIEW_REGISTRY = {
   queue: { render: renderQueue, showStatusFilter: true, showBatchFilter: true },
   exceptions: { react: true, showStatusFilter: false, showBatchFilter: false },
-  subscribers: { render: renderSubscribers, showStatusFilter: false, showBatchFilter: false },
+  subscribers: { react: true, showStatusFilter: false, showBatchFilter: false },
   samples: { react: true, showStatusFilter: false, showBatchFilter: false },
   import: { react: true, showStatusFilter: false, showBatchFilter: false },
   print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
@@ -1980,14 +1803,18 @@ export {
   // COMPONENT_FIELD_OPTIONS exactly - not consumed by any runtime caller.
   statusOrder,
   qaFields,
-  // Exported only for tests/save-failure-banner.test.mjs, which drives
-  // the real save -> lib/client/shared-state-client.ts ->
-  // lib/client/save-failures.ts -> renderSaveFailureBanner() pipeline
-  // end to end (updateMailingStatus, a real bulk-action-shaped call site)
-  // and inspects/drives the failure store directly (saveFailures) -
-  // neither consumed by any runtime caller beyond what's already wired
-  // internally.
+  // updateMailingStatus/updateEnvelopeStatus were exported only for
+  // tests/save-failure-banner.test.mjs (which drives the real save ->
+  // lib/client/shared-state-client.ts -> lib/client/save-failures.ts ->
+  // renderSaveFailureBanner() pipeline end to end, using
+  // updateMailingStatus as a real bulk-action-shaped call site) until
+  // step 12 (Subscribers - CLAUDE.md): app/crm/CrmApp.tsx's
+  // REACT_VIEWS.subscribers entry now calls both for real, for the
+  // profile pane's "Mark Printed"/"Mark At Ashley" actions - the same
+  // already-standard write-through mutators every other write path in
+  // this file already used, not a new mechanism.
   updateMailingStatus,
+  updateEnvelopeStatus,
   saveFailures,
   // Exported only for tests/staleness-banner.test.mjs, which drives the
   // real load/save -> lib/client/shared-state-client.ts ->
@@ -2014,4 +1841,16 @@ export {
   notifyViewChanged,
   subscribeViewChanged,
   getRenderGeneration,
+  // envelopePrintRows/openEnvelopePrint are the envelope print generator
+  // (envelopeHtml, the per-character styling, and everything else that
+  // path depends on) - explicitly OUT of scope for step 12 (Subscribers)
+  // to migrate or rewrite; that's step 17 (Envelope Print), deliberately
+  // last since its correctness lands on physical paper. Exported here
+  // completely unchanged, purely so app/crm/CrmApp.tsx's
+  // REACT_VIEWS.subscribers entry can call them for the profile pane's
+  // "Print Envelope" action exactly as the removed legacy handler did
+  // (openEnvelopePrint(envelopePrintRows([row]))) - a shared dependency
+  // this step calls, not something it owns.
+  envelopePrintRows,
+  openEnvelopePrint,
 };
