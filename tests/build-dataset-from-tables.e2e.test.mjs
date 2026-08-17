@@ -13,13 +13,13 @@
 // parallel by default, and there's only one physical database, not one per
 // file) - see docs/testing.md.
 //
-// Flow: parse the real spreadsheet through the REAL app/crm/legacy-app.js
-// (loadAppJsSandbox(), same helper tests/ids.test.mjs uses) to get the
-// client-computed seed -> write it through the REAL lib/write-to-tables.ts
-// writeImport() into the real normalized tables -> call the REAL
-// buildDatasetFromTables() to reconstruct a seed from those tables ->
-// deep-compare every field of every record in both, reporting every
-// discrepancy, not just the first.
+// Flow: parse the real spreadsheet through the REAL
+// buildSeedFromSpreadsheet() (lib/domain/spreadsheet/build-seed.ts) to get
+// the client-computed seed -> write it through the REAL
+// lib/write-to-tables.ts writeImport() into the real normalized tables ->
+// call the REAL buildDatasetFromTables() to reconstruct a seed from those
+// tables -> deep-compare every field of every record in both, reporting
+// every discrepancy, not just the first.
 //
 // Both the client-side and reconstruction "now" are pinned to the exact
 // same instant (see fixedNow below), so summary.asOf/overdue/dueNext14Days
@@ -29,7 +29,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { buildSeedFromSpreadsheet } from "../lib/domain/spreadsheet/build-seed.ts";
 
 // Deep, key-based comparison rather than blind positional comparison: some
 // entities legitimately have fewer records in the reconstruction than in
@@ -132,14 +133,13 @@ test("buildDatasetFromTables reconstructs the real spreadsheet identically to ap
   const fixedNow = new Date("2026-08-12T15:00:00.000Z");
   const sourceFile = "Import_20260812_181828.xlsx";
 
-  await t.test("build the client seed from the real spreadsheet via the real sandboxed app.js", async () => {
+  await t.test("build the client seed from the real spreadsheet via the real buildSeedFromSpreadsheet()", async () => {
     // no-op wrapper, just for readable test output ordering
   });
 
   const rows = loadSpreadsheetRows();
 
-  const appJs = await loadAppJsSandbox(fixedNow);
-  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, sourceFile, fixedNow, []);
+  const clientSeed = buildSeedFromSpreadsheet(rows, sourceFile, fixedNow, []);
 
   await truncateAllTables(db);
   await writeImport(clientSeed, db);

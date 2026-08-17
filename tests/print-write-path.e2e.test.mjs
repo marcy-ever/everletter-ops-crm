@@ -34,7 +34,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { installLocalStorageStub } from "./shell-test-helpers.mjs";
 import { componentKey, mailingKey } from "../lib/domain/keys.ts";
 import { printedEnvelopeStatusForMailing as qaPrintedEnvelopeStatusForMailing } from "../app/crm/views/qa/qa-selectors.ts";
 import { computePrintData } from "../app/crm/views/envelope-print/print-selectors.ts";
@@ -139,8 +141,7 @@ async function importSeed(POST, seed, sourceName) {
 
 // Same wireFetchToRealRoute/waitForFetches technique as steps 10-16's own
 // e2e write-path files - see any of their headers for why a bare
-// setTimeout(resolve, 0) flush isn't enough once fetch does real I/O. Must
-// be wired AFTER loadAppJsSandbox(), which stubs globalThis.fetch itself.
+// setTimeout(resolve, 0) flush isn't enough once fetch does real I/O.
 function wireFetchToRealRoute(POST) {
   const pending = [];
   globalThis.fetch = (url, options = {}) => {
@@ -170,7 +171,8 @@ test("the per-row status select writes through updateMailingStatus - one audit r
   const seed = buildSeed([spec]);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
   const mailing = seed.mailings[0];
 
@@ -199,7 +201,8 @@ test("the per-row envelope-status select writes through updateEnvelopeStatus spe
   const seed = buildSeed([spec]);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
   const mailing = seed.mailings[0];
 
@@ -242,7 +245,8 @@ test("onMarkEnvelopesPrinted at scale writes exactly one audit row per shown row
   const seed = buildSeed(specs);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
   // See the single-row envelope-write test above for why this is required
   // for a Month-to-month mailing specifically.
@@ -279,7 +283,8 @@ test("onMarkEnvelopesPrinted writes 'Printed' (not 'Both Printed') for a non-Mon
   const seed = buildSeed([spec]);
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST);
 
   const data = computePrintData(seed, {}, new Set(), {}, "all", "all", "all", "", "2026-08-12", EMPTY_DRIVE_CONFIG);

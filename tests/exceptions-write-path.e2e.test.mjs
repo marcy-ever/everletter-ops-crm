@@ -28,11 +28,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
 import { exceptionReviewKey } from "../lib/domain/keys.ts";
 import { activeExceptions } from "../lib/client/selectors.ts";
 import { loadSharedState, saveSharedState } from "../lib/client/shared-state-client.ts";
 import { saveReviewedExceptions } from "../lib/client/local-overrides.ts";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { render } from "../app/crm/shell/render-shell.ts";
+import { bootCrmApp } from "../app/crm/shell/init-crm-app.ts";
+import { formatSaveFailureBannerHtml } from "../app/crm/shell/banners.ts";
+import { installLocalStorageStub, installShellDomStub } from "./shell-test-helpers.mjs";
 
 const skip = e2eSkipReason({ requiresFixture: false });
 
@@ -182,7 +187,9 @@ test("clicking Reviewed sends the correct POST body, removes the exception from 
   const exception = { exceptionId: "EXC-1", reason: "Missing email", mailingId: spec.mailingId, subscriberId: spec.subscriberId, shipDate: spec.shipDate, sourceRow: spec.sourceRow };
   await importSeed(POST, buildSeed([spec], { exceptions: [exception] }), "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  const domStub = installShellDomStub();
+  const sandbox = createAppState();
+  bootCrmApp(sandbox);
   const capturedBodies = [];
   const { waitForFetches } = wireFetchToRealRoute(POST, GET, capturedBodies);
   await loadSharedState(sandbox.state, sandbox.saveFailures, sandbox.staleness);
@@ -194,12 +201,12 @@ test("clicking Reviewed sends the correct POST body, removes the exception from 
   );
   assert.equal(activeExceptions(sandbox.state.seed, sandbox.state.reviewed).length, 1, "fixture invariant: the exception starts unreviewed");
   // A real page load calls render() right after loadSharedState() resolves
-  // (see legacy-app.js's initializeCrm()) - loadSharedState() alone never
-  // touches #metrics, so this establishes the real "before" baseline the
-  // same way a real page load would, rather than comparing against an
-  // never-yet-rendered empty string.
-  sandbox.render();
-  const metricsBefore = sandbox.getCapturedHtml("#metrics");
+  // (see app/crm/shell/init-crm-app.ts's bootCrmApp()) - loadSharedState()
+  // alone never touches #metrics, so this establishes the real "before"
+  // baseline the same way a real page load would, rather than comparing
+  // against an never-yet-rendered empty string.
+  render(sandbox.state, sandbox.notifyViewChanged);
+  const metricsBefore = domStub.getCapturedHtml("#metrics");
   assert.match(metricsBefore, /Needs review<\/span>\s*<strong>1<\/strong>/);
 
   // Mirrors app/crm/CrmApp.tsx's REACT_VIEWS.exceptions onReview handler
@@ -209,7 +216,7 @@ test("clicking Reviewed sends the correct POST body, removes the exception from 
   saveSharedState("reviewedException", key, "1", sandbox.saveFailures, sandbox.staleness);
   await waitForFetches();
   await flush();
-  sandbox.render();
+  render(sandbox.state, sandbox.notifyViewChanged);
 
   // 1. the correct POST body
   assert.equal(capturedBodies.length, 1);
@@ -220,7 +227,7 @@ test("clicking Reviewed sends the correct POST body, removes the exception from 
 
   // 3. the shell's "Needs review" metric refreshed too - the reason the
   // handler calls render(), not just notifyViewChanged() (see CrmApp.tsx).
-  const metricsAfter = sandbox.getCapturedHtml("#metrics");
+  const metricsAfter = domStub.getCapturedHtml("#metrics");
   assert.match(metricsAfter, /Needs review<\/span>\s*<strong>0<\/strong>/);
 
   // 4. exactly one audit row
@@ -233,7 +240,7 @@ test("clicking Reviewed sends the correct POST body, removes the exception from 
   // 5. survives a reload: a fresh sandbox, loaded fresh from the server,
   // must exclude this exception too - not just this sandbox's own
   // in-memory state.
-  const freshSandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  const freshSandbox = createAppState();
   wireFetchToRealRoute(POST, GET, []);
   await loadSharedState(freshSandbox.state, freshSandbox.saveFailures, freshSandbox.staleness);
   assert.ok(freshSandbox.state.reviewed.has(key), "the review must persist server-side, not just in this tab's own state/localStorage");
@@ -250,7 +257,8 @@ test("a rejected save (malformed review key) surfaces in the save-failure banner
   await freshDb();
   const { POST, GET } = await loadRoute();
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   const { waitForFetches } = wireFetchToRealRoute(POST, GET, []);
 
   // A 2-segment key - lib/validate-shared-state.ts rejects anything that
@@ -264,5 +272,5 @@ test("a rejected save (malformed review key) surfaces in the save-failure banner
 
   const snapshot = sandbox.saveFailures.getSnapshot();
   assert.equal(snapshot.failedSaveCount, 1);
-  assert.match(sandbox.getCapturedHtml("#saveFailureBanner"), /1 change couldn.{1,8}t be saved/);
+  assert.match(formatSaveFailureBannerHtml(snapshot), /1 change couldn.{1,8}t be saved/);
 });

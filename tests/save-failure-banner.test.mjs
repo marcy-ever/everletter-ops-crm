@@ -1,53 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadAppJsSandbox } from "./e2e-helpers.mjs";
+import { formatSaveFailureBannerHtml } from "../app/crm/shell/banners.ts";
+import { createSaveFailureStore } from "../lib/client/save-failures.ts";
 
-// Drives the real pipeline this task adds end to end: a mutator in
-// lib/client/crm-state.ts (updateMailingStatus) -> saveSharedState()
-// (lib/client/shared-state-client.ts) -> the SaveFailureStore
-// (lib/client/save-failures.ts, exported from app/crm/legacy-app.js as
-// `saveFailures` for exactly this purpose) -> renderSaveFailureBanner(),
-// subscribed in initCrmApp() -> #saveFailureBanner's real innerHTML, read
-// back via loadAppJsSandbox's captureRenders/getCapturedHtml (the same
-// mechanism tests/render-snapshots.test.mjs already trusts for #viewMount).
-//
-// globalThis.fetch is stubbed unconditionally by loadAppJsSandbox() to
-// `async () => ({ ok: false, json: async () => ({}) })` - every save
-// driven through updateMailingStatus in this file therefore fails via the
-// HTTP (resolved, not-ok) path specifically, never the network (rejected
-// fetch) path - the stub resolves, it never throws. That covers the "http"
-// cause directly and thoroughly; the "network" cause and a genuinely
-// successful save are both exercised by calling saveFailures'
-// recordSaveFailure/recordSaveSuccess directly instead (same technique the
-// load-failure tests below already use), since this sandbox's fetch can't
-// produce either outcome.
-//
-// saveSharedState's fetch chain resolves asynchronously (a .then off the
-// fetch promise, itself awaiting response.json() inside readErrorMessage),
-// so every call here needs to let a real macrotask turn pass before reading
-// the banner - a fixed number of chained microtask awaits (Promise.resolve())
-// undercounted the actual chain length and left the banner still empty at
-// assertion time. Matches tests/shared-state-client-failures.test.mjs's own
-// `setTimeout(resolve, 0)` wait for the same reason.
-async function flush() {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
+// Drives the real pipeline this feature adds end to end, minus the actual
+// DOM write: a SaveFailureStore (lib/client/save-failures.ts) mutated
+// directly (recordSaveFailure/recordSaveSuccess/recordLoadFailure) ->
+// formatSaveFailureBannerHtml() (app/crm/shell/banners.ts), asserted on the
+// returned HTML string directly. Before Phase 2 (the app.js decomposition's
+// monolith deletion - CLAUDE.md), this had to go through
+// tests/e2e-helpers.mjs's loadAppJsSandbox() and read back
+// #saveFailureBanner's captured innerHTML, because
+// app/crm/legacy-app.js's renderSaveFailureBanner() mixed the copy/
+// formatting logic with the actual DOM write. Splitting the pure half out
+// (app/crm/shell/banners.ts's own header explains why) means every test
+// here needs neither a DOM stub nor updateMailingStatus/a real POST at
+// all - just a store and the formatter. app/crm/shell/init-crm-app.ts's
+// own thin DOM-writing wrapper (subscribed to this same store) is what
+// still needs a real element to write into - not covered here, since
+// nothing about ITS correctness is in question once the formatter itself
+// is proven right.
 function mailing(sourceRow) {
   return { mailingId: "MAIL-1", sourceRow };
 }
 
-test("no failures: the banner renders nothing", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  assert.equal(sandbox.getCapturedHtml("#saveFailureBanner"), "");
+test("no failures: the formatter renders nothing", () => {
+  const store = createSaveFailureStore();
+  assert.equal(formatSaveFailureBannerHtml(store.getSnapshot()), "");
 });
 
-test("a single failed save: singular wording, counted as one, includes the server's message, and gives HTTP-rejection guidance (not connectivity advice)", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  sandbox.updateMailingStatus(mailing(1), "Mailed");
-  await flush();
+test("a single failed save: singular wording, counted as one, includes the server's message, and gives HTTP-rejection guidance (not connectivity advice)", () => {
+  const store = createSaveFailureStore();
+  store.recordSaveFailure("mailingStatus", "MAIL-1::2", "Row not found", "http");
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(store.getSnapshot());
   // The banner HTML-escapes its text (escapeHtml), so a literal "'" in the
   // rendered wording comes back as "&#039;" - matched here without the
   // apostrophe rather than against the escaped entity, so this test isn't
@@ -56,21 +42,18 @@ test("a single failed save: singular wording, counted as one, includes the serve
   assert.match(html, /It only exists on this device/);
   assert.match(html, /reloading this page will lose it/);
   assert.doesNotMatch(html, /changes couldn.{1,8}t be saved/, "must use singular \"change\", not plural, for a count of one");
-  // The sandbox's stubbed fetch resolves ok:false (an HTTP rejection, not a
-  // dropped connection) - the guidance sentence must say so, not tell the
-  // user to wait for connectivity, which would be wrong for this failure.
   assert.match(html, /The server refused it/);
   assert.doesNotMatch(html, /once you.{1,8}re back online/, "an HTTP rejection must not get network-outage guidance");
+  assert.match(html, /Row not found/, "the server's own message should be included");
 });
 
-test("many failed saves (bulk-action shape): plural wording, one counted message, not enumerated, HTTP-rejection guidance", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+test("many failed saves (bulk-action shape): plural wording, one counted message, not enumerated, HTTP-rejection guidance", () => {
+  const store = createSaveFailureStore();
   for (let i = 0; i < 120; i += 1) {
-    sandbox.updateMailingStatus(mailing(i), "Mailed");
+    store.recordSaveFailure("mailingStatus", mailing(i).mailingId, "Row not found", "http");
   }
-  await flush();
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(store.getSnapshot());
   assert.match(html, /120 changes couldn.{1,8}t be saved/);
   assert.match(html, /They only exist on this device/);
   assert.match(html, /reloading this page will lose them/);
@@ -81,62 +64,52 @@ test("many failed saves (bulk-action shape): plural wording, one counted message
   assert.equal((html.match(/<p>/g) || []).length, 1);
 });
 
-test("a network failure (as opposed to an HTTP rejection) gets connectivity guidance, not \"the server refused it\"", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  // The sandbox's stubbed fetch always resolves (ok:false), never rejects,
-  // so a genuine network failure can't be driven through updateMailingStatus
-  // here - recorded directly against the store instead, same technique the
-  // load-failure tests below use.
-  sandbox.saveFailures.recordSaveFailure("mailingStatus", "MAIL-1::2", "Could not reach the server - check your connection.", "network");
+test("a network failure (as opposed to an HTTP rejection) gets connectivity guidance, not \"the server refused it\"", () => {
+  const store = createSaveFailureStore();
+  store.recordSaveFailure("mailingStatus", "MAIL-1::2", "Could not reach the server - check your connection.", "network");
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(store.getSnapshot());
   assert.match(html, /1 change couldn.{1,8}t be saved/);
   assert.match(html, /Re-apply it once you.{1,8}re back online/);
   assert.doesNotMatch(html, /The server refused/, "a network failure must not get HTTP-rejection guidance");
 });
 
-test("a later successful save does not clear an existing failure banner", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  sandbox.updateMailingStatus(mailing(1), "Mailed");
-  sandbox.updateMailingStatus(mailing(2), "Mailed");
-  await flush();
-  assert.match(sandbox.getCapturedHtml("#saveFailureBanner"), /2 changes couldn.{1,8}t be saved/);
+test("a later successful save does not clear an existing failure banner", () => {
+  const store = createSaveFailureStore();
+  store.recordSaveFailure("mailingStatus", "MAIL-1::2", "Row not found", "http");
+  store.recordSaveFailure("mailingStatus", "MAIL-2::2", "Row not found", "http");
+  assert.match(formatSaveFailureBannerHtml(store.getSnapshot()), /2 changes couldn.{1,8}t be saved/);
 
-  // Simulate a success directly against the store (the sandbox's stubbed
-  // fetch always fails - see the module comment above - so this is the only
-  // way to exercise recordSaveSuccess()'s effect on the rendered banner
-  // without a second, real-fetch-capable harness).
-  sandbox.saveFailures.recordSaveSuccess("mailingStatus", "MAIL-1::3");
+  store.recordSaveSuccess("mailingStatus", "MAIL-1::3");
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(store.getSnapshot());
   assert.match(html, /2 changes couldn.{1,8}t be saved/, "a success must not reduce the failure count");
 });
 
-test("a failed initial load renders the distinct load-failure state, not folded into the save-failure count", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  sandbox.saveFailures.recordLoadFailure("Could not load shared CRM state.");
+test("a failed initial load renders the distinct load-failure state, not folded into the save-failure count", () => {
+  const store = createSaveFailureStore();
+  store.recordLoadFailure("Could not load shared CRM state.");
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(store.getSnapshot());
   assert.match(html, /Couldn.{1,8}t load the shared data from the server/);
   assert.match(html, /Could not load shared CRM state\./);
   assert.doesNotMatch(html, /couldn.{1,8}t be saved/, "a load failure must not use save-failure wording");
 });
 
-test("a save failure and a load failure can both be visible in the banner at once", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  sandbox.updateMailingStatus(mailing(1), "Mailed");
-  await flush();
-  sandbox.saveFailures.recordLoadFailure("Could not load shared CRM state.");
+test("a save failure and a load failure can both be visible in the banner at once", () => {
+  const store = createSaveFailureStore();
+  store.recordSaveFailure("mailingStatus", "MAIL-1::2", "Row not found", "http");
+  store.recordLoadFailure("Could not load shared CRM state.");
 
-  const html = sandbox.getCapturedHtml("#saveFailureBanner");
+  const html = formatSaveFailureBannerHtml(store.getSnapshot());
   assert.match(html, /1 change couldn.{1,8}t be saved/);
   assert.match(html, /Couldn.{1,8}t load the shared data from the server/);
   assert.equal((html.match(/<p>/g) || []).length, 2, "one paragraph per distinct failure state");
 });
 
-test("a clean store (no failures recorded at all) renders nothing, confirming the empty state is the true default, not an untested assumption", async () => {
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
-  const snapshot = sandbox.saveFailures.getSnapshot();
+test("a clean store (no failures recorded at all) renders nothing, confirming the empty state is the true default, not an untested assumption", () => {
+  const store = createSaveFailureStore();
+  const snapshot = store.getSnapshot();
   assert.deepEqual(snapshot, {
     failedSaveCount: 0,
     lastFailureMessage: null,
@@ -144,5 +117,5 @@ test("a clean store (no failures recorded at all) renders nothing, confirming th
     loadFailed: false,
     loadFailureMessage: null,
   });
-  assert.equal(sandbox.getCapturedHtml("#saveFailureBanner"), "");
+  assert.equal(formatSaveFailureBannerHtml(snapshot), "");
 });

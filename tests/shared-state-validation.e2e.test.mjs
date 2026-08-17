@@ -12,7 +12,8 @@
 // serialized.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { buildSeedFromSpreadsheet } from "../lib/domain/spreadsheet/build-seed.ts";
 import { countRows } from "./db-test-helpers.mjs";
 
 const skip = e2eSkipReason({ requiresFixture: false });
@@ -338,8 +339,7 @@ test("the real 1,218-row fixture, posted through the real route exactly as the b
 
   const fixedNow = new Date("2026-08-12T15:00:00.000Z");
   const rows = loadSpreadsheetRows();
-  const appJs = await loadAppJsSandbox(fixedNow);
-  const seed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", fixedNow, []);
+  const seed = buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", fixedNow, []);
 
   const value = JSON.stringify({ seed, sourceName: "Import_20260812_181828.xlsx", uploadedAt: fixedNow.toISOString(), summary: seed.summary });
   const outerBody = JSON.stringify({ kind: "crmDataset", key: "current", value });

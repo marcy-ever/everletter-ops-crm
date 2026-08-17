@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { NAV_ITEMS } from "../app/crm/shell/nav-items.ts";
-import { loadAppJsSandbox } from "./e2e-helpers.mjs";
+import { VIEW_REGISTRY } from "../app/crm/shell/view-registry.ts";
 
 // Step 5 of the app.js decomposition (see CLAUDE.md): app/crm/shell/nav-items.ts
-// is now the single source of truth for the sidebar, replacing seven
+// is the single source of truth for the sidebar, replacing seven
 // hand-written JSX buttons plus five injected at runtime by
-// app/crm/legacy-app.js's initCrmApp(). The render-snapshot suite captures
-// #viewMount only - it's blind to the sidebar entirely, so this file is the
-// only real coverage of nav order and of the nav/registry invariant.
+// app/crm/legacy-app.js's initCrmApp() (that whole monolith is gone now -
+// Phase 2, CLAUDE.md - along with the render-snapshot suite that used to
+// be the only other coverage of nav order; this file is the sole remaining
+// nav-order/registry coverage, unaffected by that deletion since it never
+// depended on the sandbox harness Phase 2 removed).
+//
+// VIEW_REGISTRY (app/crm/shell/view-registry.ts) is a plain, DOM-free data
+// module now - every one of this file's tests imports it directly, no
+// sandbox/app boot required. It used to also carry a `react`/`render`
+// distinction (legacy-rendered vs. React-hosted); that's gone too (Phase
+// 2's own view-registry.ts header explains why) - every entry is just
+// { showStatusFilter, showBatchFilter } now.
 //
 // The exact order below was verified against the pre-change injection
 // logic by mechanically simulating it (not assumed from the task prompt
@@ -48,55 +57,25 @@ test("every NAV_ITEMS entry has a non-empty badge and label", () => {
   }
 });
 
-test("app/crm/legacy-app.js's VIEW_REGISTRY has exactly the same set of view ids as NAV_ITEMS - no nav button without a renderer, no renderer without a nav button", async () => {
-  const appJs = await loadAppJsSandbox();
-  const registryIds = new Set(Object.keys(appJs.VIEW_REGISTRY));
+test("VIEW_REGISTRY has exactly the same set of view ids as NAV_ITEMS - no nav button without a registry entry, no registry entry without a nav button", () => {
+  const registryIds = new Set(Object.keys(VIEW_REGISTRY));
   const navIds = new Set(NAV_ITEMS.map((item) => item.id));
   assert.deepEqual(registryIds, navIds);
 });
 
-// As of Phase 1's first migrated view (step 6 - CLAUDE.md), a registry
-// entry is EITHER legacy-rendered (a `render` function, dispatched by
-// app/crm/legacy-app.js's renderView()) OR React-hosted (`react: true`,
-// dispatched by app/crm/CrmApp.tsx's portal seam) - never both, never
-// neither. Both shapes still carry explicit filter-visibility flags; the
-// registry stays the one place that answers "does this view show the
-// status/batch filter," regardless of who renders its content.
-test("every VIEW_REGISTRY entry is either legacy-rendered or react-hosted (never both, never neither), and has explicit filter-visibility flags", async () => {
-  const appJs = await loadAppJsSandbox();
-  for (const [id, entry] of Object.entries(appJs.VIEW_REGISTRY)) {
-    const isLegacy = typeof entry.render === "function";
-    const isReact = entry.react === true;
-    assert.ok(isLegacy || isReact, `${id}'s registry entry must have a render function or be marked react-hosted`);
-    assert.ok(!(isLegacy && isReact), `${id}'s registry entry must not be both legacy-rendered and react-hosted`);
+test("every VIEW_REGISTRY entry has explicit boolean showStatusFilter/showBatchFilter flags", () => {
+  for (const [id, entry] of Object.entries(VIEW_REGISTRY)) {
     assert.equal(typeof entry.showStatusFilter, "boolean", `${id}'s registry entry is missing showStatusFilter`);
     assert.equal(typeof entry.showBatchFilter, "boolean", `${id}'s registry entry is missing showBatchFilter`);
   }
 });
 
-// Phase 1 (CLAUDE.md) is complete as of step 17 (Envelope Print, the
-// last of twelve) - every VIEW_REGISTRY entry is react-hosted now, and
-// none carry a legacy render function. No "still legacy" control group
-// remains to guard against "some future change marks everything react"
-// the way earlier versions of this test could - Phase 2's own deletion
-// of app/crm/legacy-app.js (CLAUDE.md's "after this merges" note) is
-// what actually removes VIEW_REGISTRY/render functions from existing at
-// all, not something this test can watch for on its own anymore.
-test("every view is react-hosted now (Phase 1 complete) and carries no legacy render function", async () => {
-  const appJs = await loadAppJsSandbox();
-  for (const [id, entry] of Object.entries(appJs.VIEW_REGISTRY)) {
-    assert.equal(entry.react, true, `${id} should be react-hosted`);
-    assert.equal(entry.render, undefined, `${id} should carry no legacy render function`);
-  }
-});
-
-test("exactly queue/print/qa/packet/bins show the batch filter, and only queue shows the status filter - preserving renderView()'s pre-change conditionals", async () => {
-  const appJs = await loadAppJsSandbox();
-  const batchFilterViews = Object.entries(appJs.VIEW_REGISTRY)
+test("exactly queue/print/qa/packet/bins show the batch filter, and only queue shows the status filter - preserving the shell's pre-Phase-2 conditionals", () => {
+  const batchFilterViews = Object.entries(VIEW_REGISTRY)
     .filter(([, entry]) => entry.showBatchFilter)
     .map(([id]) => id)
     .sort();
-  const statusFilterViews = Object.entries(appJs.VIEW_REGISTRY)
+  const statusFilterViews = Object.entries(VIEW_REGISTRY)
     .filter(([, entry]) => entry.showStatusFilter)
     .map(([id]) => id)
     .sort();

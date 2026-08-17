@@ -26,7 +26,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { exceptionReviewKey, componentKey } from "../lib/domain/keys.ts";
-import { e2eSkipReason, loadAppJsSandbox, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, loadSpreadsheetRows, truncateAllTables } from "./e2e-helpers.mjs";
+import { buildSeedFromSpreadsheet } from "../lib/domain/spreadsheet/build-seed.ts";
 
 test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status all round-trip correctly through the real POST/GET handlers", { skip: e2eSkipReason() }, async () => {
   const { POST, GET } = await import("../app/api/shared-state/route");
@@ -37,8 +38,7 @@ test("GET /api/shared-state: componentOverrides, reviewed exceptions, and status
   await truncateAllTables(db);
 
   const rows = loadSpreadsheetRows();
-  const appJs = await loadAppJsSandbox();
-  const clientSeed = appJs.buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", new Date(), []);
+  const clientSeed = buildSeedFromSpreadsheet(rows, "Import_20260812_181828.xlsx", new Date(), []);
 
   await writeImport(clientSeed, db);
 

@@ -39,7 +39,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { eq } from "drizzle-orm";
-import { e2eSkipReason, loadAppJsSandbox, truncateAllTables } from "./e2e-helpers.mjs";
+import { e2eSkipReason, truncateAllTables } from "./e2e-helpers.mjs";
+import { createAppState } from "../app/crm/shell/crm-app-state.ts";
+import { installLocalStorageStub } from "./shell-test-helpers.mjs";
 import { componentKey, mailingKey } from "../lib/domain/keys.ts";
 import { computeSubscriberProfile, printedEnvelopeStatusForMailing } from "../app/crm/views/subscribers/subscribers-selectors.ts";
 import { envelopePrintRows, openEnvelopePrint } from "../app/crm/views/envelope-print/envelope-html.ts";
@@ -137,8 +139,7 @@ async function importSeed(POST, seed, sourceName) {
 // tests/exceptions-write-path.e2e.test.mjs (step 10) and
 // tests/import-write-path.e2e.test.mjs (step 11) - see either file's own
 // header for why a bare setTimeout(resolve, 0) flush isn't enough once
-// fetch does real I/O. Must be wired AFTER loadAppJsSandbox(), which
-// stubs globalThis.fetch itself.
+// fetch does real I/O.
 function wireFetchToRealRoute(POST) {
   const pending = [];
   globalThis.fetch = (url, options = {}) => {
@@ -168,7 +169,8 @@ test("Mark Printed calls updateEnvelopeStatus, sends the correct componentStatus
   const seed = buildSeed([spec], { [spec.mailingId]: "6-month" });
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   wireFetchToRealRoute(POST);
   sandbox.state.seed = seed;
 
@@ -202,7 +204,8 @@ test("Mark At Ashley calls updateEnvelopeStatus AND updateMailingStatus, sends t
   const seed = buildSeed([spec], { [spec.mailingId]: "6-month" });
   await importSeed(POST, seed, "seed.xlsx");
 
-  const sandbox = await loadAppJsSandbox(undefined, { captureRenders: true });
+  installLocalStorageStub();
+  const sandbox = createAppState();
   wireFetchToRealRoute(POST);
   sandbox.state.seed = seed;
 
