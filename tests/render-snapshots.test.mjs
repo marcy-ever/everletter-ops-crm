@@ -233,7 +233,13 @@ const CASES = [
   ["qa", "qa", {}],
   ["packet", "packet", {}],
   ["bins", "bins", {}],
-  ["launch", "launch", {}],
+  // "launch" removed by step 7 (Phase 1's second view migration -
+  // CLAUDE.md), same reasoning as "automation" below: moved to a real
+  // React component (app/crm/views/launch-plan/LaunchPlan.tsx), so
+  // #viewMount is deliberately empty for it now. See
+  // tests/launch-view.test.mjs for where this view's equivalence
+  // coverage moved - tests/snapshots/launch.html is NOT deleted, same
+  // treatment as automation.html.
   ["samples", "samples", {}],
   // Previously the one case in this suite that wasn't timezone-stable:
   // renderSync() calls batchDatesForOrder() (app/crm/legacy-app.js), which used to
