@@ -74,8 +74,9 @@ const FIXED_NOW = new Date("2026-08-12T12:00:00.000Z");
 // own authored business-rule text, already public in this sanitized repo).
 // Real app.js gets this from window.EVERLETTER_SEED, which the real page
 // sets from that committed file before any spreadsheet is ever imported -
-// defaultAutomationRules() in app/crm/legacy-app.js falls back to it because
-// automationRules isn't part of the spreadsheet shape at all. Needed here
+// defaultAutomationRules() (app/crm/views/import/import-selectors.ts, moved
+// from app/crm/legacy-app.js in Phase 1 step 11 - CLAUDE.md) falls back to
+// it because automationRules isn't part of the spreadsheet shape at all. Needed here
 // only so the Automation view's snapshot has real content instead of an
 // empty list; irrelevant to every other view.
 const AUTOMATION_RULES = [
@@ -235,7 +236,14 @@ const CASES = [
   // this array (alongside the other separate-states-not-separate-views
   // entries) moved there too.
   ["subscribers", "subscribers", {}],
-  ["import", "import", {}],
+  // "import" was here through step 10. Removed by step 11 (Phase 1's
+  // sixth view migration, CLAUDE.md), same treatment as automation/
+  // launch/sync/samples/exceptions: moved to a real React component
+  // (app/crm/views/import/Import.tsx) hosted outside #viewMount
+  // entirely. tests/snapshots/import.html is NOT deleted - it's the
+  // frozen reference tests/import-view.test.mjs compares Import.tsx's
+  // own rendered output against, under the same normalized comparison
+  // automation/launch/sync/samples/exceptions use.
   ["print", "print", {}],
   ["qa", "qa", {}],
   ["packet", "packet", {}],

@@ -32,9 +32,12 @@ import { escapeHtml, statusClass, number } from './format';
 // buildSeedFromSpreadsheet (the 206-line seed builder) and
 // spreadsheetExceptionReasons (the exception-reason checks it calls) are
 // commit 3's extraction - the highest-risk single move in step 3b, kept
-// mechanical: same logic, same order, same output. now/automationRules are
-// threaded in explicitly at the one real call site (readWorkbookFile,
-// below) instead of read internally, same reasoning as todayIso(now).
+// mechanical: same logic, same order, same output. now/automationRules were
+// threaded in explicitly, same reasoning as todayIso(now) - readWorkbookFile,
+// this function's one real call site, moved to
+// app/crm/views/import/import-selectors.ts in Phase 1 step 11 (CLAUDE.md);
+// this import stays only because buildSeedFromSpreadsheet is still a real
+// runtime export below, consumed directly by tests.
 import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
 // Step 4: the state store, shared-state HTTP client, localStorage override
 // caches, and cross-view selectors extracted into lib/client/ - see each
@@ -44,7 +47,7 @@ import { buildSeedFromSpreadsheet } from '@/lib/domain/spreadsheet/build-seed';
 // see lib/client/crm-state.ts's header for why that matters to
 // tests/e2e-helpers.mjs's loadAppJsSandbox().
 import { loadComponentOverrides, loadReviewedExceptions, loadStatusOverrides } from '@/lib/client/local-overrides';
-import { loadSharedState, pollChangeMarker, saveSharedDataset } from '@/lib/client/shared-state-client';
+import { loadSharedState, pollChangeMarker } from '@/lib/client/shared-state-client';
 import { createCrmState } from '@/lib/client/crm-state';
 import { createSaveFailureStore } from '@/lib/client/save-failures';
 import { createStalenessStore } from '@/lib/client/staleness';
@@ -144,26 +147,6 @@ function activeExceptions() {
 
 function effectiveMailings() {
   return selectEffectiveMailings(state.seed, state.statusOverrides);
-}
-
-function defaultAutomationRules() {
-  return window.EVERLETTER_SEED?.automationRules || state.seed?.automationRules || [];
-}
-
-async function readWorkbookFile(file) {
-  if (!window.XLSX) throw new Error('The Excel parser did not load. Refresh the CRM and try again.');
-  const workbook = window.XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-  const sheetName = workbook.SheetNames.find((name) => name.toLowerCase().includes('mailing')) || workbook.SheetNames[0];
-  if (!sheetName) throw new Error('No worksheet found in that file.');
-  // blankrows:true keeps fully-blank sheet rows in the array so sourceRow
-  // (index+2 in buildSeedFromSpreadsheet) always lines up with the real
-  // physical spreadsheet row; the content-based filter in
-  // buildSeedFromSpreadsheet drops these blank rows afterward on its own.
-  const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: true, blankrows: true });
-  if (!rows.length) throw new Error('That worksheet looks empty.');
-  const seed = buildSeedFromSpreadsheet(rows, file.name, new Date(), defaultAutomationRules());
-  if (!seed.mailings.length) throw new Error('I could not find any mailing rows in that sheet.');
-  return { seed, sheetName, rowCount: rows.length };
 }
 
 function printedEnvelopeStatusForMailing(mailing) {
@@ -907,104 +890,6 @@ function openDriveLink(url) {
     return;
   }
   window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-function renderImport() {
-  const preview = state.importPreview;
-  const activeSource = state.importInfo?.sourceName || state.seed?.summary?.sourceFile || 'Built-in starter data';
-  const uploadedAt = state.importInfo?.uploadedAt ? formatDate(state.importInfo.uploadedAt.slice(0, 10)) : 'Not uploaded yet';
-  viewMount.innerHTML = `
-    <section class="data-panel import-panel" aria-label="Import spreadsheet">
-      <div class="panel-head">
-        <div>
-          <h3>Import updated spreadsheet</h3>
-          <p>Add new Squarespace orders to your current Everletter Mailing Schedule, then upload the .xlsx here. The CRM will rebuild mailings, exceptions, batches, subscribers, QA, and bins from it.</p>
-        </div>
-        <span class="panel-count">Launch-week bridge</span>
-      </div>
-
-      <div class="import-layout">
-        <article class="import-card">
-          <span class="sample-badge">Current CRM data</span>
-          <dl class="sample-fields">
-            <div><dt>Source</dt><dd>${escapeHtml(activeSource)}</dd></div>
-            <div><dt>Shared upload</dt><dd>${escapeHtml(uploadedAt)}</dd></div>
-            <div><dt>Mailings</dt><dd>${number(state.seed.summary.mailingCount)}</dd></div>
-            <div><dt>Needs Review</dt><dd>${number(activeExceptions().length)}</dd></div>
-          </dl>
-        </article>
-
-        <article class="import-card import-uploader">
-          <label class="file-drop">
-            <span>Choose Everletter Mailing Schedule</span>
-            <strong>.xlsx, .xls, or .csv</strong>
-            <input id="spreadsheetUpload" type="file" accept=".xlsx,.xls,.csv" />
-          </label>
-          <p class="import-hint">Use the same columns you already have: Order ID, Original Order Date, Customer Name and Address, Character, Letter Number, Ship Date, Subscription, Status, Active?, Email.</p>
-          ${state.importStatus ? `<div class="import-status">${escapeHtml(state.importStatus)}</div>` : ''}
-        </article>
-      </div>
-
-      ${preview ? `
-        <div class="import-preview">
-          <div class="panel-head">
-            <div>
-              <h3>Preview before publishing</h3>
-              <p>${escapeHtml(preview.fileName)} - ${escapeHtml(preview.sheetName)}</p>
-            </div>
-            <button type="button" id="publishImport" ${state.importBusy ? 'disabled' : ''}>${state.importBusy ? 'Publishing...' : 'Publish to shared CRM'}</button>
-          </div>
-          <div class="print-summary">
-            <div><span>Rows read</span><strong>${number(preview.rowCount)}</strong></div>
-            <div><span>Subscribers</span><strong>${number(preview.seed.summary.subscriberCount)}</strong></div>
-            <div><span>Mailings</span><strong>${number(preview.seed.summary.mailingCount)}</strong></div>
-            <div><span>Open</span><strong>${number(preview.seed.summary.openMailingCount)}</strong></div>
-            <div><span>Needs Review</span><strong>${number(preview.seed.summary.exceptionCount)}</strong></div>
-          </div>
-          <div class="import-checklist">
-            <div><strong>After publishing:</strong> Ashley will see this same imported data when she refreshes.</div>
-            <div>Existing CRM status clicks are preserved when mailing keys still match the uploaded sheet.</div>
-            <div>Bad dates, missing addresses, missing emails, or non-1st/15th mailings appear in Needs Review.</div>
-          </div>
-        </div>
-      ` : ''}
-    </section>
-  `;
-
-  document.querySelector('#spreadsheetUpload')?.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    state.importStatus = 'Reading spreadsheet...';
-    state.importPreview = null;
-    renderImport();
-    try {
-      const result = await readWorkbookFile(file);
-      state.importPreview = { ...result, fileName: file.name };
-      state.importStatus = 'Preview ready. Review the counts, then publish when it looks right.';
-    } catch (error) {
-      state.importStatus = error instanceof Error ? error.message : 'Could not read that spreadsheet.';
-    }
-    renderImport();
-  });
-
-  document.querySelector('#publishImport')?.addEventListener('click', async () => {
-    if (!state.importPreview) return;
-    state.importBusy = true;
-    state.importStatus = 'Publishing spreadsheet to the shared CRM...';
-    renderImport();
-    try {
-      state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName, staleness);
-      state.seed = state.importPreview.seed;
-      state.importPreview = null;
-      state.importBusy = false;
-      state.importStatus = 'Imported. This is now the shared CRM data.';
-      render();
-    } catch (error) {
-      state.importBusy = false;
-      state.importStatus = error instanceof Error ? error.message : 'Could not publish that spreadsheet.';
-      renderImport();
-    }
-  });
 }
 
 function renderPrint() {
@@ -1923,7 +1808,7 @@ const VIEW_REGISTRY = {
   exceptions: { react: true, showStatusFilter: false, showBatchFilter: false },
   subscribers: { render: renderSubscribers, showStatusFilter: false, showBatchFilter: false },
   samples: { react: true, showStatusFilter: false, showBatchFilter: false },
-  import: { render: renderImport, showStatusFilter: false, showBatchFilter: false },
+  import: { react: true, showStatusFilter: false, showBatchFilter: false },
   print: { render: renderPrint, showStatusFilter: false, showBatchFilter: true },
   qa: { render: renderQa, showStatusFilter: false, showBatchFilter: true },
   packet: { render: renderPacket, showStatusFilter: false, showBatchFilter: true },

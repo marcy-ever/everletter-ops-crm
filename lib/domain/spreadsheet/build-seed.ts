@@ -10,8 +10,9 @@ import type { Dataset, DatasetSubscriber, DatasetRecipient, DatasetOrder, Datase
  * Parses an uploaded mailing-schedule spreadsheet into the full CRM
  * dataset shape (subscribers/recipients/orders/subscriptions/mailings/
  * exceptions/summary/automationRules) - the client-side half of the
- * import flow (app/crm/legacy-app.js's readWorkbookFile calls this after
- * SheetJS/XLSX parses the raw file). Returns the canonical `Dataset`
+ * import flow (app/crm/views/import/import-selectors.ts's readWorkbookFile
+ * calls this after SheetJS/XLSX parses the raw file - moved there from
+ * app/crm/legacy-app.js in Phase 1 step 11, CLAUDE.md). Returns the canonical `Dataset`
  * shape (lib/domain/dataset.ts) - the same shape the server-side
  * reconstruction (lib/build-dataset-from-tables.ts) produces from the
  * normalized tables, which is exactly why the type lives in one place
