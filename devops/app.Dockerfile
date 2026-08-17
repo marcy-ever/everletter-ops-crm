@@ -38,6 +38,27 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# devops/migrate/migrate.mjs (devops.sh migrate, devops/deploy.sh) - lets a
+# migration run from this image itself, with no Node toolchain needed on the
+# host. Next's build bundles/inlines drizzle-orm directly into the compiled
+# route chunks above rather than leaving it as a real node_modules entry
+# (confirmed directly - .next/standalone/node_modules has no drizzle-orm at
+# all, even though db/index.ts imports it), so this unbundled script needs
+# its own copy. A real `npm ci` here, not a COPY --from=builder of
+# node_modules/drizzle-orm - that directory is ~2,700 files across dialects
+# this app doesn't use, squarely the kind of large/many-file cross-stage copy
+# that hangs on this host's overlay2 driver (see the builder stage's own
+# comment above); a fresh install has no such limit. `npm ci`, not `npm
+# install`, for the same reproducibility reason the builder stage's own
+# `pnpm install --frozen-lockfile` exists - devops/migrate/package-lock.json
+# is committed and pins exact versions, including transitive ones, not just
+# the two direct dependencies. Plain npm, not pnpm: this is a small,
+# isolated, non-workspace dependency set (devops/migrate/package.json isn't
+# part of pnpm-workspace.yaml) - see that file's own header.
+COPY devops/migrate ./devops/migrate
+RUN cd devops/migrate && npm ci --omit=dev
+COPY --from=builder /app/drizzle ./drizzle
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
