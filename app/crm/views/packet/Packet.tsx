@@ -10,24 +10,27 @@
 // so nothing here is renamed even though "PacketMobileCard" is a better
 // name for what this function now is than "binMobileCard" ever was.
 //
-// The mobile card's three selects are deliberately LEFT INERT - rendered
-// with defaultValue (uncontrolled, no onChange) rather than value+onChange,
-// reproducing a real, pre-existing gap found while migrating: legacy's own
-// renderPacket() never wired a change listener for these selects at all
-// (confirmed by reading the function in full and grepping every
-// [data-bin-select] listener in app/crm/legacy-app.js - exactly one
-// exists, inside renderBins()/Ashley Bins, for its own elements, never
-// Packet's). Changing one of these selects in the live legacy app
-// currently does nothing. Tempting to fix inline, but this step's own
-// snapshot proof can't see the difference either way (markup is identical
-// whether the select writes or not), so a fix here would be an invisible
-// behavior change riding inside a "no behavior change" migration branch -
-// flagged instead, left for Ashley Bins (step 16) to wire for real using
-// its own real, working [data-bin-select] handler as the one source of
-// truth, rather than this view reconstructing a second, unverified
-// version of it. defaultValue was verified (not assumed) to produce
-// byte-identical static markup to value - both render the same `selected`
-// option - so this choice doesn't touch the snapshot proof either.
+// The mobile card's three selects were deliberately left inert through
+// step 15 (defaultValue, no onChange) - legacy's own renderPacket() never
+// wired a change listener for them either (confirmed by reading the
+// function in full and grepping every [data-bin-select] listener in
+// app/crm/legacy-app.js at the time - exactly one existed, inside Ashley
+// Bins' renderBins(), for its own elements, never Packet's), and fixing it
+// mid-migration would have put a real functional change somewhere the
+// snapshot gate can't see it (markup is identical whether the select
+// writes or not).
+//
+// Wired for real in step 16 (Ashley Bins), second commit - **this is a
+// deliberate, reviewed behavior change, not a markup change**: the
+// snapshot gate does not and cannot cover it (packet.html stays
+// byte-identical through this commit; see that step's PR for the direct
+// statement that green snapshots here don't imply write-path coverage).
+// onFieldChange is CrmApp.tsx's updateBinComponentStatus - Ashley Bins'
+// own real, working [data-bin-select] handler, now the ONE shared
+// definition both views use, not a second copy. Proven correct against
+// Bins' own real writes (same key/value shape for the equivalent row),
+// not just internally consistent - see
+// tests/packet-bins-select-parity.test.mjs.
 
 import { formatDate } from "@/lib/domain/format";
 import { mailingKey } from "@/lib/domain/keys";
@@ -41,12 +44,13 @@ export interface PacketProps {
   packetScope: string;
   printReadyFolderUrl: string;
   onScopeChange: (scope: string) => void;
+  onFieldChange: (mailing: EffectiveMailing, field: string, value: string) => void;
   onPrint: () => void;
   onPrintEnvelopes: () => void;
   onOpenDriveLink: (url: string) => void;
 }
 
-export default function Packet({ data, packetScope, printReadyFolderUrl, onScopeChange, onPrint, onPrintEnvelopes, onOpenDriveLink }: PacketProps) {
+export default function Packet({ data, packetScope, printReadyFolderUrl, onScopeChange, onFieldChange, onPrint, onPrintEnvelopes, onOpenDriveLink }: PacketProps) {
   const { batchDate, rows, finalRows, mobileRows, problemRows, envelopeCount, printableEnvelopeCount, envelopeGroups, letterGroups, artifactGroups, insertGroups, marcyChecklist, ashleyChecklist } =
     data;
 
@@ -189,7 +193,7 @@ export default function Packet({ data, packetScope, printReadyFolderUrl, onScope
         </div>
         <div className="mobile-card-list bins-mobile-cards">
           {mobileRows.length ? (
-            mobileRows.map((row) => <PacketMobileCard row={row} key={mailingKey(row.mailing)} />)
+            mobileRows.map((row) => <PacketMobileCard row={row} onFieldChange={onFieldChange} key={mailingKey(row.mailing)} />)
           ) : (
             <div className="empty-state">No Ashley bin rows for this batch.</div>
           )}
@@ -303,10 +307,13 @@ function PacketFinalTableRow({ row }: { row: PacketFinalRow }) {
   );
 }
 
-// The three selects below are deliberately uncontrolled (defaultValue, no
-// onChange) - see this file's own header for why. Rendered, not wired,
-// exactly matching legacy's real behavior.
-function PacketMobileCard({ row }: { row: PacketMobileRow }) {
+// The three selects below are wired for real as of step 16 (Ashley Bins,
+// second commit) - onFieldChange is CrmApp.tsx's updateBinComponentStatus,
+// the same handler Bins' own [data-bin-select] selects use. Controlled
+// (value+onChange), matching QA/Bins' own select pattern - see this
+// file's own header for why this is a deliberate, separately-reviewed
+// behavior change, not something the snapshot gate covers.
+function PacketMobileCard({ row, onFieldChange }: { row: PacketMobileRow; onFieldChange: PacketProps["onFieldChange"] }) {
   const { mailing, status, bin, fieldValues } = row;
   return (
     <article className="mobile-action-card">
@@ -331,7 +338,12 @@ function PacketMobileCard({ row }: { row: PacketMobileRow }) {
       <div className="mobile-select-grid">
         <label>
           <span>Envelope</span>
-          <select className={`qa-select qa-${statusClass(fieldValues.envelope)}`} data-bin-select={`${mailingKey(mailing)}::field::envelope`} defaultValue={fieldValues.envelope}>
+          <select
+            className={`qa-select qa-${statusClass(fieldValues.envelope)}`}
+            data-bin-select={`${mailingKey(mailing)}::field::envelope`}
+            value={fieldValues.envelope}
+            onChange={(event) => onFieldChange(mailing, "envelope", event.target.value)}
+          >
             {COMPONENT_FIELD_OPTIONS.envelope.map((option) => (
               <option key={option}>{option}</option>
             ))}
@@ -339,7 +351,12 @@ function PacketMobileCard({ row }: { row: PacketMobileRow }) {
         </label>
         <label>
           <span>Letter</span>
-          <select className={`qa-select qa-${statusClass(fieldValues.letter)}`} data-bin-select={`${mailingKey(mailing)}::field::letter`} defaultValue={fieldValues.letter}>
+          <select
+            className={`qa-select qa-${statusClass(fieldValues.letter)}`}
+            data-bin-select={`${mailingKey(mailing)}::field::letter`}
+            value={fieldValues.letter}
+            onChange={(event) => onFieldChange(mailing, "letter", event.target.value)}
+          >
             {COMPONENT_FIELD_OPTIONS.letter.map((option) => (
               <option key={option}>{option}</option>
             ))}
@@ -347,7 +364,12 @@ function PacketMobileCard({ row }: { row: PacketMobileRow }) {
         </label>
         <label>
           <span>Location</span>
-          <select className={`qa-select qa-${statusClass(fieldValues.location)}`} data-bin-select={`${mailingKey(mailing)}::field::location`} defaultValue={fieldValues.location}>
+          <select
+            className={`qa-select qa-${statusClass(fieldValues.location)}`}
+            data-bin-select={`${mailingKey(mailing)}::field::location`}
+            value={fieldValues.location}
+            onChange={(event) => onFieldChange(mailing, "location", event.target.value)}
+          >
             {COMPONENT_FIELD_OPTIONS.location.map((option) => (
               <option key={option}>{option}</option>
             ))}
