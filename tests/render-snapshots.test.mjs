@@ -236,7 +236,14 @@ const CASES = [
   // tests/launch-view.test.mjs for where this view's equivalence
   // coverage moved - tests/snapshots/launch.html is NOT deleted, same
   // treatment as automation.html.
-  ["samples", "samples", {}],
+  // "samples" was here through step 8. Removed by step 9 (Phase 1's
+  // fourth view migration, CLAUDE.md), same treatment as automation/
+  // launch/sync: moved to a real React component
+  // (app/crm/views/samples/Samples.tsx) hosted outside #viewMount
+  // entirely. tests/snapshots/samples.html is NOT deleted - it's the
+  // frozen reference tests/samples-view.test.mjs compares Samples.tsx's
+  // own rendered output against, under the same normalized comparison
+  // automation/launch/sync use.
   // "sync" was here through step 7, timezone-fix history and all (see
   // this file's own module comment above for that bug/fix story - it
   // stays there since it's still true of the underlying rendering, just

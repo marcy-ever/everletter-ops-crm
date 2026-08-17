@@ -11,6 +11,8 @@ import LaunchPlan from "./views/launch-plan/LaunchPlan";
 import { computeLaunchPlanData } from "./views/launch-plan/launch-selectors";
 import Sync from "./views/sync/Sync";
 import { computeSyncPreview, defaultSyncSubscriberId, defaultSyncSubscriptionId } from "./views/sync/sync-selectors";
+import Samples from "./views/samples/Samples";
+import { computeSamplesData } from "./views/samples/samples-selectors";
 
 // Mounts the legacy CRM monolith into the DOM markup app/page.tsx already
 // renders (#viewMount, #topbarMeta, the side-nav buttons, etc.) instead of
@@ -149,6 +151,32 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         onSubscriptionChange={(subscriptionId) => {
           state.syncSubscriptionId = subscriptionId;
           notifyViewChanged();
+        }}
+      />
+    );
+  },
+  // No state.seed guard - unlike Launch Plan/Sync, nothing here reads the
+  // dataset at all (sampleRows/sampleAssets/flows are all either static
+  // or derived from state.sampleType alone), so this view can render
+  // before the dataset loads, the same way Automation degrades gracefully.
+  //
+  // onOpenSample is the new shape this view introduces: a callback that
+  // performs a browser action (window.open) instead of mutating `state` -
+  // deliberately no notifyViewChanged() call here, since nothing rendered
+  // depends on whether a sample was opened. onSampleTypeChange is the
+  // familiar mutate-then-notify shape every other callback in this file
+  // uses.
+  samples: () => {
+    const data = computeSamplesData(state.sampleType);
+    return (
+      <Samples
+        data={data}
+        onSampleTypeChange={(type) => {
+          state.sampleType = type;
+          notifyViewChanged();
+        }}
+        onOpenSample={(file) => {
+          window.open(file, "_blank", "noopener,noreferrer");
         }}
       />
     );
