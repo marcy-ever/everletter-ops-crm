@@ -18,6 +18,8 @@ import {
   packetProblemRows,
   packetRows,
   pastBatchDates,
+  qaIsReady,
+  qaNeedsAttention,
   selectedBatchDate,
 } from "../lib/client/selectors.ts";
 import { exceptionReviewKey, mailingKey } from "../lib/domain/keys.ts";
@@ -188,6 +190,75 @@ test("componentStatus depends on more than componentOverrides alone: a High exce
   const flagged = seedWith({ mailings: [m], exceptions: [exception({ mailingId: "m1", severity: "High" })] });
   assert.equal(componentStatus(m, "payment", clean, new Set(), {}), "Active");
   assert.equal(componentStatus(m, "payment", flagged, new Set(), {}), "Needs Check");
+});
+
+// New coverage from Phase 1 step 14 (Mailing QA - CLAUDE.md): qaIsReady/
+// qaNeedsAttention moved here from app/crm/legacy-app.js, since Batch
+// Packet's still-legacy packetFinalRow() needs the exact same
+// classification QA's own rows do - see this module's own header for why
+// that makes these two shared selectors rather than QA-view-only ones.
+
+test("qaIsReady is true only when every one of the six gating fields is in an acceptable state, all defaults, no overrides", () => {
+  // A prepaid (12-month) mailing's defaults: envelope "In Ashley Box",
+  // letter "Stuffed", location "Ashley" (irrelevant to qaIsReady), payment
+  // "Active", artifact/insert default "Need Check" (character isn't
+  // marley/oliver here, so insert defaults to "Not Needed" - only artifact
+  // needs an explicit override to reach "Packed"), qa defaults to "Open"
+  // (not "Ready") - so this mailing needs qa forced to "Ready" and
+  // artifact forced to "Packed" before qaIsReady can be true.
+  const m = mailing({ mailingId: "m1", plan: "12-month", character: "Ringo" });
+  const seed = seedWith({ mailings: [m] });
+  assert.equal(qaIsReady(m, seed, new Set(), {}), false, "qa defaults to Open and artifact defaults to Need Check - not ready yet");
+
+  const artifactKey = `${m.mailingId}::${m.sourceRow}::artifact`;
+  const qaKey = `${m.mailingId}::${m.sourceRow}::qa`;
+  assert.equal(qaIsReady(m, seed, new Set(), { [artifactKey]: "Packed", [qaKey]: "Ready" }), true);
+});
+
+test("qaIsReady is false the instant any one of the six gating fields regresses, even if every other field is ready", () => {
+  const m = mailing({ mailingId: "m1", plan: "12-month", character: "Ringo" });
+  const seed = seedWith({ mailings: [m] });
+  const readyOverrides = {
+    [`${m.mailingId}::${m.sourceRow}::artifact`]: "Packed",
+    [`${m.mailingId}::${m.sourceRow}::qa`]: "Ready",
+  };
+  assert.equal(qaIsReady(m, seed, new Set(), readyOverrides), true, "sanity check: fully ready first");
+  assert.equal(
+    qaIsReady(m, seed, new Set(), { ...readyOverrides, [`${m.mailingId}::${m.sourceRow}::payment`]: "CC Failed" }),
+    false,
+    "a single regressed field (payment) is enough to flip qaIsReady back to false",
+  );
+});
+
+test("qaNeedsAttention is true when any of the seven component fields sits in an attention-needing status, false when every field is settled", () => {
+  const needsAttention = mailing({ mailingId: "m1", plan: "12-month", character: "Ringo" });
+  const seed = seedWith({ mailings: [needsAttention] });
+  assert.equal(qaNeedsAttention(needsAttention, seed, new Set(), {}), true, "defaults alone include artifact: Need Check and qa: Open");
+
+  const settled = mailing({ mailingId: "m2", plan: "12-month", character: "Ringo", sourceRow: 3 });
+  const settledOverrides = {
+    [`${settled.mailingId}::${settled.sourceRow}::payment`]: "Active",
+    [`${settled.mailingId}::${settled.sourceRow}::envelope`]: "In Ashley Box",
+    [`${settled.mailingId}::${settled.sourceRow}::letter`]: "Stuffed",
+    [`${settled.mailingId}::${settled.sourceRow}::artifact`]: "Packed",
+    [`${settled.mailingId}::${settled.sourceRow}::insert`]: "Not Needed",
+    [`${settled.mailingId}::${settled.sourceRow}::location`]: "Ashley",
+    [`${settled.mailingId}::${settled.sourceRow}::qa`]: "Ready",
+  };
+  assert.equal(qaNeedsAttention(settled, seed, new Set(), settledOverrides), false);
+});
+
+test("qaIsReady/qaNeedsAttention depend on more than componentOverrides alone, same as componentStatus itself: a High exception changes the computed defaults both read", () => {
+  const m = mailing({ mailingId: "m1", plan: "12-month", character: "Ringo" });
+  const clean = seedWith({ mailings: [m], exceptions: [] });
+  const flagged = seedWith({ mailings: [m], exceptions: [exception({ mailingId: "m1", severity: "High" })] });
+  // A High exception flips payment's default to "Needs Check" and qa's
+  // default to "Problem" - both are attention-needing statuses, and
+  // "Needs Check" also fails qaIsReady's payment === "Active" check.
+  assert.equal(qaNeedsAttention(m, clean, new Set(), {}), true, "already true from artifact/qa defaults alone");
+  assert.equal(qaNeedsAttention(m, flagged, new Set(), {}), true);
+  assert.equal(qaIsReady(m, clean, new Set(), {}), false);
+  assert.equal(qaIsReady(m, flagged, new Set(), {}), false);
 });
 
 test("availableBatchDates only includes Active, open-status mailings with a real ship date on or after today, sorted ascending", () => {

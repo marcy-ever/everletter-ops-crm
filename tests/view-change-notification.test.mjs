@@ -81,16 +81,21 @@ test("getRenderGeneration() increments on every notifyViewChanged() call, regard
 
 test("switching to a react-hosted view (automation) clears #viewMount instead of leaving the previous legacy view's content", async () => {
   const appJs = await loadAppJsSandbox(undefined, { captureRenders: true });
-  // "qa" - still legacy-rendered as of step 13 (Production Queue,
-  // CLAUDE.md). "queue" itself was this test's original example, but it
-  // became react-hosted in that same step - using it here now would
-  // (correctly) fail the very sanity check this line exists for, since
-  // renderView() no longer writes anything to #viewMount for a
-  // react-hosted view at all.
-  appJs.state.activeView = "qa";
+  // "print" (Envelope Print) - deliberately last of the twelve views to
+  // migrate (step 17, CLAUDE.md - its correctness lands on physical
+  // paper), so it's the one still-legacy example that survives every
+  // migration step between now and the teardown branch that removes this
+  // test's own legacy-vs-react distinction entirely. "queue" was this
+  // test's original example (broke at step 13, fixed to "qa"); "qa"
+  // itself broke the same way at step 14 when THIS step made it
+  // react-hosted too - "print" is chosen specifically so this line
+  // doesn't need touching a third time. Whichever view is used here has
+  // to be still legacy-rendered (VIEW_REGISTRY[id].render, not
+  // { react: true }) or this sanity check fails correctly, by design.
+  appJs.state.activeView = "print";
   appJs.state.seed = minimalSeed();
   appJs.renderView();
-  assert.ok(appJs.getCapturedHtml("#viewMount").length > 0, "sanity check: the legacy qa view actually wrote something first");
+  assert.ok(appJs.getCapturedHtml("#viewMount").length > 0, "sanity check: the legacy print view actually wrote something first");
 
   appJs.state.activeView = "automation";
   appJs.renderView();

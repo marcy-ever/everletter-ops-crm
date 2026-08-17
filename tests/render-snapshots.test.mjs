@@ -266,7 +266,13 @@ const CASES = [
   // own rendered output against, under the same normalized comparison
   // automation/launch/sync/samples/exceptions use.
   ["print", "print", {}],
-  ["qa", "qa", {}],
+  // "qa" was here through step 13. Removed by step 14 (Phase 1's ninth
+  // view migration, CLAUDE.md - the densest write surface in the app):
+  // moved to a real React component (app/crm/views/qa/Qa.tsx) hosted
+  // outside #viewMount entirely. tests/snapshots/qa.html is NOT deleted -
+  // it's the frozen reference tests/qa-view.test.mjs compares Qa.tsx's
+  // own rendered output against, under the same normalized comparison
+  // every other migrated view uses.
   ["packet", "packet", {}],
   ["bins", "bins", {}],
   // "launch" removed by step 7 (Phase 1's second view migration -
