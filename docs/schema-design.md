@@ -1,6 +1,6 @@
 # Database Schema Redesign — Design Notes
 
-**Status: decided, not yet implemented.** This documents the target schema and the two implementation paths discussed, so this can be picked back up later without re-deriving the design.
+**Status: implemented and complete.** This documents the target schema, the two implementation paths discussed, and the real migration that carried them out - kept as the historical record, not a live plan; see this document's own closing line for confirmation. `crm_state` itself no longer exists (see CLAUDE.md).
 
 ## Why
 
