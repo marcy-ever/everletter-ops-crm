@@ -381,3 +381,64 @@ test("publishing an import that trips the catastrophic-deletion guard surfaces t
   // The proof that matters most: nothing was actually deleted.
   assert.equal(await countRowsOf(db, mailings), 10, "the rejected import must not have deleted anything");
 });
+
+// Two rows sharing Order ID + Character + Letter Number - the real
+// ambiguity lib/write-to-tables.ts's runImport() drops rather than
+// guessing through, and the exact case lib/domain/spreadsheet/exceptions.ts's
+// duplicateMailingFlags() now flags client-side as a Needs Review
+// exception. Both sides use the same shared collision definition
+// (lib/domain/mailing-collision.ts) - this test is the real, end-to-end
+// proof (not by inspection) that detection and dropping actually agree:
+// every mailing writeImport() drops for collision has a corresponding
+// "Duplicate:" exception, and vice versa.
+const DUPLICATE_ROW_A = { ...ROW, "Order ID": "9101", "Ship Date": "2026-08-15" };
+const DUPLICATE_ROW_B = { ...ROW, "Order ID": "9101", "Ship Date": "2026-09-01" };
+
+test("detection and dropping agree: rows that collide on order+character+letter number are both skipped by writeImport AND flagged as Duplicate exceptions client-side, with identical row numbers", { skip }, async () => {
+  const db = await freshDb();
+  const { POST } = await loadRoute();
+  const { mailings } = await import("../db/schema/mailings");
+  const originalWindow = globalThis.window;
+
+  try {
+    installShellDomStub();
+    const sandbox = createAppState();
+    const { waitForFetches } = wireFetchToRealRoute(POST);
+    globalThis.window.XLSX = stubXlsx([DUPLICATE_ROW_A, DUPLICATE_ROW_B]);
+
+    const file = fakeFile("colliding-schedule.xlsx");
+    sandbox.state.importPreview = await readWorkbookFile(file, new Date("2026-08-12T12:00:00.000Z"), []);
+
+    // Client side: both mailings still built (reporting-only, no change to
+    // what's written), and both flagged as duplicate exceptions, one
+    // naming the other by its real spreadsheet row number.
+    const clientSeed = sandbox.state.importPreview.seed;
+    assert.equal(clientSeed.mailings.length, 2);
+    const duplicateExceptions = clientSeed.exceptions.filter((e) => e.reason.startsWith("Duplicate:"));
+    assert.equal(duplicateExceptions.length, 2);
+    const clientSourceRows = duplicateExceptions.map((e) => e.sourceRow).sort((a, b) => a - b);
+    assert.deepEqual(clientSourceRows, [2, 3], "sourceRow 2 = DUPLICATE_ROW_A, 3 = DUPLICATE_ROW_B (index + 2)");
+    assert.ok(duplicateExceptions.every((e) => e.severity === "High"));
+    assert.equal(duplicateExceptions.find((e) => e.sourceRow === 2).reason, "Duplicate: shares order, character, and letter number with row 3");
+    assert.equal(duplicateExceptions.find((e) => e.sourceRow === 3).reason, "Duplicate: shares order, character, and letter number with row 2");
+
+    // Publish - the actual write path.
+    sandbox.state.importInfo = await saveSharedDataset(clientSeed, sandbox.state.importPreview.fileName, sandbox.staleness);
+    await waitForFetches();
+
+    // Server side: both rows skipped for the same reason, same row numbers.
+    const summary = sandbox.state.importInfo.importSummary;
+    const collisionGroup = summary.skipped.find((g) => g.reason === "Mailing shares its order, character, and letter number with another row");
+    assert.ok(collisionGroup, `expected a collision skip group; got: ${JSON.stringify(summary.skipped)}`);
+    assert.deepEqual(collisionGroup.sourceRows.slice().sort((a, b) => a - b), [2, 3]);
+
+    // The two sets of row numbers are identical - the actual "detection
+    // and dropping agree" proof.
+    assert.deepEqual(clientSourceRows, collisionGroup.sourceRows.slice().sort((a, b) => a - b));
+
+    // Neither colliding mailing was actually written.
+    assert.equal(await countRowsOf(db, mailings), 0);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});

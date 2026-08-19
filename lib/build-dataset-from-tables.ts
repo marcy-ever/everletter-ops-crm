@@ -100,6 +100,7 @@ import { mailings } from "../db/schema/mailings";
 import { exceptions } from "../db/schema/exceptions";
 import { buildRecipientId } from "./domain/ids";
 import { isOpenStatus, isOverdueMailing, isDueNext14Days, todayIso, monthKey, nearestBatchDate } from "./domain/mailing-rules";
+import { explicitExceptionSeverity } from "./domain/spreadsheet/exceptions";
 import type { Dataset, DatasetSubscriber, DatasetRecipient, DatasetOrder, DatasetSubscription, DatasetMailing, DatasetException, DatasetSummary } from "./domain/dataset";
 
 export type SubscriberRow = typeof subscribers.$inferSelect;
@@ -301,7 +302,20 @@ export function buildExceptions(
   return exceptionRows
     .map((e) => {
       const reason = e.type;
-      const severity: "High" | "Low" = reason.includes("Missing") || reason.includes("ship date") ? "High" : "Low";
+      // explicitExceptionSeverity() is checked first because this
+      // classifier is an independent copy of build-seed.ts's own
+      // case-sensitive substring one (see that file's own comment on the
+      // trap), reconstructing severity fresh from `reason` text on every
+      // GET rather than reading back whatever severity the client
+      // computed at import time. Without this, a duplicate-mailing
+      // exception (lib/domain/spreadsheet/exceptions.ts's "Duplicate:"
+      // reason) would show High immediately after publish (client-built)
+      // but silently flip to Low after any page reload (this function's
+      // own reconstruction), since "Duplicate: ..." text matches neither
+      // "Missing" nor "ship date". Falls through unchanged to the
+      // original substring classifier for every other, pre-existing
+      // reason.
+      const severity: "High" | "Low" = explicitExceptionSeverity(reason) ?? (reason.includes("Missing") || reason.includes("ship date") ? "High" : "Low");
       const subscription = e.subscriptionId ? subscriptionsById.get(e.subscriptionId) : undefined;
       const subscriberId = subscription?.subscriberId ?? "";
 

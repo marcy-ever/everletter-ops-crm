@@ -96,6 +96,20 @@ function compareSummary(expected, actual, discrepancies) {
 //  (b) order ORD-2858 has letter number 4 entered on three separate rows
 //      - a genuine spreadsheet duplicate, not a bug - lib/write-to-tables.ts
 //      correctly refuses to guess which one is real and skips all three.
+//  (c) those same three ORD-2858 rows now also produce a "Duplicate:"
+//      exception each (lib/domain/spreadsheet/exceptions.ts's
+//      duplicateMailingFlags(), added to flag exactly the rows (b) drops as
+//      Needs Review). Since the mailing itself is never written, this
+//      exception can only land in the exceptions table's pre-existing
+//      "subscription-only fallback" path (lib/write-to-tables.ts's module
+//      comment; lib/build-dataset-from-tables.ts's own gap list) - the
+//      documented, accepted case where reconstruction can't recover the
+//      original exceptionId and falls back to `EX-DB-<row.id>` instead of
+//      `EX-<sourceRow>`. reason/severity/subscriberId/recipientName still
+//      match exactly (verified below, not just asserted) - only the id
+//      format differs, which is why this shows as one MISSING_IN_RECONSTRUCTION
+//      (the client's EX-309/310/311) paired with one EXTRA_IN_RECONSTRUCTION
+//      (the server's EX-DB-*) per row, not a FIELD_MISMATCH.
 // mailings.notes/activeState and subscriptions.endDate are real, populated
 // columns (db/schema/mailings.ts's active/notes, db/schema/subscriptions.ts's
 // ended_at) - a discrepancy in any of them is not allowed here; it's a real
@@ -117,7 +131,12 @@ const ALLOWED_DISCREPANCIES = [
   (d) => d.entity === "subscriptions" && d.type === "FIELD_MISMATCH" && ["generatedMailings"].includes(d.field),
   (d) => d.entity === "mailings" && d.type === "MISSING_IN_RECONSTRUCTION",
   (d) => d.entity === "mailings" && d.type === "ORDER_MISMATCH",
-  // exceptions: no allowance - a discrepancy here is always unexpected.
+  // exceptions: no allowance except cause (c) above - a "Duplicate:"
+  // exception's own dropped mailing forces it through the subscription-
+  // only fallback path, which can't preserve the original EX-<sourceRow>
+  // id. Anything else here is still unexpected.
+  (d) => d.entity === "exceptions" && d.type === "MISSING_IN_RECONSTRUCTION" && d.expected.reason.startsWith("Duplicate:"),
+  (d) => d.entity === "exceptions" && d.type === "EXTRA_IN_RECONSTRUCTION" && d.actual.reason.startsWith("Duplicate:"),
 ];
 
 function isAllowedDiscrepancy(d) {
@@ -204,4 +223,25 @@ test("buildDatasetFromTables reconstructs the real spreadsheet identically to ap
   const unexpected = discrepancies.filter((d) => !isAllowedDiscrepancy(d));
   console.log(`\n${unexpected.length} of ${discrepancies.length} discrepancies are NOT in ALLOWED_DISCREPANCIES (these would fail the test)`);
   assert.deepEqual(unexpected, [], `${unexpected.length} unexpected discrepancy(ies) - see console output above for the full list, or set DISCREPANCY_DUMP_PATH to write it to a file`);
+
+  // The exceptionId mismatch above (cause (c)) is allowed, but nothing
+  // else about these 3 rows should differ - verified directly here rather
+  // than trusting the loose reason-prefix match in ALLOWED_DISCREPANCIES
+  // to also mean "and everything else about it is identical."
+  const clientDuplicates = clientSeed.exceptions.filter((e) => e.reason.startsWith("Duplicate:")).sort((a, b) => a.sourceRow - b.sourceRow);
+  const reconstructedDuplicates = reconstructed.exceptions.filter((e) => e.reason.startsWith("Duplicate:")).sort((a, b) => a.reason.localeCompare(b.reason));
+  assert.equal(clientDuplicates.length, 3, "the real fixture's ORD-2858 case: exactly rows 309, 310, 311");
+  assert.deepEqual(
+    clientDuplicates.map((e) => e.sourceRow),
+    [309, 310, 311],
+  );
+  assert.equal(reconstructedDuplicates.length, 3);
+  for (const client of clientDuplicates) {
+    const match = reconstructedDuplicates.find((r) => r.reason === client.reason);
+    assert.ok(match, `no reconstructed exception found with reason "${client.reason}"`);
+    assert.equal(match.severity, "High");
+    assert.equal(match.severity, client.severity);
+    assert.equal(match.subscriberId, client.subscriberId);
+    assert.equal(match.recipientName, client.recipientName);
+  }
 });
