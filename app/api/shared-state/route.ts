@@ -180,18 +180,24 @@ export async function POST(request: Request) {
     // inside this same transaction: the guard so its read-then-decide is
     // consistent with the write that follows, and the event so a rolled-
     // back import can never leave behind a row claiming it succeeded.
+    // Populated inside the transaction below (crmDataset only) and read
+    // again after it commits, to include in the response - see the
+    // `Response.json` call at the bottom of this function.
+    let importSummary: Awaited<ReturnType<typeof writeImport>> | null = null;
+
     const db = getDb();
     await db.transaction(async (tx) => {
       if (kind === "crmDataset" && crmDatasetPayload) {
         const seed = crmDatasetPayload.seed as unknown as Parameters<typeof writeImport>[0];
         await assertNotCatastrophicDeletion(seed, tx, Boolean(payload.confirmLargeDelete));
-        await writeImport(seed, tx);
+        importSummary = await writeImport(seed, tx);
         const summary = `${seed.mailings.length} mailings, ${seed.subscribers.length} subscribers, ${seed.exceptions.length} exceptions - ${crmDatasetPayload.sourceName}`;
         await tx.insert(ingestionEvents).values({
           source: "manual_spreadsheet",
           rawPayload: crmDatasetPayload.raw,
           status: "success",
           summary,
+          skipped: importSummary.skipped,
         });
         // One audit_events row per import, same summary ingestion_events
         // already recorded above - so a single chronological read of
@@ -227,7 +233,12 @@ export async function POST(request: Request) {
     // their own page look stale.
     const marker = await currentChangeMarker(db);
 
-    return Response.json({ ok: true, marker });
+    // `importSummary` is null for every kind except crmDataset (nothing
+    // else calls writeImport) - `skipped`/`totalRows`/`mailingsWritten`
+    // are simply absent from the response body for those, rather than
+    // present as null/zero, so a client checking `"skipped" in body`
+    // can't mistake "not an import" for "an import that skipped nothing."
+    return Response.json({ ok: true, marker, ...(importSummary ? { importSummary } : {}) });
   } catch (error) {
     if (error instanceof SharedStateValidationError) {
       return Response.json({ error: error.message }, { status: 400 });

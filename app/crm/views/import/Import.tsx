@@ -134,6 +134,42 @@ export default function Import({ data, onFileSelect, onPublish }: ImportProps) {
           </div>
         </div>
       )}
+
+      {data.importSummary && (
+        <div className="import-reconciliation">
+          <div className="panel-head">
+            <div>
+              <h3>Import reconciliation</h3>
+              <p>What this publish actually did - open the sheet at any listed row to fix it and re-import.</p>
+            </div>
+          </div>
+          <div className="print-summary">
+            <div>
+              <span>Rows in file</span>
+              <strong>{number(data.importSummary.totalRows)}</strong>
+            </div>
+            <div>
+              <span>Written</span>
+              <strong>{number(data.importSummary.mailingsWritten)}</strong>
+            </div>
+            <div>
+              <span>Skipped</span>
+              <strong>{number(data.importSummary.totalRows - data.importSummary.mailingsWritten)}</strong>
+            </div>
+          </div>
+          {data.importSummary.skipped.length > 0 ? (
+            <ul className="import-skip-groups">
+              {data.importSummary.skipped.map((group) => (
+                <li key={group.reason}>
+                  <strong>{group.reason}</strong> ({number(group.count)}) - sheet rows: {group.sourceRows.join(", ")}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="import-skip-groups-empty">Every row in the file was written. Nothing was skipped.</p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

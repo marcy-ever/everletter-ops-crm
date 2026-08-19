@@ -124,3 +124,34 @@ export interface Dataset {
   exceptions: DatasetException[];
   automationRules: unknown[];
 }
+
+// What an import skipped, and why - produced by lib/write-to-tables.ts's
+// writeImport() (server-side), carried in POST /api/shared-state's
+// response body, and read by lib/client/shared-state-client.ts's
+// saveSharedDataset() to show the Import Sheet view's reconciliation
+// panel. Defined here, not in lib/write-to-tables.ts itself, specifically
+// so lib/client/ can import the type without importing server-side `lib/`
+// (which pulls in the Drizzle schema/db connection - see this codebase's
+// own import-direction rule, docs/architecture.md). One group per skip
+// *reason*, not one per skipped row - see ImportSummary's own comment for
+// why the same source row can legitimately appear under more than one
+// reason.
+export interface DatasetImportSkipGroup {
+  reason: string;
+  count: number;
+  sourceRows: number[];
+}
+
+// totalRows is "rows in the file" (buildSeedFromSpreadsheet produces
+// exactly one candidate mailing per surviving row, so seed.mailings.length
+// doubles as this); mailingsWritten is how many actually landed in the
+// mailings table. `skipped` groups are NOT mutually exclusive by row: a
+// row whose subscription has an unrecognized plan is reported once under
+// that reason and again under "mailing's subscription was not kept" -
+// both are real, separate writes that got skipped for that one row, not
+// duplication to clean up.
+export interface DatasetImportSummary {
+  totalRows: number;
+  mailingsWritten: number;
+  skipped: DatasetImportSkipGroup[];
+}

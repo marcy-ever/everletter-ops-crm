@@ -106,6 +106,48 @@ test("the preview block renders the file name, sheet name, all five summary coun
   assert.doesNotMatch(noPreview, /import-preview/);
 });
 
+// The reconciliation panel is absent from the committed default-state
+// snapshot (tests/snapshots/import.html) on purpose - it's driven by
+// importInfo.importSummary, which is null until this session's own
+// publish has actually returned a server response (see
+// import-selectors.ts's own comment on why that's deliberately
+// session-scoped, not reconstructed from anything durable). Proportionate
+// targeted assertions here, matching the preview block's own test above,
+// rather than a second frozen snapshot for markup nothing before this
+// task ever rendered.
+test("the import reconciliation panel renders rows/written/skipped and every skip group's reason, count, and sheet rows - absent with no importSummary", () => {
+  const seed = loadSeed();
+  const importSummary = {
+    totalRows: 1218,
+    mailingsWritten: 1197,
+    skipped: [
+      { reason: "Subscription has an unrecognized plan", count: 2, sourceRows: [1070, 1076] },
+      { reason: "Mailing shares its order, character, and letter number with another row", count: 3, sourceRows: [309, 310, 311] },
+    ],
+  };
+  const importInfo = { seed, sourceName: "Import_20260812_181828.xlsx", uploadedAt: "2026-08-12T18:32:00.000Z", summary: seed.summary, importSummary };
+  const data = computeImportData(seed, new Set(), importInfo, null, "Imported. This is now the shared CRM data.", false);
+  const html = renderImportHtml(data);
+
+  assert.match(html, /import-reconciliation/);
+  assert.match(html, /Import reconciliation/);
+  assert.match(html, /Rows in file<\/span><strong>1,218<\/strong>/);
+  assert.match(html, /Written<\/span><strong>1,197<\/strong>/);
+  assert.match(html, /Skipped<\/span><strong>21<\/strong>/);
+  assert.match(html, /Subscription has an unrecognized plan.*\(2\).*sheet rows: 1070, 1076/);
+  assert.match(html, /Mailing shares its order, character, and letter number with another row.*\(3\).*sheet rows: 309, 310, 311/);
+  assert.doesNotMatch(html, /Every row in the file was written/);
+
+  const noSkips = renderImportHtml(
+    computeImportData(seed, new Set(), { ...importInfo, importSummary: { totalRows: 5, mailingsWritten: 5, skipped: [] } }, null, "", false),
+  );
+  assert.match(noSkips, /Every row in the file was written\. Nothing was skipped\./);
+  assert.doesNotMatch(noSkips, /import-skip-groups"/);
+
+  const noImportSummary = renderImportHtml(computeImportData(seed, new Set(), null, null, "", false));
+  assert.doesNotMatch(noImportSummary, /import-reconciliation/);
+});
+
 test("the publish button reads 'Publish to shared CRM' and is enabled when not busy, or 'Publishing...' and disabled when busy", () => {
   const seed = loadSeed();
   const preview = { seed, sheetName: "Sheet1", rowCount: 1, fileName: "test.xlsx" };

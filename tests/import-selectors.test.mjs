@@ -61,6 +61,22 @@ test("computeImportData passes preview/importStatus/importBusy through unchanged
   assert.equal(data.importBusy, true);
 });
 
+test("computeImportData reads importSummary from importInfo, and reports null before any publish this session", () => {
+  const seed = seedWith();
+  assert.equal(computeImportData(seed, new Set(), null, null, "", false).importSummary, null, "no importInfo at all (fresh page load) - null, not undefined");
+
+  const importInfoWithoutSummary = { seed, sourceName: "updated-schedule.xlsx", uploadedAt: "2026-08-12T18:32:00.000Z", summary: seed.summary };
+  assert.equal(
+    computeImportData(seed, new Set(), importInfoWithoutSummary, null, "", false).importSummary,
+    null,
+    "importInfo present but no importSummary on it (an older response shape) - still null, not thrown or undefined",
+  );
+
+  const importSummary = { totalRows: 3, mailingsWritten: 2, skipped: [{ reason: "Mailing has no ship date", count: 1, sourceRows: [4] }] };
+  const importInfo = { ...importInfoWithoutSummary, importSummary };
+  assert.deepEqual(computeImportData(seed, new Set(), importInfo, null, "", false).importSummary, importSummary);
+});
+
 test("defaultAutomationRules prefers window.EVERLETTER_SEED, then the real seed, then an empty array", () => {
   const originalWindow = globalThis.window;
   try {

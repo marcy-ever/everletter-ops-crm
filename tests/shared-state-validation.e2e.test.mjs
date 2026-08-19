@@ -345,7 +345,8 @@ test("the real 1,218-row fixture, posted through the real route exactly as the b
   const outerBody = JSON.stringify({ kind: "crmDataset", key: "current", value });
 
   const response = await POST(postRequest(outerBody));
-  assert.equal(response.status, 200, `the real fixture should clear every check on a first import (empty DB, well under the size cap): ${JSON.stringify(await response.json().catch(() => null))}`);
+  const body = await response.json().catch(() => null);
+  assert.equal(response.status, 200, `the real fixture should clear every check on a first import (empty DB, well under the size cap): ${JSON.stringify(body)}`);
   // 1,218 raw spreadsheet rows, but writeImport() itself (unchanged by
   // this task) skips a documented handful (missing ship dates, the real
   // ORD-2858 duplicate, unrecognized-plan subscriptions) - 1,197 written
@@ -354,4 +355,48 @@ test("the real 1,218-row fixture, posted through the real route exactly as the b
   // docs/schema-design.md for exactly which rows and why.
   assert.equal(seed.mailings.length, 1218);
   assert.equal(await countRows(db, mailings), 1197);
+
+  // The reconciliation this task adds: the exact same 21-row gap above,
+  // now reported instead of only logged - every group's real spreadsheet
+  // row numbers, verified directly against the fixture file itself (not
+  // just internally consistent) when this test was written. A wrong row
+  // number here is worse than none, so these are the literal rows, not a
+  // count-only check.
+  assert.ok(body.importSummary, "POST's response body must carry importSummary for a crmDataset import");
+  assert.equal(body.importSummary.totalRows, 1218);
+  assert.equal(body.importSummary.mailingsWritten, 1197);
+  assert.deepEqual(body.importSummary.skipped, [
+    {
+      reason: "Subscription has an unrecognized plan",
+      count: 2,
+      sourceRows: [1070, 1071, 1072, 1073, 1074, 1075, 1076, 1077, 1078, 1079, 1080, 1081, 1082, 1083, 1084, 1085, 1086, 1087],
+    },
+    {
+      reason: "Order has no resolvable subscription",
+      count: 18,
+      sourceRows: [1070, 1071, 1072, 1073, 1074, 1075, 1076, 1077, 1078, 1079, 1080, 1081, 1082, 1083, 1084, 1085, 1086, 1087],
+    },
+    {
+      reason: "Mailing's subscription was not kept",
+      count: 18,
+      sourceRows: [1070, 1071, 1072, 1073, 1074, 1075, 1076, 1077, 1078, 1079, 1080, 1081, 1082, 1083, 1084, 1085, 1086, 1087],
+    },
+    {
+      reason: "Mailing shares its order, character, and letter number with another row",
+      count: 3,
+      sourceRows: [309, 310, 311],
+    },
+  ]);
+
+  // Persisted, not just returned - ingestion_events.skipped is what makes
+  // this survive past the response object (db/schema/ingestion_events.ts).
+  // Most-recent-row, not "the only row": this file's own freshDb() (unlike
+  // tests/import-write-path.e2e.test.mjs's) deliberately doesn't truncate
+  // ingestion_events - see truncateAllTables's own comment in
+  // tests/e2e-helpers.mjs - so earlier tests in this same file leave rows
+  // behind.
+  const { ingestionEvents } = await import("../db/schema/ingestion_events");
+  const { desc } = await import("drizzle-orm");
+  const [latestEvent] = await db.select({ skipped: ingestionEvents.skipped }).from(ingestionEvents).orderBy(desc(ingestionEvents.id)).limit(1);
+  assert.deepEqual(latestEvent.skipped, body.importSummary.skipped);
 });
