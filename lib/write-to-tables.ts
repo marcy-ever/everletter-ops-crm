@@ -8,6 +8,7 @@ import { mailingComponents } from "@/db/schema/mailing_components";
 import { exceptions } from "@/db/schema/exceptions";
 import { mailingKey as appMailingKey, parseComponentKey, parseExceptionReviewKey, parseMailingKey } from "@/lib/domain/keys";
 import { buildRecipientId, buildSubscriptionId } from "@/lib/domain/ids";
+import type { DatasetImportSkipGroup, DatasetImportSummary } from "@/lib/domain/dataset";
 
 /**
  * Writes app.js's crmDataset/mailingStatus/componentStatus/
@@ -21,11 +22,15 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/domain/ids";
  * connection, a constraint violation, a bug) propagates up and rolls back
  * the whole transaction via app/api/shared-state/route.ts's
  * `db.transaction()`. This is deliberately different from the per-record
- * skip-and-log calls throughout this file (e.g. "skipping subscription,
- * unrecognized plan") - those are expected, legitimate business outcomes
- * (app.js's own exceptions mechanism already flags the same rows as
- * broken), not errors, and still don't throw. Only genuinely unexpected
- * failures propagate.
+ * skip-log-and-record calls throughout this file (e.g. "skipping
+ * subscription, unrecognized plan") - those are expected, legitimate
+ * business outcomes (app.js's own exceptions mechanism already flags the
+ * same rows as broken), not errors, and still don't throw. Only
+ * genuinely unexpected failures propagate. writeImport()'s own skips are
+ * collected as well as logged (see ImportSummary below) - a human can't
+ * see `docker logs`, but does see the POST response and
+ * ingestion_events.skipped (app/api/shared-state/route.ts,
+ * db/schema/ingestion_events.ts).
  *
  * Known, deliberate simplifications (see docs/schema-design.md for the
  * full reasoning behind each):
@@ -55,18 +60,23 @@ import { buildRecipientId, buildSubscriptionId } from "@/lib/domain/ids";
  *    comment in db/schema/mailings.ts for why (it collides routinely for
  *    the most common subscription pattern) and what's used instead.
  *
- * Every write* function below returns a WriteOutcome (previousValue/
- * newValue) on an actual write, or null when it soft-skipped (unparseable
- * key, no matching row, etc.) - app/api/shared-state/route.ts uses this to
- * decide whether to write an audit_events row, so a skip-and-log case
- * (nothing changed) never produces one. Returning the outcome rather than
- * writing the audit row here keeps this file focused on writing the
- * normalized tables; the route is the single audit choke point (it already
- * resolves the actor via auth()) and both halves stay independently
- * testable. previousValue is read via a SELECT immediately before each
- * UPDATE/INSERT, inside the same transaction the caller is already in - no
- * new race introduced beyond what every other read-then-write in this file
- * already does.
+ * Every single-key write* function below (writeMailingStatus/
+ * writeComponentStatus/writeReviewedException) returns a WriteOutcome
+ * (previousValue/newValue) on an actual write, or null when it
+ * soft-skipped (unparseable key, no matching row, etc.) -
+ * app/api/shared-state/route.ts uses this to decide whether to write an
+ * audit_events row, so a skip-and-log case (nothing changed) never
+ * produces one. Returning the outcome rather than writing the audit row
+ * here keeps this file focused on writing the normalized tables; the
+ * route is the single audit choke point (it already resolves the actor
+ * via auth()) and both halves stay independently testable. previousValue
+ * is read via a SELECT immediately before each UPDATE/INSERT, inside the
+ * same transaction the caller is already in - no new race introduced
+ * beyond what every other read-then-write in this file already does.
+ * writeImport() is the one exception to this shape - a bulk replace has
+ * no single previousValue/newValue to report, so it returns ImportSummary
+ * instead (below), which the route persists to ingestion_events.skipped
+ * rather than audit_events.
  */
 
 // The db handle every exported function here takes - either the real
@@ -144,6 +154,47 @@ export interface Seed {
   subscriptions: SeedSubscription[];
   mailings: SeedMailing[];
   exceptions: SeedException[];
+}
+
+// ImportSkipGroup/ImportSummary are aliases of lib/domain/dataset.ts's
+// DatasetImportSkipGroup/DatasetImportSummary, not a second definition -
+// the type lives in lib/domain/ specifically so lib/client/ can import it
+// without pulling in this server-side module (which imports the Drizzle
+// schema/db connection - see this codebase's import-direction rule,
+// docs/architecture.md). Re-exported under these shorter names because
+// every other type in this file is named ImportXxx/SeedXxx, not
+// DatasetXxx - callers here shouldn't have to know or care that the
+// canonical definition lives one file over.
+export type ImportSkipGroup = DatasetImportSkipGroup;
+export type ImportSummary = DatasetImportSummary;
+
+// Accumulates skip groups in first-seen order (Map preserves insertion
+// order) - deterministic, and means the UI/console see reasons in the
+// same order writeImport() actually encounters them (subscriptions, then
+// orders, then mailings) without needing a separate sort key. One call
+// per skipped *entity* (a subscription, an order, or a mailing) - `count`
+// is exactly the number of times this was called for a given reason,
+// `sourceRows` are unioned across every call.
+function createSkipCollector() {
+  const groups = new Map<string, { count: number; sourceRows: Set<number> }>();
+  return {
+    record(reason: string, sourceRows: Array<number | string>) {
+      const entry = groups.get(reason) ?? { count: 0, sourceRows: new Set<number>() };
+      entry.count += 1;
+      for (const row of sourceRows) {
+        const n = Number(row);
+        if (Number.isFinite(n)) entry.sourceRows.add(n);
+      }
+      groups.set(reason, entry);
+    },
+    toGroups(): ImportSkipGroup[] {
+      return [...groups.entries()].map(([reason, { count, sourceRows }]) => ({
+        reason,
+        count,
+        sourceRows: [...sourceRows].sort((a, b) => a - b),
+      }));
+    },
+  };
 }
 
 // What a write* function actually changed - see the module comment above
@@ -235,11 +286,28 @@ export function estimateKeptMailingIds(seed: Seed): Set<string> {
   return keep;
 }
 
-export async function writeImport(seed: Seed, db: Db): Promise<void> {
-  await runImport(seed, db);
+export async function writeImport(seed: Seed, db: Db): Promise<ImportSummary> {
+  return runImport(seed, db);
 }
 
-async function runImport(seed: Seed, db: Db) {
+async function runImport(seed: Seed, db: Db): Promise<ImportSummary> {
+  const skips = createSkipCollector();
+  // Every seed mailing has its own sourceRow, and there's exactly one
+  // candidate mailing per surviving spreadsheet row (buildSeedFromSpreadsheet),
+  // so this is the lookup every entity-level (subscription/order) skip
+  // below uses to find "which rows does this affect" - see ImportSkipGroup's
+  // own comment for why that's reported instead of an internal id.
+  const mailingsBySubscriptionId = new Map<string, number[]>();
+  const mailingsByOrderId = new Map<string, number[]>();
+  for (const m of seed.mailings) {
+    const row = Number(m.sourceRow);
+    if (!Number.isFinite(row)) continue;
+    if (!mailingsBySubscriptionId.has(m.subscriptionId)) mailingsBySubscriptionId.set(m.subscriptionId, []);
+    mailingsBySubscriptionId.get(m.subscriptionId)!.push(row);
+    if (!mailingsByOrderId.has(m.orderId)) mailingsByOrderId.set(m.orderId, []);
+    mailingsByOrderId.get(m.orderId)!.push(row);
+  }
+
   const recipientsById = new Map(seed.recipients.map((r) => [r.recipientId, r]));
 
   // Defense in depth against the collision this module's
@@ -279,10 +347,12 @@ async function runImport(seed: Seed, db: Db) {
     const recipient = recipientsById.get(s.recipientId);
     if (totalLettersExpected === undefined) {
       log("skipping subscription, unrecognized plan (already flagged by app.js's own exceptions):", s.subscriptionId, s.plan);
+      skips.record("Subscription has an unrecognized plan", mailingsBySubscriptionId.get(s.subscriptionId) ?? []);
       continue;
     }
     if (!recipient) {
       log("skipping subscription, no matching recipient:", s.subscriptionId, s.recipientId);
+      skips.record("Subscription has no matching recipient", mailingsBySubscriptionId.get(s.subscriptionId) ?? []);
       continue;
     }
     const values = {
@@ -319,6 +389,7 @@ async function runImport(seed: Seed, db: Db) {
     const subscriptionId = orderIdToSubscriptionId.get(o.orderId);
     if (!subscriptionId || !keepSubscriptionIds.has(subscriptionId)) {
       log("skipping order, no resolvable/kept subscription:", o.orderId);
+      skips.record("Order has no resolvable subscription", mailingsByOrderId.get(o.orderId) ?? []);
       continue;
     }
     const values = {
@@ -362,10 +433,12 @@ async function runImport(seed: Seed, db: Db) {
     .filter((m) => {
       if (!m.shipDate) {
         log("skipping mailing, missing ship date (already flagged by app.js's own exceptions):", m.mailingId);
+        skips.record("Mailing has no ship date", [m.sourceRow]);
         return false;
       }
       if (!keepSubscriptionIds.has(m.subscriptionId)) {
         log("skipping mailing, subscription not kept:", m.mailingId, m.subscriptionId);
+        skips.record("Mailing's subscription was not kept", [m.sourceRow]);
         return false;
       }
       return true;
@@ -383,6 +456,7 @@ async function runImport(seed: Seed, db: Db) {
     const appKey = appMailingKey(m);
     if ((stableIdCounts.get(stableId) ?? 0) > 1) {
       log("skipping mailing, ambiguous stable id shared with another mailing (same order+character+letterNumber, cannot disambiguate without guessing):", stableId, m.mailingId);
+      skips.record("Mailing shares its order, character, and letter number with another row", [m.sourceRow]);
       continue;
     }
     const recipient = recipientsById.get(m.recipientId);
@@ -501,6 +575,12 @@ async function runImport(seed: Seed, db: Db) {
   } else {
     await db.delete(subscribers);
   }
+
+  return {
+    totalRows: seed.mailings.length,
+    mailingsWritten: keepMailingIds.size,
+    skipped: skips.toGroups(),
+  };
 }
 
 // Resolves an incoming override's app.js mailingId+sourceRow to the current

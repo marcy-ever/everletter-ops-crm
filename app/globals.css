@@ -1894,6 +1894,35 @@ td span {
   margin-top: 12px;
 }
 
+.import-reconciliation {
+  margin-top: 18px;
+  border-top: 1px solid rgba(125, 83, 65, 0.14);
+  padding-top: 18px;
+}
+
+.import-skip-groups {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.import-skip-groups li {
+  border-left: 3px solid var(--rose);
+  background: rgba(255, 255, 255, 0.64);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.import-skip-groups-empty {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 .sync-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);

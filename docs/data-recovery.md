@@ -3,11 +3,16 @@
 Every `crmDataset` import through `POST /api/shared-state` now records one
 row in `ingestion_events` (`db/schema/ingestion_events.ts`) - `source`,
 `occurred_at`, `raw_payload` (the complete posted dataset, as jsonb),
-`status`, and `summary` (a human-readable one-liner: mailing/subscriber/
-exception counts plus the source filename). The insert happens inside the
-same Postgres transaction as the write itself (`app/api/shared-state/route.ts`),
-so an import that rolls back never leaves behind an event claiming it
-succeeded - and one that succeeds always has a corresponding row.
+`status`, `summary` (a human-readable one-liner: mailing/subscriber/
+exception counts plus the source filename), and `skipped` (structured -
+which rows `writeImport()` didn't write and why, grouped by reason with
+real spreadsheet row numbers; see `lib/write-to-tables.ts`'s
+`ImportSummary` and the Import Sheet view's own reconciliation panel,
+which renders this same data right after a publish). The insert happens
+inside the same Postgres transaction as the write itself
+(`app/api/shared-state/route.ts`), so an import that rolls back never
+leaves behind an event claiming it succeeded - and one that succeeds
+always has a corresponding row.
 
 This is deliberately the *only* history/versioning mechanism for imports.
 `raw_payload` is the complete dataset a given import wrote - not a diff,
@@ -99,7 +104,11 @@ before it isn't small anymore. Recommendation, not yet implemented:
 - Keep every `ingestion_events` row's `source`/`occurred_at`/`status`/
   `summary` forever - they're small (a few hundred bytes each) and are
   the audit trail of *that* an import happened, which has standalone
-  value.
+  value. `skipped` (added alongside the reconciliation panel - see
+  `db/schema/ingestion_events.ts`'s own comment) is small per row too - a
+  handful of reasons and row numbers, not a full dataset - but hasn't been
+  measured at real scale the way `raw_payload` has below; worth doing
+  before treating it as automatically safe to keep forever the same way.
 - Only `raw_payload` needs pruning. A reasonable cutoff: null out
   `raw_payload` (keeping the row and its summary) for events older than
   **90 days** - long enough to cover "we noticed a bad import weeks

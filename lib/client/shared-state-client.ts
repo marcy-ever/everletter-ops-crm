@@ -54,7 +54,7 @@
  * module comment for the full mechanism.
  */
 
-import type { Dataset, DatasetSummary } from "../domain/dataset";
+import type { Dataset, DatasetSummary, DatasetImportSummary } from "../domain/dataset";
 import { saveComponentOverrides, saveReviewedExceptions, saveStatusOverrides } from "./local-overrides";
 import type { SaveFailureStore } from "./save-failures";
 import type { StalenessStore } from "./staleness";
@@ -119,6 +119,10 @@ export interface SharedDatasetPayload {
   sourceName: string;
   uploadedAt: string;
   summary: DatasetSummary;
+  // Absent (not just empty) unless the server actually ran an import and
+  // reported one - see app/api/shared-state/route.ts's own comment on why
+  // it's spread in conditionally rather than always present as null.
+  importSummary?: DatasetImportSummary;
 }
 
 export async function saveSharedDataset(seed: Dataset, sourceName: string, stalenessStore: StalenessStore): Promise<SharedDatasetPayload> {
@@ -139,6 +143,13 @@ export async function saveSharedDataset(seed: Dataset, sourceName: string, stale
     throw new Error(error.error || "Could not save the imported spreadsheet.");
   }
   recordMarkerFromBody(body, stalenessStore);
+  // Read off the response, not sent up in the request - the server is the
+  // only side that knows what writeImport() actually skipped (see
+  // lib/write-to-tables.ts's ImportSummary). Absent (not null) on any
+  // response shape that doesn't carry it, same reasoning as the field's
+  // own comment above.
+  const responseImportSummary = (body as { importSummary?: DatasetImportSummary }).importSummary;
+  if (responseImportSummary) payload.importSummary = responseImportSummary;
   return payload;
 }
 

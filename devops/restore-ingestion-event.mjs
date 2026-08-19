@@ -79,7 +79,13 @@ async function main() {
   const seed = event.rawPayload.seed;
   const summary = `Restored from ingestion_events #${id} (${event.summary})`;
   await db.transaction(async (tx) => {
-    await writeImport(seed, tx);
+    // writeImport()'s return value (lib/write-to-tables.ts's
+    // ImportSummary) is real here too - a restore runs the exact same
+    // skip logic a live import does (unrecognized plans, ambiguous ids,
+    // etc. are properties of the seed being written, not of how it got
+    // here), so the new row this restore creates gets its own accurate
+    // `skipped` value, not a copy of the original import's.
+    const importSummary = await writeImport(seed, tx);
     // Same transaction as the write, for the same reason every crmDataset
     // import does this (app/api/shared-state/route.ts): an event
     // recording a restore that rolled back would be worse than no event.
@@ -91,6 +97,7 @@ async function main() {
       rawPayload: event.rawPayload,
       status: "success",
       summary,
+      skipped: importSummary.skipped,
     });
   });
   console.log(`Restored. Tables now match ingestion_events #${id}'s import exactly. This restore itself is now an ingestion_events row - it's restorable-from in turn, same as any other import.`);

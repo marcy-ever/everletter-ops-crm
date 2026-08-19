@@ -22,7 +22,7 @@
 import { buildSeedFromSpreadsheet } from "@/lib/domain/spreadsheet/build-seed";
 import type { ImportPreview } from "@/lib/client/crm-state";
 import type { SharedDatasetPayload } from "@/lib/client/shared-state-client";
-import type { Dataset } from "@/lib/domain/dataset";
+import type { Dataset, DatasetImportSummary } from "@/lib/domain/dataset";
 import { activeExceptions } from "@/lib/client/selectors";
 import { formatDate } from "@/lib/domain/format";
 
@@ -60,6 +60,10 @@ export interface ImportData {
   importStatus: string;
   preview: ImportPreview | null;
   importBusy: boolean;
+  // Set only once this session's own publish has actually returned a
+  // server response - see computeImportData's own comment below for why
+  // this can't be reconstructed from anything else state holds.
+  importSummary: DatasetImportSummary | null;
 }
 
 // The display-only derivation renderImport() computed inline
@@ -68,6 +72,18 @@ export interface ImportData {
 // importBusy pass straight through - not derived, just gathered here so
 // app/crm/CrmApp.tsx's REACT_VIEWS.import entry has one call instead of
 // five separate `state.importXxx` reads.
+//
+// importSummary comes from importInfo.importSummary - the reconciliation
+// (rows in the file, mailings written, what was skipped and which sheet
+// rows) that lets someone act on an import instead of just trusting it
+// worked. Deliberately session-scoped, not something GET /api/shared-state
+// returns on a later page load: it describes what *this* publish did, not
+// a durable property of the current dataset - a page refresh (or a
+// different tab) correctly shows no reconciliation until that session
+// publishes its own import, the same way importInfo itself already works
+// for activeSource/uploadedAt above. The durable record of what a past
+// import skipped lives in ingestion_events.skipped
+// (db/schema/ingestion_events.ts), not here.
 export function computeImportData(seed: Dataset, reviewed: Set<string>, importInfo: SharedDatasetPayload | null, importPreview: ImportPreview | null, importStatus: string, importBusy: boolean): ImportData {
   return {
     activeSource: importInfo?.sourceName || seed.summary.sourceFile || "Built-in starter data",
@@ -77,6 +93,7 @@ export function computeImportData(seed: Dataset, reviewed: Set<string>, importIn
     importStatus,
     preview: importPreview,
     importBusy,
+    importSummary: importInfo?.importSummary ?? null,
   };
 }
 

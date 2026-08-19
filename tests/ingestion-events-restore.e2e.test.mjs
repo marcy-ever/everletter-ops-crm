@@ -110,14 +110,55 @@ test("import A, import B, restore A via the real devops/restore-ingestion-event.
   await truncateAllTables(db);
   await db.delete(ingestionEvents);
 
+  // A 4th mailing with an unrecognized plan - so dataset A's own
+  // ingestion_events row has real, non-empty `skipped` data to restore
+  // (this task's own required verification: restore must still work
+  // against a row written by the new code, skip data included, not just
+  // a clean import).
+  const skippedMailing = { ...buildMailing(4), subscriptionId: "PLAN-R4-UNRECOGNIZED" };
   const datasetA = buildSeed([buildMailing(1), buildMailing(2), buildMailing(3)]);
-  const responseA = await POST(postRequest(buildCrmDatasetBody(datasetA, { sourceName: "dataset-A.xlsx" })));
-  assert.equal(responseA.status, 200, `importing dataset A failed: ${JSON.stringify(await responseA.json().catch(() => null))}`);
-  const snapshotA = await snapshot(db);
-  assert.equal(snapshotA.mailings.length, 3);
+  datasetA.subscriptions.push({
+    subscriptionId: skippedMailing.subscriptionId,
+    subscriberId: skippedMailing.subscriberId,
+    recipientId: skippedMailing.recipientId,
+    plan: "Not A Real Plan",
+    character: skippedMailing.character,
+    startDate: "2026-01-01",
+    endDate: "",
+    activeState: "Active",
+  });
+  datasetA.subscribers.push({ subscriberId: skippedMailing.subscriberId, email: `${skippedMailing.subscriberId}@example.test`, displayName: skippedMailing.recipientName, status: "Active" });
+  datasetA.recipients.push({ recipientId: skippedMailing.recipientId, subscriberId: skippedMailing.subscriberId, name: skippedMailing.recipientName, address: "1 Restore Test St" });
+  datasetA.mailings.push({
+    mailingId: skippedMailing.mailingId,
+    subscriptionId: skippedMailing.subscriptionId,
+    recipientId: skippedMailing.recipientId,
+    orderId: skippedMailing.orderId,
+    character: skippedMailing.character,
+    recipientName: skippedMailing.recipientName,
+    letterNumber: skippedMailing.letterNumber,
+    shipDate: skippedMailing.shipDate,
+    status: skippedMailing.status,
+    activeState: skippedMailing.activeState,
+    notes: skippedMailing.notes,
+    sourceRow: skippedMailing.sourceRow,
+  });
 
-  const eventRowsAfterA = await db.select({ id: ingestionEvents.id }).from(ingestionEvents).orderBy(desc(ingestionEvents.id)).limit(1);
+  const responseA = await POST(postRequest(buildCrmDatasetBody(datasetA, { sourceName: "dataset-A.xlsx" })));
+  const bodyA = await responseA.json().catch(() => null);
+  assert.equal(responseA.status, 200, `importing dataset A failed: ${JSON.stringify(bodyA)}`);
+  const snapshotA = await snapshot(db);
+  assert.equal(snapshotA.mailings.length, 3, "the 4th, unrecognized-plan mailing must not have been written");
+
+  // The real skip this test set out to prove restore preserves.
+  assert.deepEqual(bodyA.importSummary.skipped, [
+    { reason: "Subscription has an unrecognized plan", count: 1, sourceRows: [4] },
+    { reason: "Mailing's subscription was not kept", count: 1, sourceRows: [4] },
+  ]);
+
+  const eventRowsAfterA = await db.select({ id: ingestionEvents.id, skipped: ingestionEvents.skipped }).from(ingestionEvents).orderBy(desc(ingestionEvents.id)).limit(1);
   assert.equal(eventRowsAfterA.length, 1, "importing dataset A should have recorded exactly one ingestion_events row");
+  assert.deepEqual(eventRowsAfterA[0].skipped, bodyA.importSummary.skipped, "the persisted ingestion_events.skipped must match what the response reported");
   const eventIdForA = eventRowsAfterA[0].id;
 
   // Dataset B: entirely disjoint mailings from A, so importing it removes
@@ -142,4 +183,12 @@ test("import A, import B, restore A via the real devops/restore-ingestion-event.
 
   const snapshotAfterRestore = await snapshot(db);
   assert.deepEqual(snapshotAfterRestore, snapshotA, "after restoring event A, the tables must match dataset A's own post-import snapshot exactly - not B, not some merge of the two");
+
+  // The restore's own new ingestion_events row (devops/restore-ingestion-event.mjs
+  // - source: "restore") gets a real, freshly-computed `skipped` too, not
+  // a copy of A's - see that script's own comment on why it re-runs the
+  // same skip logic rather than reusing the original event's value.
+  const eventRowsAfterRestore = await db.select({ source: ingestionEvents.source, skipped: ingestionEvents.skipped }).from(ingestionEvents).orderBy(desc(ingestionEvents.id)).limit(1);
+  assert.equal(eventRowsAfterRestore[0].source, "restore");
+  assert.deepEqual(eventRowsAfterRestore[0].skipped, bodyA.importSummary.skipped, "restoring the identical seed must reproduce the identical skip result");
 });

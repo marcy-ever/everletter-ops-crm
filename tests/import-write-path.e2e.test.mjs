@@ -245,6 +245,12 @@ test("selecting a file, previewing it, and publishing writes the normalized tabl
     // 6. an audit row
     const auditRows = await db.select().from(auditEvents).where(eq(auditEvents.kind, "crmDataset"));
     assert.equal(auditRows.length, 1);
+
+    // 7. the reconciliation - one clean row, nothing skipped, reported as
+    // such rather than simply absent (see lib/write-to-tables.ts's
+    // ImportSummary and lib/domain/dataset.ts's DatasetImportSummary).
+    assert.deepEqual(sandbox.state.importInfo.importSummary, { totalRows: 1, mailingsWritten: 1, skipped: [] });
+    assert.deepEqual(ingestionRows[0].skipped, []);
   } finally {
     globalThis.window = originalWindow;
   }
@@ -254,6 +260,66 @@ async function countRowsOf(db, table) {
   const rows = await db.select().from(table);
   return rows.length;
 }
+
+// A second row, identical to ROW except a blank Subscription - the exact
+// shape lib/domain/spreadsheet/build-seed.ts turns into a "Needs Review"
+// plan (normalizePlan's fallback for unrecognized/blank text), which
+// lib/write-to-tables.ts's runImport() then skips writing (LETTERS_BY_PLAN
+// has no "Needs Review" entry) - the same real skip the 1,218-row fixture
+// test proves at scale, reproduced here small and deliberately.
+const SKIPPED_ROW = { ...ROW, "Order ID": "9002", "Customer Name and Address": "Jax Example\n2 Main St, Sample City, ZZ 00000", Subscription: "", Email: "jax@example.test" };
+
+test("an import mixing a clean row and a row with an unrecognized plan reports the reconciliation through the full client flow, and persists it to ingestion_events", { skip }, async () => {
+  const db = await freshDb();
+  const { POST } = await loadRoute();
+  const { ingestionEvents } = await import("../db/schema/ingestion_events");
+  const { mailings } = await import("../db/schema/mailings");
+  const originalWindow = globalThis.window;
+
+  try {
+    installShellDomStub();
+    const sandbox = createAppState();
+    const { waitForFetches } = wireFetchToRealRoute(POST);
+    globalThis.window.XLSX = stubXlsx([ROW, SKIPPED_ROW]);
+
+    const file = fakeFile("mixed-schedule.xlsx");
+    sandbox.state.importPreview = await readWorkbookFile(file, new Date("2026-08-12T12:00:00.000Z"), []);
+    assert.equal(sandbox.state.importPreview.seed.mailings.length, 2, "both rows become mailing candidates - the skip happens in writeImport, not client-side parsing");
+
+    sandbox.state.importInfo = await saveSharedDataset(sandbox.state.importPreview.seed, sandbox.state.importPreview.fileName, sandbox.staleness);
+    await waitForFetches();
+
+    // The reconciliation reached the client - real row numbers (sourceRow
+    // 2 for ROW, 3 for SKIPPED_ROW, since buildSeedFromSpreadsheet's
+    // sourceRow is index+2), not an internal id.
+    const summary = sandbox.state.importInfo.importSummary;
+    assert.ok(summary, "importSummary must be present on a real import response");
+    assert.equal(summary.totalRows, 2);
+    assert.equal(summary.mailingsWritten, 1);
+    assert.deepEqual(summary.skipped, [
+      { reason: "Subscription has an unrecognized plan", count: 1, sourceRows: [3] },
+      // SKIPPED_ROW has a real Order ID ("9002"), so it also produces its
+      // own real order - which is skipped in turn, since the subscription
+      // it points at was never kept. See lib/write-to-tables.ts's own
+      // module comment on why "the orders that follow from" a skipped
+      // subscription get their own group.
+      { reason: "Order has no resolvable subscription", count: 1, sourceRows: [3] },
+      { reason: "Mailing's subscription was not kept", count: 1, sourceRows: [3] },
+    ]);
+
+    // The actual write matches: 1 mailing, not 2.
+    assert.equal(await countRowsOf(db, mailings), 1);
+
+    // Persisted to ingestion_events, not just returned in the response -
+    // this is what makes the history say what the import actually did,
+    // not just that one happened.
+    const ingestionRows = await db.select().from(ingestionEvents);
+    assert.equal(ingestionRows.length, 1);
+    assert.deepEqual(ingestionRows[0].skipped, summary.skipped);
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
 
 test("publishing an import that trips the catastrophic-deletion guard surfaces the server's real 409 message, not a generic failure or silence, and changes nothing", { skip }, async () => {
   const db = await freshDb();
