@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { spreadsheetExceptionReasons } from "../lib/domain/spreadsheet/exceptions.ts";
+import { spreadsheetExceptionReasons, duplicateMailingFlags, explicitExceptionSeverity, DUPLICATE_MAILING_SEVERITY } from "../lib/domain/spreadsheet/exceptions.ts";
 
 // New coverage from step 3c (lib/domain/spreadsheet/exceptions.ts shipped
 // in step 3b with no direct unit tests - only indirectly covered via the
@@ -133,4 +133,61 @@ test("severity classifier: a single 'Missing' reason bumps the whole exception t
   const reasons = spreadsheetExceptionReasons({ ...CLEAN_ROW, character: "", shipDate: "2026-08-20" }, "Active", TODAY);
   assert.deepEqual(reasons, ["Missing character", "Ship date is not a 1st/15th batch"]);
   assert.equal(classifySeverity(reasons), "High");
+});
+
+// duplicateMailingFlags() - the cross-row half of exception detection. Pins
+// the real fixture shape: rows 309/310/311 all sharing order 2858 +
+// character Marley + letter number 4 (see project memory
+// project_import_skip_reporting.md - the ORD-2858 case is 3 rows, not 2).
+
+function mailing(sourceRow, overrides = {}) {
+  return { sourceRow, mailingId: `MAIL-${sourceRow}`, orderId: "ORD-2858", character: "Marley", letterNumber: "4", ...overrides };
+}
+
+test("duplicateMailingFlags flags every row in a 3-way collision, each naming the OTHER two rows", () => {
+  const rows = [mailing(309), mailing(310), mailing(311)];
+  const flags = duplicateMailingFlags(rows);
+  assert.equal(flags.length, 3, "one flag per colliding row, not one per group");
+
+  const bySourceRow = new Map(flags.map((f) => [f.mailing.sourceRow, f.reason]));
+  assert.equal(bySourceRow.get(309), "Duplicate: shares order, character, and letter number with rows 310, 311");
+  assert.equal(bySourceRow.get(310), "Duplicate: shares order, character, and letter number with rows 309, 311");
+  assert.equal(bySourceRow.get(311), "Duplicate: shares order, character, and letter number with rows 309, 310");
+});
+
+test("duplicateMailingFlags uses singular 'row' when only one other row collides", () => {
+  const rows = [mailing(309), mailing(310)];
+  const flags = duplicateMailingFlags(rows);
+  assert.equal(flags.length, 2);
+  assert.equal(flags.find((f) => f.mailing.sourceRow === 309).reason, "Duplicate: shares order, character, and letter number with row 310");
+});
+
+test("duplicateMailingFlags flags nothing when no rows collide", () => {
+  const rows = [mailing(309), mailing(310, { letterNumber: "5" }), mailing(311, { character: "Piper" }), mailing(312, { orderId: "ORD-9999" })];
+  assert.deepEqual(duplicateMailingFlags(rows), []);
+});
+
+test("duplicateMailingFlags treats two rows both missing a letter number as colliding too - genuine, irreducible ambiguity, not something to guess through", () => {
+  const rows = [mailing(309, { letterNumber: "" }), mailing(310, { letterNumber: null })];
+  const flags = duplicateMailingFlags(rows);
+  assert.equal(flags.length, 2);
+});
+
+// Severity: an explicit, stated choice (not derived from reason text) -
+// pinned so a future edit has to change this test deliberately, not
+// silently inherit a different severity from word choice the way the
+// substring classifier above traps for other reasons.
+test("DUPLICATE_MAILING_SEVERITY is High", () => {
+  assert.equal(DUPLICATE_MAILING_SEVERITY, "High");
+});
+
+test("explicitExceptionSeverity recognizes a 'Duplicate:'-prefixed reason regardless of which rows it names", () => {
+  assert.equal(explicitExceptionSeverity("Duplicate: shares order, character, and letter number with rows 310, 311"), "High");
+  assert.equal(explicitExceptionSeverity("Duplicate: shares order, character, and letter number with row 42"), "High");
+});
+
+test("explicitExceptionSeverity returns null for every existing, pre-existing reason - falling through to the substring classifier unchanged", () => {
+  for (const reason of ["Missing recipient", "Missing address", "Missing ship date", "Ship date is not a 1st/15th batch", "Future mailing already marked mailed"]) {
+    assert.equal(explicitExceptionSeverity(reason), null, reason);
+  }
 });

@@ -9,6 +9,7 @@ import { exceptions } from "@/db/schema/exceptions";
 import { mailingKey as appMailingKey, parseComponentKey, parseExceptionReviewKey, parseMailingKey } from "@/lib/domain/keys";
 import { buildRecipientId, buildSubscriptionId } from "@/lib/domain/ids";
 import type { DatasetImportSkipGroup, DatasetImportSummary } from "@/lib/domain/dataset";
+import { findMailingCollisions, normalizeLetterNumber, stableMailingId } from "@/lib/domain/mailing-collision";
 
 /**
  * Writes app.js's crmDataset/mailingStatus/componentStatus/
@@ -228,23 +229,6 @@ function toDateOrNull(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function normalizeLetterNumber(value: string | number | null | undefined): number | null {
-  if (value === "" || value === null || value === undefined) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-// mailings.id: `${orderId}::${character}::${letterNumber}` (letterNumber
-// empty-string if absent) - real, stable business fields, not app.js's own
-// mailingId (which collides - see db/schema/mailings.ts). No synthetic
-// tie-breaker for a missing letterNumber: if two mailings under the same
-// order+character both lack one, that's genuine, irreducible ambiguity in
-// the source data (see the collision check in the mailings loop below),
-// not something to guess through.
-function stableMailingId(orderId: string, character: string, letterNumber: number | null): string {
-  return `${orderId}::${character}::${letterNumber ?? ""}`;
-}
-
 // An approximation - permissive, not conservative, see the note below -
 // of which mailings.id values this import would keep, used only by
 // app/api/shared-state/route.ts's
@@ -281,7 +265,7 @@ export function estimateKeptMailingIds(seed: Seed): Set<string> {
   for (const m of seed.mailings) {
     if (!m.shipDate) continue;
     if (!keepSubscriptionIds.has(m.subscriptionId)) continue;
-    keep.add(stableMailingId(m.orderId, m.character, normalizeLetterNumber(m.letterNumber)));
+    keep.add(stableMailingId(m));
   }
   return keep;
 }
@@ -424,37 +408,39 @@ async function runImport(seed: Seed, db: Db): Promise<ImportSummary> {
   for (const m of seed.mailings) {
     mailingByAppKey.set(appMailingKey(m), {
       m,
-      stableId: stableMailingId(m.orderId, m.character, normalizeLetterNumber(m.letterNumber)),
+      stableId: stableMailingId(m),
       written: false,
     });
   }
 
-  const candidateMailings = seed.mailings
-    .filter((m) => {
-      if (!m.shipDate) {
-        log("skipping mailing, missing ship date (already flagged by app.js's own exceptions):", m.mailingId);
-        skips.record("Mailing has no ship date", [m.sourceRow]);
-        return false;
-      }
-      if (!keepSubscriptionIds.has(m.subscriptionId)) {
-        log("skipping mailing, subscription not kept:", m.mailingId, m.subscriptionId);
-        skips.record("Mailing's subscription was not kept", [m.sourceRow]);
-        return false;
-      }
-      return true;
-    })
-    .map((m) => ({ m, stableId: stableMailingId(m.orderId, m.character, normalizeLetterNumber(m.letterNumber)) }));
+  const candidateMailings = seed.mailings.filter((m) => {
+    if (!m.shipDate) {
+      log("skipping mailing, missing ship date (already flagged by app.js's own exceptions):", m.mailingId);
+      skips.record("Mailing has no ship date", [m.sourceRow]);
+      return false;
+    }
+    if (!keepSubscriptionIds.has(m.subscriptionId)) {
+      log("skipping mailing, subscription not kept:", m.mailingId, m.subscriptionId);
+      skips.record("Mailing's subscription was not kept", [m.sourceRow]);
+      return false;
+    }
+    return true;
+  });
 
-  const stableIdCounts = new Map<string, number>();
-  for (const { stableId } of candidateMailings) {
-    stableIdCounts.set(stableId, (stableIdCounts.get(stableId) ?? 0) + 1);
-  }
+  // The exact same collision definition lib/domain/spreadsheet/exceptions.ts's
+  // duplicateMailingFlags() uses to flag these same rows client-side as a
+  // Needs Review exception - one shared function deciding both "does this
+  // get written" (here) and "does this get flagged" (there), so the two
+  // can't drift the way two independent implementations of "what counts as
+  // a duplicate" would.
+  const collidingMailings = new Set(findMailingCollisions(candidateMailings).flatMap((group) => group.mailings));
 
   const keepMailingIds = new Set<string>();
 
-  for (const { m, stableId } of candidateMailings) {
+  for (const m of candidateMailings) {
     const appKey = appMailingKey(m);
-    if ((stableIdCounts.get(stableId) ?? 0) > 1) {
+    const stableId = stableMailingId(m);
+    if (collidingMailings.has(m)) {
       log("skipping mailing, ambiguous stable id shared with another mailing (same order+character+letterNumber, cannot disambiguate without guessing):", stableId, m.mailingId);
       skips.record("Mailing shares its order, character, and letter number with another row", [m.sourceRow]);
       continue;

@@ -388,6 +388,23 @@ test("the real 1,218-row fixture, posted through the real route exactly as the b
     },
   ]);
 
+  // The Needs Review side of the same ORD-2858 case: exactly rows 309,
+  // 310, 311 flagged as duplicates in the client-built seed (published in
+  // this same request), each naming the other two - and no other row
+  // flagged. This is the persistent counterpart to importSummary.skipped
+  // above (session-scoped) - lib/domain/spreadsheet/exceptions.ts's
+  // duplicateMailingFlags(), using the exact same collision definition
+  // (lib/domain/mailing-collision.ts) writeImport() itself just used to
+  // decide what to drop.
+  const duplicateExceptions = seed.exceptions.filter((e) => e.reason.startsWith("Duplicate:"));
+  assert.equal(duplicateExceptions.length, 3, "detection and dropping must agree: exactly the 3 rows writeImport skipped for collision");
+  const bySourceRow = new Map(duplicateExceptions.map((e) => [e.sourceRow, e]));
+  assert.deepEqual([...bySourceRow.keys()].sort((a, b) => a - b), [309, 310, 311]);
+  assert.equal(bySourceRow.get(309).reason, "Duplicate: shares order, character, and letter number with rows 310, 311");
+  assert.equal(bySourceRow.get(310).reason, "Duplicate: shares order, character, and letter number with rows 309, 311");
+  assert.equal(bySourceRow.get(311).reason, "Duplicate: shares order, character, and letter number with rows 309, 310");
+  assert.ok(duplicateExceptions.every((e) => e.severity === "High"), "the stated, reversible severity decision - see lib/domain/spreadsheet/exceptions.ts's DUPLICATE_MAILING_SEVERITY comment");
+
   // Persisted, not just returned - ingestion_events.skipped is what makes
   // this survive past the response object (db/schema/ingestion_events.ts).
   // Most-recent-row, not "the only row": this file's own freshDb() (unlike

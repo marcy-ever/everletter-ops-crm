@@ -3,7 +3,7 @@ import { normalizePlan } from "../plans";
 import { normalizeCharacter } from "../characters";
 import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from "../ids";
 import { todayIso, monthKey, nearestBatchDate, isOverdueMailing, isDueNext14Days, isOpenStatus } from "../mailing-rules";
-import { spreadsheetExceptionReasons } from "./exceptions";
+import { spreadsheetExceptionReasons, duplicateMailingFlags, DUPLICATE_MAILING_SEVERITY } from "./exceptions";
 import type { Dataset, DatasetSubscriber, DatasetRecipient, DatasetOrder, DatasetSubscription, DatasetMailing, DatasetException, DatasetSummary } from "../dataset";
 
 /**
@@ -206,6 +206,57 @@ export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], source
       });
     }
   });
+
+  // Cross-row pass: spreadsheetExceptionReasons above only ever sees one
+  // row at a time, so it can't catch two rows colliding on the same
+  // order+character+letter number - the same ambiguity lib/write-to-tables.ts's
+  // own writeImport() drops rather than guessing through (see
+  // lib/domain/mailing-collision.ts). Runs after the per-row loop, over
+  // the SAME `mailings` array that loop just built, and merges into the
+  // SAME `exceptions` array - keyed by sourceRow, NOT mailingId: all rows
+  // colliding on order+character+letterNumber also collide on app.js's own
+  // generated mailingId (buildMailingId hashes letterNumber when present,
+  // never sourceRow - confirmed directly against the real fixture), so
+  // mailingId can't disambiguate rows here the way it usually can.
+  //
+  // Escalates an existing per-row exception in place (appends to its
+  // reason, raises its severity to High if the duplicate severity says so)
+  // rather than pushing a second exceptions row for the same mailingId -
+  // the normalized `exceptions` table only ever holds one row per
+  // mailing_id (lib/write-to-tables.ts) - and only increments issueCount
+  // for a row that didn't already have one.
+  //
+  // Deliberately NOT gated by activeState === 'Active' the way every
+  // reason above is: lib/write-to-tables.ts's own collision check isn't
+  // gated by activeState either (an archived mailing can still collide
+  // with an active one and get dropped), so gating this pass would
+  // silently under-report exactly the "stays silent on rows that vanish"
+  // failure this feature exists to close.
+  const exceptionsBySourceRow = new Map(exceptions.map((exception) => [exception.sourceRow, exception]));
+  for (const { mailing, reason } of duplicateMailingFlags(mailings)) {
+    const existing = exceptionsBySourceRow.get(mailing.sourceRow);
+    if (existing) {
+      existing.reason = `${existing.reason}; ${reason}`;
+      if (DUPLICATE_MAILING_SEVERITY === 'High') existing.severity = 'High';
+    } else {
+      const subscriber = subscribers.get(mailing.subscriberId);
+      if (subscriber) subscriber.issueCount += 1;
+      const newException: DatasetException = {
+        exceptionId: `EX-${mailing.sourceRow}`,
+        severity: DUPLICATE_MAILING_SEVERITY,
+        reason,
+        mailingId: mailing.mailingId,
+        subscriberId: mailing.subscriberId,
+        recipientName: mailing.recipientName,
+        shipDate: mailing.shipDate,
+        suggestedShipDate: '',
+        status: mailing.status,
+        sourceRow: mailing.sourceRow,
+      };
+      exceptions.push(newException);
+      exceptionsBySourceRow.set(mailing.sourceRow, newException);
+    }
+  }
 
   const normalizedRecipients: DatasetRecipient[] = Array.from(recipients.values()).map((recipient) => ({
     ...recipient,
