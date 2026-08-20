@@ -48,7 +48,7 @@ const NOOP = () => {};
 
 function renderQueueHtml(seed, { batchFilter = "all", statusFilter = "Open", query = "" } = {}) {
   const data = computeQueueRows(seed, {}, new Set(), batchFilter, statusFilter, query, TODAY);
-  return renderToStaticMarkup(React.createElement(Queue, { data, onStatusChange: NOOP, onBulkStatus: NOOP }));
+  return renderToStaticMarkup(React.createElement(Queue, { data, onStatusChange: NOOP, onBulkStatus: NOOP, onRecipientClick: NOOP }));
 }
 
 test("Queue.tsx (default: batchFilter 'all', statusFilter 'Open', no query) renders markup equivalent to the frozen legacy snapshot", () => {
@@ -89,6 +89,7 @@ test("the real component output actually contains computed data, not just an emp
   assert.match(html, /data-status-select="MAIL-/);
   assert.match(html, /data-bulk-status="To Prepare"/);
   assert.match(html, /Production Queue/);
+  assert.doesNotMatch(html, /Mailing ID/);
 });
 
 test("all three shell controls (search, status filter, batch filter) still drive the migrated list, individually and combined", () => {
@@ -137,7 +138,7 @@ test("each row's real onChange calls onStatusChange with that row's exact mailin
   const data = computeQueueRows(seed, {}, new Set(), "all", "Open", "", TODAY);
   assert.ok(data.rows.length > 0, "fixture invariant: at least one open mailing should be shown by default");
   const calls = [];
-  const element = Queue({ data, onStatusChange: (mailing, status) => calls.push([mailing, status]), onBulkStatus: NOOP });
+  const element = Queue({ data, onStatusChange: (mailing, status) => calls.push([mailing, status]), onBulkStatus: NOOP, onRecipientClick: NOOP });
 
   const selects = findAll(element, (node) => node.type === "select" && node.props["data-status-select"] !== undefined);
   assert.equal(selects.length, data.rows.length);
@@ -152,10 +153,21 @@ test("each bulk-action button's real onClick calls onBulkStatus with that button
   const seed = loadSeed();
   const data = computeQueueRows(seed, {}, new Set(), "all", "Open", "", TODAY);
   const calls = [];
-  const element = Queue({ data, onStatusChange: NOOP, onBulkStatus: (status) => calls.push(status) });
+  const element = Queue({ data, onStatusChange: NOOP, onBulkStatus: (status) => calls.push(status), onRecipientClick: NOOP });
 
   const bulkButtons = findAll(element, (node) => node.type === "button" && node.props["data-bulk-status"] !== undefined);
   assert.equal(bulkButtons.length, 5);
   for (const button of bulkButtons) button.props.onClick();
   assert.deepEqual(calls, ["To Prepare", "Printing", "Assembling", "Ready to Mail", "Mailed"]);
+});
+
+test("clicking a recipient name opens that subscriber's profile", () => {
+  const seed = loadSeed();
+  const data = computeQueueRows(seed, {}, new Set(), "all", "Open", "", TODAY);
+  const calls = [];
+  const element = Queue({ data, onStatusChange: NOOP, onBulkStatus: NOOP, onRecipientClick: (subscriberId) => calls.push(subscriberId) });
+  const links = findAll(element, (node) => node.type === "button" && node.props.className?.includes("recipient-profile-link"));
+  assert.equal(links.length, data.rows.length);
+  links[0].props.onClick();
+  assert.deepEqual(calls, [data.rows[0].subscriberId]);
 });

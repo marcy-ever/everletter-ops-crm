@@ -38,6 +38,7 @@ import { isOpenStatus, MAILING_STATUSES, todayIso } from "@/lib/domain/mailing-r
 import { formatDate } from "@/lib/domain/format";
 import { escapeHtml, number } from "../format";
 import { activeExceptions, availableBatchDates, effectiveMailings, nextBatchDate, pastBatchDates } from "@/lib/client/selectors";
+import { upcomingBatchDates } from "@/lib/domain/batch-dates";
 import type { CrmState } from "@/lib/client/crm-state";
 import { VIEW_REGISTRY } from "./view-registry";
 
@@ -64,10 +65,10 @@ function requireElements(): ShellElements {
   return elements;
 }
 
-function metric(icon: string, label: string, value: number | string | null | undefined, tone: string): string {
+function metric(characterImage: string, characterName: string, label: string, value: number | string | null | undefined, tone: string): string {
   return `
     <div class="metric metric-${tone}">
-      <div class="metric-icon">${icon}</div>
+      <div class="metric-icon"><img src="${escapeHtml(characterImage)}" alt="${escapeHtml(characterName)}" /></div>
       <span>${escapeHtml(label)}</span>
       <strong>${number(value)}</strong>
     </div>
@@ -78,7 +79,7 @@ export function renderBatchFilter(state: CrmState): void {
   const { statusFilter, batchFilter, pastBatchFilter } = requireElements();
   const today = todayIso(new Date());
   const mailings = effectiveMailings(state.seed!, state.statusOverrides);
-  const dates = availableBatchDates(mailings, today);
+  const dates = Array.from(new Set([...upcomingBatchDates(today), ...availableBatchDates(mailings, today)])).sort();
   const nextDate = nextBatchDate(mailings, today);
   const pastDates = pastBatchDates(mailings, today);
   const selectedPastDate = pastDates.includes(state.batchFilter) ? state.batchFilter : "";
@@ -108,10 +109,10 @@ export function renderShell(state: CrmState): void {
   `;
 
   metrics.innerHTML = [
-    metric("â—Ž", "Active subscribers", seed.summary.activeSubscriberCount ?? seed.summary.subscriberCount, "blue"),
-    metric("âœ‰", "Open mailings", openMailingCount, "green"),
-    metric("â—·", "Due next 14 days", seed.summary.dueNext14Count, "amber"),
-    metric("!", "Needs review", openExceptionCount, "rose"),
+    metric("/assets/marley-corner.png", "Marley", "Active subscribers", seed.summary.activeSubscriberCount ?? seed.summary.subscriberCount, "blue"),
+    metric("/assets/harper-corner.png", "Harper", "Open mailings", openMailingCount, "green"),
+    metric("/assets/oliver-corner.png", "Oliver", "Due next 14 days", seed.summary.dueNext14Count, "amber"),
+    metric("/assets/ringo-corner.png", "Ringo", "Needs review", openExceptionCount, "rose"),
   ].join("");
 
   statusStrip.innerHTML = MAILING_STATUSES.map((status) => {

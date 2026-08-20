@@ -29,9 +29,22 @@ export interface SubscribersProps {
   onPrintEnvelope: SubscriberProfileProps["onPrintEnvelope"];
   onMarkPrinted: SubscriberProfileProps["onMarkPrinted"];
   onMarkAshley: SubscriberProfileProps["onMarkAshley"];
+  standaloneProfile?: boolean;
+  onBack?: () => void;
 }
 
-export default function Subscribers({ rows, selected, onSelect, profile, onPrintEnvelope, onMarkPrinted, onMarkAshley }: SubscribersProps) {
+export default function Subscribers({ rows, selected, onSelect, profile, onPrintEnvelope, onMarkPrinted, onMarkAshley, standaloneProfile = false, onBack }: SubscribersProps) {
+  if (standaloneProfile && profile) {
+    return (
+      <section className="data-panel subscriber-profile-page" aria-label="Customer profile page">
+        <button type="button" className="profile-button profile-back-button" onClick={onBack}>
+          Back to Subscribers
+        </button>
+        <SubscriberProfile data={profile} onPrintEnvelope={onPrintEnvelope} onMarkPrinted={onMarkPrinted} onMarkAshley={onMarkAshley} />
+      </section>
+    );
+  }
+
   return (
     <section className="data-panel" aria-label="Subscribers">
       <div className="panel-head">

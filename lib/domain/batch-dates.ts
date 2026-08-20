@@ -44,6 +44,27 @@ export function batchDatesForOrder(orderDate: string, count: number): string[] {
   return dates;
 }
 
+// Every upcoming operational batch through the same calendar day 18 months
+// from `today`. The current month and the ending month are both considered,
+// with past 1st/15th dates filtered out.
+export function upcomingBatchDates(today: string, monthsAhead = 18): string[] {
+  const [startYear, startMonth, startDay] = today.split("-").map(Number);
+  const endMonthIndex = startYear * 12 + (startMonth - 1) + monthsAhead;
+  const endDate = `${Math.floor(endMonthIndex / 12)}-${String((endMonthIndex % 12) + 1).padStart(2, "0")}-${String(startDay).padStart(2, "0")}`;
+  const dates: string[] = [];
+
+  for (let monthIndex = startYear * 12 + (startMonth - 1); monthIndex <= endMonthIndex; monthIndex += 1) {
+    const year = Math.floor(monthIndex / 12);
+    const month = String((monthIndex % 12) + 1).padStart(2, "0");
+    for (const day of ["01", "15"]) {
+      const date = `${year}-${month}-${day}`;
+      if (date >= today && date <= endDate) dates.push(date);
+    }
+  }
+
+  return dates;
+}
+
 // The physical Ashley storage bin a mailing belongs in, grouped by ship
 // date - "Needs date" for a mailing with no ship date to group by yet.
 export function storageBinForMailing(mailing: { shipDate: string }): string {

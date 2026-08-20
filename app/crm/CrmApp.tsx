@@ -366,6 +366,8 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         selected={selected}
         onSelect={(subscriberId) => {
           state.selectedSubscriberId = subscriberId;
+          state.subscriberProfileOpen = true;
+          window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;
           notifyViewChanged();
         }}
         profile={profile}
@@ -380,6 +382,12 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         onMarkAshley={(mailing) => {
           updateEnvelopeStatus(mailing, "In Ashley Box");
           updateMailingStatus(mailing, "Assembling");
+          notifyViewChanged();
+        }}
+        standaloneProfile={state.subscriberProfileOpen}
+        onBack={() => {
+          state.subscriberProfileOpen = false;
+          window.location.hash = "subscribers";
           notifyViewChanged();
         }}
       />
@@ -423,6 +431,13 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         onBulkStatus={(status) => {
           data.rows.forEach((mailing) => updateMailingStatus(mailing, status));
+          render(state, notifyViewChanged);
+        }}
+        onRecipientClick={(subscriberId) => {
+          state.selectedSubscriberId = subscriberId;
+          state.subscriberProfileOpen = true;
+          state.activeView = "subscribers";
+          window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;
           render(state, notifyViewChanged);
         }}
       />

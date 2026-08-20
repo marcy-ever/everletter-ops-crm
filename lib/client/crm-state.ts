@@ -102,6 +102,7 @@ export interface CrmState {
   syncOrderDate: string;
   sampleType: string;
   selectedSubscriberId: string;
+  subscriberProfileOpen: boolean;
   importPreview: ImportPreview | null;
   importStatus: string;
   importBusy: boolean;
@@ -160,6 +161,7 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     syncOrderDate: "2026-07-12",
     sampleType: "Kid",
     selectedSubscriberId: "",
+    subscriberProfileOpen: false,
     importPreview: null,
     importStatus: "",
     importBusy: false,

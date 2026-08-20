@@ -187,3 +187,29 @@ test("no subscriber selected (e.g. every row filtered out by search) renders the
   assert.match(html, /No subscriber selected\./);
   assert.doesNotMatch(html, /subscriber-profile/);
 });
+
+test("a selected customer can render as a standalone profile page with a back action", () => {
+  const seed = loadSeed();
+  const rows = computeSubscriberRows(seed, "");
+  const selected = selectSubscriber(rows, "");
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
+  let backCalls = 0;
+  const element = Subscribers({
+    rows,
+    selected,
+    onSelect: NOOP,
+    profile,
+    onPrintEnvelope: NOOP,
+    onMarkPrinted: NOOP,
+    onMarkAshley: NOOP,
+    standaloneProfile: true,
+    onBack: () => backCalls++,
+  });
+  const html = renderToStaticMarkup(element);
+  assert.match(html, /Customer Profile/);
+  assert.match(html, /Back to Subscribers/);
+  assert.doesNotMatch(html, /subscriber-grid/);
+  const backButton = findAll(element, (node) => node.type === "button" && node.props.className?.includes("profile-back-button"));
+  backButton[0].props.onClick();
+  assert.equal(backCalls, 1);
+});

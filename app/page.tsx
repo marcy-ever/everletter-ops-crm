@@ -39,14 +39,8 @@ export default async function Home() {
               <span>Ops CRM</span>
             </div>
             <p className="sidebar-copy">Letters, bins, envelopes, and the tiny details that keep mailing day calm.</p>
-            <div className="sidebar-characters" aria-hidden="true">
-              <img src="/assets/ringo-fullbody-map.png" alt="" />
-              <img src="/assets/marley-fullbody-butterfly.png" alt="" />
-              <img src="/assets/oliver-character-card.png" alt="" />
-              <img src="/assets/harper-fullbody-treat.png" alt="" />
-            </div>
-            <div className="sidebar-adult-cameo" aria-hidden="true">
-              <img src="/assets/penelope-adult.png" alt="" />
+            <div className="sidebar-seal" aria-hidden="true">
+              <img src="/assets/everletter-wax-seal.png" alt="" />
             </div>
           </div>
 

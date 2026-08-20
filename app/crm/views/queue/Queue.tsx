@@ -30,9 +30,10 @@ export interface QueueProps {
   data: QueueData;
   onStatusChange: (mailing: EffectiveMailing, status: string) => void;
   onBulkStatus: (status: string) => void;
+  onRecipientClick: (subscriberId: string) => void;
 }
 
-export default function Queue({ data, onStatusChange, onBulkStatus }: QueueProps) {
+export default function Queue({ data, onStatusChange, onBulkStatus, onRecipientClick }: QueueProps) {
   const { rows, batchDate } = data;
   return (
     <section className="data-panel" aria-label="Production queue">
@@ -61,14 +62,13 @@ export default function Queue({ data, onStatusChange, onBulkStatus }: QueueProps
               <th>Character</th>
               <th>Plan</th>
               <th>Letter</th>
-              <th>Mailing ID</th>
               <th>Billing Order</th>
               <th>Flags</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((mailing) => (
-              <QueueRow mailing={mailing} onStatusChange={onStatusChange} key={mailingKey(mailing)} />
+              <QueueRow mailing={mailing} onStatusChange={onStatusChange} onRecipientClick={onRecipientClick} key={mailingKey(mailing)} />
             ))}
           </tbody>
         </table>
@@ -77,7 +77,7 @@ export default function Queue({ data, onStatusChange, onBulkStatus }: QueueProps
   );
 }
 
-function QueueRow({ mailing, onStatusChange }: { mailing: EffectiveMailing; onStatusChange: QueueProps["onStatusChange"] }) {
+function QueueRow({ mailing, onStatusChange, onRecipientClick }: { mailing: EffectiveMailing; onStatusChange: QueueProps["onStatusChange"]; onRecipientClick: QueueProps["onRecipientClick"] }) {
   return (
     <tr>
       <td>{formatDate(mailing.shipDate)}</td>
@@ -94,13 +94,14 @@ function QueueRow({ mailing, onStatusChange }: { mailing: EffectiveMailing; onSt
         </select>
       </td>
       <td>
-        <strong>{mailing.recipientName}</strong>
+        <button type="button" className="link-button recipient-profile-link" onClick={() => onRecipientClick(mailing.subscriberId)}>
+          {mailing.recipientName}
+        </button>
         <span>{mailing.email || "Missing email"}</span>
       </td>
       <td>{mailing.character}</td>
       <td>{mailing.plan}</td>
       <td>{mailing.letterNumber}</td>
-      <td className="mono">{mailing.mailingId}</td>
       <td className="mono">{mailing.orderId}</td>
       <td>
         <div className="flag-stack">

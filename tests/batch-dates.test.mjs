@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { batchDatesForOrder, storageBinForMailing } from "../lib/domain/batch-dates.ts";
+import { batchDatesForOrder, storageBinForMailing, upcomingBatchDates } from "../lib/domain/batch-dates.ts";
 
 // New coverage from step 3b's extraction (lib/domain/batch-dates.ts didn't
 // exist before this) - not a re-assertion of what the render snapshots
@@ -29,6 +29,18 @@ test("batchDatesForOrder returns exactly `count` dates, no more no less", () => 
   assert.equal(batchDatesForOrder("2026-01-01", 24).length, 24);
   assert.equal(batchDatesForOrder("2026-01-01", 12).length, 12);
   assert.equal(batchDatesForOrder("2026-01-01", 2).length, 2);
+});
+
+test("upcomingBatchDates lists every future 1st and 15th through 18 months out", () => {
+  const dates = upcomingBatchDates("2026-08-19");
+  assert.equal(dates.length, 36);
+  assert.deepEqual(dates.slice(0, 4), ["2026-09-01", "2026-09-15", "2026-10-01", "2026-10-15"]);
+  assert.deepEqual(dates.slice(-2), ["2028-02-01", "2028-02-15"]);
+  assert.ok(dates.every((date) => date.endsWith("-01") || date.endsWith("-15")));
+});
+
+test("upcomingBatchDates includes a current-day batch", () => {
+  assert.equal(upcomingBatchDates("2026-08-15")[0], "2026-08-15");
 });
 
 test("storageBinForMailing groups a mailing into Ashley's bin by ship date", () => {

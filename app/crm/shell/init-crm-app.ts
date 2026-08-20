@@ -133,7 +133,14 @@ export function bootCrmApp(appState: AppState): BootedCrmApp {
   }
 
   const hashView = window.location.hash.slice(1);
-  state.activeView = Object.hasOwn(VIEW_REGISTRY, hashView) ? hashView : "queue";
+  const subscriberHash = hashView.match(/^subscriber\/(.+)$/);
+  if (subscriberHash) {
+    state.activeView = "subscribers";
+    state.selectedSubscriberId = decodeURIComponent(subscriberHash[1]);
+    state.subscriberProfileOpen = true;
+  } else {
+    state.activeView = Object.hasOwn(VIEW_REGISTRY, hashView) ? hashView : "queue";
+  }
   state.reviewed = loadReviewedExceptions();
   state.statusOverrides = loadStatusOverrides();
   state.componentOverrides = loadComponentOverrides();
@@ -198,6 +205,7 @@ export function bootCrmApp(appState: AppState): BootedCrmApp {
   document.querySelectorAll(".side-nav button").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeView = button.getAttribute("data-view") || "queue";
+      if (state.activeView === "subscribers") state.subscriberProfileOpen = false;
       window.location.hash = state.activeView;
       renderView(state, notifyViewChanged);
     });
