@@ -29,14 +29,15 @@ jobs:
       # rebuild of an old commit (a manual workflow_dispatch re-run, say)
       # should say when it was actually built, not when that commit was
       # authored. Pre-formatted to lib/build-info.ts's exact display shape
-      # (`date -u '+%Y-%m-%d %H:%M UTC'`) so nothing downstream parses or
+      # (`TZ=America/Denver date '+%Y-%m-%d %H:%M MT'`) so nothing downstream
+      # parses or
       # reformats a timestamp - it's a build-time string literal end to
       # end. github.sha is the full 40-character SHA; shortened here to
       # the 7-character form the UI actually shows.
       - name: Compute build identity
         id: build_identity
         run: |
-          echo "build_time=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(TZ=America/Denver date '+%Y-%m-%d %H:%M MT')" >> "$GITHUB_OUTPUT"
           echo "short_sha=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push

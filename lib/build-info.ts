@@ -11,8 +11,9 @@
  * environment. Reading it here costs nothing at runtime - it's already a
  * string literal by the time this code runs.
  *
- * NEXT_PUBLIC_BUILD_TIME is pre-formatted (`date -u '+%Y-%m-%d %H:%M UTC'`
- * in .github/workflows/build-and-push.yml) rather than a raw timestamp
+ * NEXT_PUBLIC_BUILD_TIME is pre-formatted
+ * (`TZ=America/Denver date '+%Y-%m-%d %H:%M MT'` in
+ * .github/workflows/build-and-push.yml) rather than a raw timestamp
  * parsed and formatted here - no date-formatting dependency needed for one
  * string, and no Date object ever gets constructed from it.
  *
@@ -29,7 +30,7 @@
  * inventing a second env var just to distinguish them.
  */
 export interface BuildInfo {
-  // The full rendered/logged string - "2026-08-16 14:32 UTC · a1b2c3d" when
+  // The full rendered/logged string - "2026-08-16 12:32 MT · a1b2c3d" when
   // stamped, "dev" or "local build" otherwise.
   label: string;
   // Present only when both NEXT_PUBLIC_BUILD_TIME and NEXT_PUBLIC_BUILD_SHA

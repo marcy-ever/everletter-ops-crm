@@ -25,11 +25,11 @@ test.afterEach(() => {
 });
 
 test("both build vars set: returns the formatted label and both raw values", () => {
-  process.env.NEXT_PUBLIC_BUILD_TIME = "2026-08-16 18:32 UTC";
+  process.env.NEXT_PUBLIC_BUILD_TIME = "2026-08-16 12:32 MT";
   process.env.NEXT_PUBLIC_BUILD_SHA = "a1b2c3d";
   assert.deepEqual(getBuildInfo(), {
-    label: "2026-08-16 18:32 UTC · a1b2c3d",
-    buildTime: "2026-08-16 18:32 UTC",
+    label: "2026-08-16 12:32 MT · a1b2c3d",
+    buildTime: "2026-08-16 12:32 MT",
     commitSha: "a1b2c3d",
   });
 });
@@ -48,7 +48,7 @@ test("NODE_ENV=production (or unset) with no build vars: the unstamped-container
 });
 
 test("only one of the two build vars set: treated as unstamped, not a half-true label", () => {
-  process.env.NEXT_PUBLIC_BUILD_TIME = "2026-08-16 18:32 UTC";
+  process.env.NEXT_PUBLIC_BUILD_TIME = "2026-08-16 12:32 MT";
   // NEXT_PUBLIC_BUILD_SHA deliberately left unset.
   assert.deepEqual(getBuildInfo(), { label: "local build", buildTime: null, commitSha: null });
 
