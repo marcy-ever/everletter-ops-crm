@@ -103,6 +103,7 @@ export interface CrmState {
   sampleType: string;
   selectedSubscriberId: string;
   subscriberProfileOpen: boolean;
+  profileSubscriptionFilter: string;
   importPreview: ImportPreview | null;
   importStatus: string;
   importBusy: boolean;
@@ -162,6 +163,7 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     sampleType: "Kid",
     selectedSubscriberId: "",
     subscriberProfileOpen: false,
+    profileSubscriptionFilter: "all",
     importPreview: null,
     importStatus: "",
     importBusy: false,

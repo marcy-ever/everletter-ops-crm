@@ -56,9 +56,12 @@ function renderSubscribersHtml(seed, selectedSubscriberId) {
       selected,
       onSelect: NOOP,
       profile,
+      onPrintAllEnvelopes: NOOP,
       onPrintEnvelope: NOOP,
       onMarkPrinted: NOOP,
       onMarkAshley: NOOP,
+      onNeedsDoneChange: NOOP,
+      onCustomerStatusChange: NOOP,
     }),
   );
 }
@@ -131,7 +134,7 @@ test("each subscriber card's real onClick calls onSelect with that subscriber's 
   const selected = selectSubscriber(rows, "");
   const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
   const calls = [];
-  const element = Subscribers({ rows, selected, onSelect: (id) => calls.push(id), profile, onPrintEnvelope: NOOP, onMarkPrinted: NOOP, onMarkAshley: NOOP });
+  const element = Subscribers({ rows, selected, onSelect: (id) => calls.push(id), profile, onPrintAllEnvelopes: NOOP, onPrintEnvelope: NOOP, onMarkPrinted: NOOP, onMarkAshley: NOOP, onNeedsDoneChange: NOOP, onCustomerStatusChange: NOOP });
 
   const selectButtons = findAll(element, (node) => node.type === "button" && node.props["data-subscriber-select"] !== undefined);
   assert.equal(selectButtons.length, rows.length);
@@ -157,9 +160,12 @@ test("each of the three profile action buttons' real onClick calls the matching 
     selected,
     onSelect: NOOP,
     profile,
+    onPrintAllEnvelopes: NOOP,
     onPrintEnvelope: (mailing) => printCalls.push(mailing),
     onMarkPrinted: (mailing) => printedCalls.push(mailing),
     onMarkAshley: (mailing) => ashleyCalls.push(mailing),
+    onNeedsDoneChange: NOOP,
+    onCustomerStatusChange: NOOP,
   });
 
   const printButtons = findAll(element, (node) => node.type === "button" && node.props["data-profile-print-envelope"] !== undefined);
@@ -182,7 +188,7 @@ test("each of the three profile action buttons' real onClick calls the matching 
 
 test("no subscriber selected (e.g. every row filtered out by search) renders the empty state, not a profile", () => {
   const html = renderToStaticMarkup(
-    React.createElement(Subscribers, { rows: [], selected: null, onSelect: NOOP, profile: null, onPrintEnvelope: NOOP, onMarkPrinted: NOOP, onMarkAshley: NOOP }),
+    React.createElement(Subscribers, { rows: [], selected: null, onSelect: NOOP, profile: null, onPrintAllEnvelopes: NOOP, onPrintEnvelope: NOOP, onMarkPrinted: NOOP, onMarkAshley: NOOP, onNeedsDoneChange: NOOP, onCustomerStatusChange: NOOP }),
   );
   assert.match(html, /No subscriber selected\./);
   assert.doesNotMatch(html, /subscriber-profile/);
@@ -199,9 +205,12 @@ test("a selected customer can render as a standalone profile page with a back ac
     selected,
     onSelect: NOOP,
     profile,
+    onPrintAllEnvelopes: NOOP,
     onPrintEnvelope: NOOP,
     onMarkPrinted: NOOP,
     onMarkAshley: NOOP,
+    onNeedsDoneChange: NOOP,
+    onCustomerStatusChange: NOOP,
     standaloneProfile: true,
     onBack: () => backCalls++,
   });
@@ -212,4 +221,70 @@ test("a selected customer can render as a standalone profile page with a back ac
   const backButton = findAll(element, (node) => node.type === "button" && node.props.className?.includes("profile-back-button"));
   backButton[0].props.onClick();
   assert.equal(backCalls, 1);
+});
+
+test("customer profile can print every open envelope and save a typed needs-done note", () => {
+  const seed = loadSeed();
+  const rows = computeSubscriberRows(seed, "");
+  const selected = selectSubscriber(rows, "");
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
+  const printAllCalls = [];
+  const noteCalls = [];
+  const element = Subscribers({
+    rows,
+    selected,
+    onSelect: NOOP,
+    profile,
+    onPrintAllEnvelopes: (mailings) => printAllCalls.push(mailings),
+    onPrintEnvelope: NOOP,
+    onMarkPrinted: NOOP,
+    onMarkAshley: NOOP,
+    onNeedsDoneChange: (mailing, value) => noteCalls.push([mailing, value]),
+    onCustomerStatusChange: NOOP,
+    standaloneProfile: true,
+    onBack: NOOP,
+  });
+
+  const printAllButton = findAll(element, (node) => node.type === "button" && node.props.className?.includes("profile-print-all"))[0];
+  printAllButton.props.onClick();
+  assert.deepEqual(printAllCalls[0], profile.openRows);
+
+  const needsDoneInput = findAll(element, (node) => node.type === "input" && node.props.className === "needs-done-input")[0];
+  needsDoneInput.props.onBlur({ currentTarget: { value: "  Needs stamp  " } });
+  assert.equal(mailingKey(noteCalls[0][0]), mailingKey(profile.openRows[0]));
+  assert.equal(noteCalls[0][1], "Needs stamp");
+});
+
+test("customer status requires opening the status control before the separate confirmation action", () => {
+  const seed = loadSeed();
+  const rows = computeSubscriberRows(seed, "");
+  const selected = selectSubscriber(rows, "");
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
+  const statusCalls = [];
+  const element = Subscribers({
+    rows,
+    selected,
+    onSelect: NOOP,
+    profile,
+    onPrintAllEnvelopes: NOOP,
+    onPrintEnvelope: NOOP,
+    onMarkPrinted: NOOP,
+    onMarkAshley: NOOP,
+    onNeedsDoneChange: NOOP,
+    onCustomerStatusChange: (active) => statusCalls.push(active),
+    standaloneProfile: true,
+    onBack: NOOP,
+  });
+
+  const control = findAll(element, (node) => node.type === "details" && node.props.className === "customer-status-control")[0];
+  assert.ok(control, "the first step is an expandable status control");
+  let closed = false;
+  const cancel = findAll(element, (node) => node.type === "button" && node.props.children === "Cancel")[0];
+  cancel.props.onClick({ currentTarget: { closest: () => ({ removeAttribute: (name) => { if (name === "open") closed = true; } }) } });
+  assert.equal(closed, true);
+  assert.deepEqual(statusCalls, []);
+  const confirm = findAll(element, (node) => node.type === "button" && node.props.className?.includes("customer-status-confirm-button"))[0];
+  assert.deepEqual(statusCalls, []);
+  confirm.props.onClick();
+  assert.deepEqual(statusCalls, [false]);
 });

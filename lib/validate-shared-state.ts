@@ -75,10 +75,23 @@ export function validateMailingStatusPayload(key: string, value: string): void {
   }
 }
 
+export function validateSubscriberStatusPayload(key: string, value: string): void {
+  if (!key.trim()) throw new SharedStateValidationError("Subscriber ID is required.");
+  if (!["Active", "Inactive"].includes(value)) {
+    throw new SharedStateValidationError('Subscriber status must be "Active" or "Inactive".');
+  }
+}
+
 export function validateComponentStatusPayload(key: string, value: string): void {
   const parsed = parseComponentKey(key);
   if (!parsed) {
     throw new SharedStateValidationError(`componentStatus key "${key}" is not a valid componentKey (expected "mailingId::sourceRow::field").`);
+  }
+  if (parsed.field === "needsDone") {
+    if (value.length > 500) {
+      throw new SharedStateValidationError('"needsDone" notes must be 500 characters or fewer.');
+    }
+    return;
   }
   const validOptions = COMPONENT_FIELD_OPTIONS[parsed.field];
   if (!validOptions) {

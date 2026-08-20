@@ -107,16 +107,20 @@ export interface EnvelopePrintMailing extends EffectiveMailing {
   envelopeCopyTotal: number;
 }
 
+export function allEnvelopePrintRows(rows: EffectiveMailing[]): EnvelopePrintMailing[] {
+  return rows.flatMap((mailing) =>
+    Array.from({ length: envelopeQuantityForMailing(mailing) }, (_, index) => ({
+      ...mailing,
+      envelopeCopyNumber: index + 1,
+      envelopeCopyTotal: envelopeQuantityForMailing(mailing),
+    })),
+  );
+}
+
 export function envelopePrintRows(rows: EffectiveMailing[], seed: Dataset, reviewed: Set<string>, componentOverrides: Record<string, string>): EnvelopePrintMailing[] {
   return rows
     .filter((mailing) => componentStatus(mailing, "envelope", seed, reviewed, componentOverrides) === "Need Print")
-    .flatMap((mailing) =>
-      Array.from({ length: envelopeQuantityForMailing(mailing) }, (_, index) => ({
-        ...mailing,
-        envelopeCopyNumber: index + 1,
-        envelopeCopyTotal: envelopeQuantityForMailing(mailing),
-      })),
-    );
+    .flatMap((mailing) => allEnvelopePrintRows([mailing]));
 }
 
 export function envelopeHtml(rows: EnvelopePrintMailing[], seed: Dataset): string {

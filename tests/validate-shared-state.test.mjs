@@ -10,6 +10,7 @@ import {
   validateComponentStatusPayload,
   validateMailingStatusPayload,
   validateReviewedExceptionPayload,
+  validateSubscriberStatusPayload,
 } from "../lib/validate-shared-state.ts";
 import { estimateKeptMailingIds } from "../lib/write-to-tables.ts";
 
@@ -65,6 +66,19 @@ test("validateComponentStatusPayload rejects an unknown field", () => {
 test("validateComponentStatusPayload rejects a value that's valid for a different field but not this one", () => {
   // "Active" is a real payment value but not a real envelope value.
   assert.throws(() => validateComponentStatusPayload("MAIL-X::1::envelope", "Active"), SharedStateValidationError);
+});
+
+test("validateSubscriberStatusPayload only accepts an ID with Active or Inactive", () => {
+  assert.doesNotThrow(() => validateSubscriberStatusPayload("SUB-1", "Active"));
+  assert.doesNotThrow(() => validateSubscriberStatusPayload("SUB-1", "Inactive"));
+  assert.throws(() => validateSubscriberStatusPayload("", "Active"), SharedStateValidationError);
+  assert.throws(() => validateSubscriberStatusPayload("SUB-1", "Archived"), SharedStateValidationError);
+});
+
+test("validateComponentStatusPayload accepts a free-text needs-done note up to 500 characters", () => {
+  assert.doesNotThrow(() => validateComponentStatusPayload("MAIL-X::1::needsDone", "Needs stamp and artifact"));
+  assert.doesNotThrow(() => validateComponentStatusPayload("MAIL-X::1::needsDone", ""));
+  assert.throws(() => validateComponentStatusPayload("MAIL-X::1::needsDone", "x".repeat(501)), SharedStateValidationError);
 });
 
 test("validateReviewedExceptionPayload accepts a well-formed 4-segment key", () => {

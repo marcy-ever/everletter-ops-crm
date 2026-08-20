@@ -2,7 +2,7 @@
 
 import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { todayIso } from "@/lib/domain/mailing-rules";
+import { isOpenStatus, todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings, type EffectiveMailing } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
@@ -34,7 +34,7 @@ import Bins from "./views/bins/Bins";
 import { computeBinsData } from "./views/bins/bins-selectors";
 import Print from "./views/envelope-print/Print";
 import { computePrintData } from "./views/envelope-print/print-selectors";
-import { envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
+import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
 
 // Mounts every CRM view. This component is the sole consumer of
 // app/crm/shell/ (init-crm-app.ts/render-shell.ts/crm-app-state.ts/
@@ -118,6 +118,30 @@ import { envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/env
 function updateBinComponentStatus(mailing: EffectiveMailing, field: string, value: string) {
   updateComponentStatus(mailing, field, value);
   notifyViewChanged();
+}
+
+function updateCustomerActiveStatus(subscriberId: string, active: boolean) {
+  const seed = state.seed!;
+  const activeState = active ? "Active" : "Archived";
+  const subscriber = seed.subscribers.find((item) => item.subscriberId === subscriberId);
+  if (subscriber) subscriber.status = activeState;
+  seed.subscriptions.filter((item) => item.subscriberId === subscriberId).forEach((item) => (item.activeState = activeState));
+  seed.mailings.filter((item) => item.subscriberId === subscriberId).forEach((item) => (item.activeState = activeState));
+
+  seed.subscribers.forEach((item) => {
+    const open = seed.mailings.filter((mailing) => mailing.subscriberId === item.subscriberId && mailing.activeState === "Active" && isOpenStatus(mailing.status));
+    item.openMailings = open.length;
+    const dates = open.map((mailing) => mailing.shipDate).filter(Boolean);
+    item.nextShipDate = dates.length ? dates.reduce((earliest, date) => (date < earliest ? date : earliest)) : "";
+  });
+  seed.summary.activeSubscriberCount = seed.subscribers.filter((item) => item.status === "Active").length;
+  seed.summary.archivedSubscriberCount = seed.subscribers.length - seed.summary.activeSubscriberCount;
+  seed.summary.openMailingCount = seed.mailings.filter((mailing) => mailing.activeState === "Active" && isOpenStatus(mailing.status)).length;
+  seed.summary.archivedMailingCount = seed.mailings.filter((mailing) => mailing.activeState !== "Active").length;
+  seed.summary.overdueCount = seed.mailings.filter((mailing) => mailing.activeState === "Active" && mailing.overdue).length;
+  seed.summary.dueNext14Count = seed.mailings.filter((mailing) => mailing.activeState === "Active" && mailing.dueNext14Days).length;
+  saveSharedState("subscriberStatus", subscriberId, active ? "Active" : "Inactive", saveFailures, staleness);
+  render(state, notifyViewChanged);
 }
 
 const REACT_VIEWS: Record<string, () => ReactNode> = {
@@ -366,11 +390,21 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         selected={selected}
         onSelect={(subscriberId) => {
           state.selectedSubscriberId = subscriberId;
+          state.profileSubscriptionFilter = "all";
           state.subscriberProfileOpen = true;
           window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;
           notifyViewChanged();
         }}
         profile={profile}
+        selectedSubscriptionId={state.profileSubscriptionFilter}
+        onSubscriptionChange={(subscriptionId) => {
+          state.profileSubscriptionFilter = subscriptionId;
+          notifyViewChanged();
+        }}
+        onPrintAllEnvelopes={(mailings) => {
+          const seed = state.seed!;
+          openEnvelopePrint(allEnvelopePrintRows(mailings), seed);
+        }}
         onPrintEnvelope={(mailing) => {
           const seed = state.seed!;
           openEnvelopePrint(envelopePrintRows([mailing], seed, state.reviewed, state.componentOverrides), seed);
@@ -384,6 +418,11 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           updateMailingStatus(mailing, "Assembling");
           notifyViewChanged();
         }}
+        onNeedsDoneChange={(mailing, value) => {
+          updateComponentStatus(mailing, "needsDone", value);
+          notifyViewChanged();
+        }}
+        onCustomerStatusChange={(active) => updateCustomerActiveStatus(selected!.subscriberId, active)}
         standaloneProfile={state.subscriberProfileOpen}
         onBack={() => {
           state.subscriberProfileOpen = false;
@@ -435,6 +474,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         }}
         onRecipientClick={(subscriberId) => {
           state.selectedSubscriberId = subscriberId;
+          state.profileSubscriptionFilter = "all";
           state.subscriberProfileOpen = true;
           state.activeView = "subscribers";
           window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;

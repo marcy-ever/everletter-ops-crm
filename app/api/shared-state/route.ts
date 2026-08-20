@@ -8,6 +8,7 @@ import {
   writeImport,
   writeMailingStatus,
   writeReviewedException,
+  writeSubscriberStatus,
 } from "@/lib/write-to-tables";
 import { buildDatasetFromTables } from "@/lib/build-dataset-from-tables";
 import { fetchComponentOverrides, fetchReviewedExceptionKeys } from "@/lib/build-overrides-from-tables";
@@ -21,9 +22,10 @@ import {
   validateComponentStatusPayload,
   validateMailingStatusPayload,
   validateReviewedExceptionPayload,
+  validateSubscriberStatusPayload,
 } from "@/lib/validate-shared-state";
 
-type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "crmDataset";
+type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "subscriberStatus" | "crmDataset";
 
 // What actor_email gets when a request reaches this handler with no
 // session. proxy.ts gates every route this one is reachable through, so a
@@ -43,6 +45,7 @@ const allowedKinds = new Set<StateKind>([
   "mailingStatus",
   "componentStatus",
   "reviewedException",
+  "subscriberStatus",
   "crmDataset",
 ]);
 
@@ -169,6 +172,8 @@ export async function POST(request: Request) {
       validateComponentStatusPayload(key, value);
     } else if (kind === "reviewedException") {
       validateReviewedExceptionPayload(key);
+    } else if (kind === "subscriberStatus") {
+      validateSubscriberStatusPayload(key, value);
     }
 
     // The write-to-tables dispatch runs inside a transaction (`tx`, not
@@ -217,6 +222,11 @@ export async function POST(request: Request) {
         }
       } else if (kind === "reviewedException") {
         const outcome = await writeReviewedException(key, tx);
+        if (outcome) {
+          await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+        }
+      } else if (kind === "subscriberStatus") {
+        const outcome = await writeSubscriberStatus(key, value, tx);
         if (outcome) {
           await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
         }

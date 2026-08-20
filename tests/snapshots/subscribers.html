@@ -197,7 +197,7 @@
           <h3>Ben Sample</h3>
           <p>ben.sample@example.test</p>
         </div>
-        <span class="panel-count">1 open</span>
+        <div class="profile-head-actions"><details class="customer-status-control"><summary class="customer-active-toggle" role="switch" aria-checked="true"><span class="customer-toggle-track" aria-hidden="true"><span></span></span><span>Active</span></summary><div class="customer-status-confirm" role="alert"><div><strong>Confirm deactivation</strong><span>Ben Sample will stay searchable, but will be removed from operational mailing views.</span></div><button type="button" class="profile-button">Cancel</button><button type="button" class="profile-button customer-status-confirm-button">Confirm Deactivate</button></div></details><button type="button" class="profile-button profile-print-all">Print All Envelopes</button><span class="panel-count">1 open</span></div>
       </div>
       <dl class="profile-stats">
         <div><dt>Status</dt><dd>Active</dd></div>
@@ -214,18 +214,20 @@
               <th>Plan</th>
               <th>Letter</th>
               <th>Status</th>
+              <th>Needs Done</th>
               <th>Envelope Status</th>
               <th>Envelope</th>
             </tr>
           </thead>
           <tbody>
             
-    <tr>
+    <tr class="profile-current-mailing">
       <td>Jul 15, 2026</td>
       <td>Marley</td>
       <td>12-month</td>
       <td>3</td>
       <td><span class="pill status-printing">Printing</span></td>
+      <td><input class="needs-done-input" placeholder="What needs done?" maxLength="500" aria-label="Needs done for Marley letter 3" value=""/></td>
       <td><span class="pill status-in-ashley-box">In Ashley Box</span></td>
       <td>
         <button type="button" class="link-button" data-profile-print-envelope="MAIL-9EEF07B5C6E96CDEDFC04E17::4">Print Envelope</button>
@@ -240,7 +242,7 @@
       </div>
       <div class="mobile-card-list profile-mobile-cards">
         
-    <article class="mobile-action-card">
+    <article class="mobile-action-card profile-current-mailing">
       <div class="mobile-card-head">
         <div>
           <strong>Jul 15, 2026</strong>
@@ -253,6 +255,7 @@
         <div><dt>Envelope</dt><dd>In Ashley Box</dd></div>
         <div><dt>Qty</dt><dd>1</dd></div>
       </dl>
+      <label class="mobile-needs-done"><span>Needs Done</span><input class="needs-done-input" placeholder="What needs done?" maxLength="500" value=""/></label>
       <div class="mobile-card-actions">
         <button type="button" class="link-button" data-profile-print-envelope="MAIL-9EEF07B5C6E96CDEDFC04E17::4">Print Envelope</button>
         <button type="button" class="link-button" data-profile-mark-envelope="MAIL-9EEF07B5C6E96CDEDFC04E17::4">Mark Printed</button>

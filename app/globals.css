@@ -1,15 +1,15 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;600;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap");
 
 :root {
   color: #31271f;
   background: #f4efe4;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --display: "Cormorant Garamond", Georgia, serif;
+  font-family: Manrope, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --display: Fraunces, Georgia, serif;
   --ink: #31271f;
   --muted: #7c7063;
-  --panel: #fffdf8;
-  --paper: #f4efe4;
-  --line: #dfd2bf;
+  --panel: #fffefa;
+  --paper: #f7f3ed;
+  --line: #e8ded3;
   --green: #214d3f;
   --green-soft: #e7f0e6;
   --blue: #536e87;
@@ -25,7 +25,7 @@
   --forest: #a9797d;
   --rosewood: #8f6268;
   --rosewood-soft: #cda0a0;
-  --shadow: 0 20px 54px rgba(54, 38, 22, 0.11);
+  --shadow: 0 12px 36px rgba(74, 54, 43, 0.075);
 }
 
 * {
@@ -37,10 +37,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    linear-gradient(90deg, rgba(49, 39, 31, 0.025) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(49, 39, 31, 0.02) 1px, transparent 1px),
+    radial-gradient(circle at 72% 5%, rgba(244, 229, 220, 0.72), transparent 30%),
+    radial-gradient(circle at 34% 94%, rgba(231, 240, 230, 0.55), transparent 28%),
     var(--paper);
-  background-size: 28px 28px, 28px 28px, auto;
 }
 
 .character-decor {
@@ -1758,6 +1757,58 @@ td span {
   min-width: 720px;
 }
 
+.profile-mailings {
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.profile-subscription-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(247, 243, 237, 0.65);
+}
+
+.profile-subscription-picker > span {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-subscription-picker button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: #fffefa;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.profile-subscription-picker button.active {
+  color: #fff;
+  border-color: var(--green);
+  background: var(--green);
+  box-shadow: 0 6px 14px rgba(33, 77, 63, 0.16);
+}
+
+.profile-subscription-picker small {
+  margin-left: 4px;
+  opacity: 0.72;
+  font-size: 10px;
+}
+
+.profile-current-mailing {
+  box-shadow: inset 4px 0 0 var(--gold);
+}
+
 .automation-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
@@ -2021,6 +2072,306 @@ td span {
 .empty-state {
   padding: 32px;
   color: var(--muted);
+}
+
+.profile-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.customer-status-control {
+  position: relative;
+}
+
+.customer-status-control summary {
+  list-style: none;
+}
+
+.customer-status-control summary::-webkit-details-marker {
+  display: none;
+}
+
+.customer-active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.customer-toggle-track {
+  width: 28px;
+  height: 17px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--green);
+}
+
+.customer-toggle-track span {
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin-left: 11px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(49, 39, 31, 0.2);
+}
+
+.customer-active-toggle[aria-checked="false"] {
+  color: var(--rose);
+  background: var(--rose-soft);
+}
+
+.customer-active-toggle[aria-checked="false"] .customer-toggle-track {
+  background: var(--rosewood-soft);
+}
+
+.customer-active-toggle[aria-checked="false"] .customer-toggle-track span {
+  margin-left: 0;
+}
+
+.customer-status-confirm {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(480px, 80vw);
+  margin: 0;
+  padding: 14px;
+  border: 1px solid rgba(159, 79, 92, 0.28);
+  border-radius: 14px;
+  background: var(--rose-soft);
+}
+
+.customer-status-confirm > div {
+  flex: 1;
+}
+
+.customer-status-confirm strong,
+.customer-status-confirm span {
+  display: block;
+}
+
+.customer-status-confirm span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.customer-status-confirm-button {
+  color: #fff;
+  border-color: var(--rose);
+  background: var(--rose);
+}
+
+.profile-print-all {
+  margin-top: 0;
+  color: #fff;
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.profile-print-all:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.needs-done-input {
+  width: min(240px, 100%);
+  min-width: 180px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: #fffefa;
+}
+
+.mobile-needs-done {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.mobile-needs-done > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mobile-needs-done .needs-done-input {
+  width: 100%;
+}
+
+/* A lighter, more contemporary Everletter finish. */
+.sidebar {
+  background:
+    radial-gradient(circle at 45% 10%, rgba(255, 244, 236, 0.2), transparent 30%),
+    linear-gradient(165deg, #cfa8aa 0%, #a87378 58%, #82575f 100%);
+  border-right: 0;
+  box-shadow: 8px 0 34px rgba(94, 61, 65, 0.1);
+}
+
+.brand-lockup img,
+.sidebar-note,
+.side-nav button {
+  border-radius: 14px;
+}
+
+.side-nav {
+  gap: 6px;
+}
+
+.side-nav button {
+  min-height: 46px;
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.075);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.side-nav button.active,
+.side-nav button:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 252, 247, 0.94);
+  box-shadow: 0 8px 22px rgba(86, 55, 54, 0.14);
+  transform: translateX(2px);
+}
+
+.workspace {
+  padding: 30px 34px 36px;
+}
+
+.topbar h2 {
+  font-size: 38px;
+  letter-spacing: -0.025em;
+}
+
+.section-label,
+.metric span,
+th,
+.batch-actions span,
+.print-toolbar span {
+  letter-spacing: 0.055em;
+}
+
+.metric,
+.data-panel,
+.automation-layout,
+.mobile-action-card,
+.packet-card,
+.launch-hero,
+.sample-card,
+.import-card,
+.profile-stats div,
+.flow-list li,
+.rule-item {
+  border-radius: 18px;
+}
+
+.metric {
+  min-height: 106px;
+  padding: 20px;
+  border-color: rgba(209, 194, 181, 0.68);
+  background: rgba(255, 254, 250, 0.84);
+  backdrop-filter: blur(10px);
+}
+
+.metric-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+}
+
+.metric strong {
+  font-size: 34px;
+}
+
+.topbar-meta span,
+.panel-count,
+.search-box,
+.filter-box {
+  border-color: rgba(209, 194, 181, 0.72);
+  background: rgba(255, 254, 250, 0.82);
+  box-shadow: 0 5px 18px rgba(74, 54, 43, 0.045);
+}
+
+.search-box,
+.filter-box {
+  min-height: 48px;
+  border-radius: 14px;
+}
+
+.panel-head {
+  padding: 20px 22px;
+  background: rgba(252, 249, 245, 0.78);
+}
+
+.panel-head h3,
+.automation-layout h3,
+.subscriber-profile h3 {
+  letter-spacing: -0.015em;
+}
+
+th {
+  color: #71655c;
+  background: #f6f1eb;
+  font-size: 11px;
+}
+
+tbody tr {
+  background: rgba(255, 254, 250, 0.64);
+  transition: background 140ms ease;
+}
+
+tbody tr:hover {
+  background: #fdf7f2;
+}
+
+button,
+.link-button,
+.profile-button,
+.status-select,
+.qa-select {
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.link-button,
+.profile-button,
+.batch-actions button,
+.print-toolbar button,
+.envelope-groups button {
+  min-height: 36px;
+  padding: 7px 12px;
+  font-weight: 700;
+}
+
+.link-button:hover,
+.profile-button:hover,
+.batch-actions button:hover,
+.print-toolbar button:hover,
+.envelope-groups button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 7px 16px rgba(72, 52, 42, 0.1);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(169, 121, 125, 0.24);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1050px) {

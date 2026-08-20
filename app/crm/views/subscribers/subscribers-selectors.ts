@@ -42,14 +42,17 @@ export function selectSubscriber(rows: DatasetSubscriber[], selectedSubscriberId
 export interface ProfileMailingRow extends EffectiveMailing {
   envelopeStatus: string;
   envelopeQuantity: number;
+  needsDone: string;
 }
 
 export interface SubscriberProfileData {
   subscriber: DatasetSubscriber;
+  allRows: ProfileMailingRow[];
   openRows: ProfileMailingRow[];
   recipientCount: number;
   totalMailings: number;
   totalEnvelopeCount: number;
+  subscriptionChoices: Array<{ subscriptionId: string; character: string; plan: string; recipientName: string }>;
 }
 
 export function computeSubscriberProfile(
@@ -63,20 +66,30 @@ export function computeSubscriberProfile(
     .filter((mailing) => mailing.subscriberId === subscriber.subscriberId)
     .sort((a, b) => (a.shipDate || "9999").localeCompare(b.shipDate || "9999") || numericLetter(a.letterNumber) - numericLetter(b.letterNumber));
   const recipientIds = new Set(rows.map((mailing) => mailing.recipientId));
-  const openRows: ProfileMailingRow[] = rows
-    .filter((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active")
-    .map((mailing) => ({
+  const allRows: ProfileMailingRow[] = rows.map((mailing) => ({
       ...mailing,
       envelopeStatus: componentStatus(mailing, "envelope", seed, reviewed, componentOverrides),
       envelopeQuantity: envelopeQuantityForMailing(mailing),
+      needsDone: componentStatus(mailing, "needsDone", seed, reviewed, componentOverrides),
     }));
+  const openRows = allRows.filter((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active");
   const totalEnvelopeCount = openRows.reduce((total, mailing) => total + mailing.envelopeQuantity, 0);
+  const subscriptionChoices = Array.from(
+    new Map(
+      allRows.map((mailing) => [
+        mailing.subscriptionId,
+        { subscriptionId: mailing.subscriptionId, character: mailing.character, plan: mailing.plan, recipientName: mailing.recipientName },
+      ]),
+    ).values(),
+  );
 
   return {
     subscriber,
+    allRows,
     openRows,
     recipientCount: recipientIds.size,
     totalMailings: rows.length,
     totalEnvelopeCount,
+    subscriptionChoices,
   };
 }

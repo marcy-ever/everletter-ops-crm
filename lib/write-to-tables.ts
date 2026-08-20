@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import type { getDb } from "@/db";
 import { subscribers } from "@/db/schema/subscribers";
 import { subscriptions } from "@/db/schema/subscriptions";
@@ -599,6 +599,25 @@ export async function writeMailingStatus(key: string, status: string, db: Db): P
   const existing = await db.select({ status: mailings.status }).from(mailings).where(eq(mailings.id, match.id));
   const previousValue = existing[0]?.status ?? null;
   await db.update(mailings).set({ status }).where(eq(mailings.id, match.id));
+  return { previousValue, newValue: status };
+}
+
+export async function writeSubscriberStatus(subscriberId: string, status: string, db: Db): Promise<WriteOutcome | null> {
+  const subscriberRows = await db.select({ id: subscribers.id }).from(subscribers).where(eq(subscribers.id, subscriberId));
+  if (subscriberRows.length !== 1) return null;
+
+  const subscriptionRows = await db
+    .select({ id: subscriptions.id, status: subscriptions.status })
+    .from(subscriptions)
+    .where(eq(subscriptions.subscriberId, subscriberId));
+  const previousValue = subscriptionRows.some((row) => row.status === "Active") ? "Active" : "Inactive";
+  const active = status === "Active";
+
+  await db.update(subscriptions).set({ status: active ? "Active" : "Archived" }).where(eq(subscriptions.subscriberId, subscriberId));
+  const subscriptionIds = subscriptionRows.map((row) => row.id);
+  if (subscriptionIds.length) {
+    await db.update(mailings).set({ active }).where(inArray(mailings.subscriptionId, subscriptionIds));
+  }
   return { previousValue, newValue: status };
 }
 

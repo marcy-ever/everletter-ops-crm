@@ -197,7 +197,13 @@
           <h3>Ava Example</h3>
           <p>ava.example@example.test</p>
         </div>
-        <span class="panel-count">2 open</span>
+        <div class="profile-head-actions"><details class="customer-status-control"><summary class="customer-active-toggle" role="switch" aria-checked="true"><span class="customer-toggle-track" aria-hidden="true"><span></span></span><span>Active</span></summary><div class="customer-status-confirm" role="alert"><div><strong>Confirm deactivation</strong><span>Ava Example will stay searchable, but will be removed from operational mailing views.</span></div><button type="button" class="profile-button">Cancel</button><button type="button" class="profile-button customer-status-confirm-button">Confirm Deactivate</button></div></details><button type="button" class="profile-button profile-print-all">Print All Envelopes</button><span class="panel-count">2 open</span></div>
+      </div>
+      <div class="profile-subscription-picker" aria-label="Choose subscription">
+        <span>Subscription</span>
+        <button type="button" class="active">All</button>
+        <button type="button" class="">Marley <small>Month-to-month</small></button>
+        <button type="button" class="">Ringo <small>6-month</small></button>
       </div>
       <dl class="profile-stats">
         <div><dt>Status</dt><dd>Active</dd></div>
@@ -214,18 +220,20 @@
               <th>Plan</th>
               <th>Letter</th>
               <th>Status</th>
+              <th>Needs Done</th>
               <th>Envelope Status</th>
               <th>Envelope</th>
             </tr>
           </thead>
           <tbody>
             
-    <tr>
+    <tr class="profile-current-mailing">
       <td>Aug 15, 2026</td>
       <td>Marley</td>
       <td>Month-to-month</td>
       <td>1</td>
       <td><span class="pill status-to-prepare">To Prepare</span></td>
+      <td><input class="needs-done-input" placeholder="What needs done?" maxLength="500" aria-label="Needs done for Marley letter 1" value=""/></td>
       <td><span class="pill status-need-print">Need Print</span></td>
       <td>
         <button type="button" class="link-button" data-profile-print-envelope="MAIL-2383FD20718F2B0473E578E4::2">Print Envelope</button>
@@ -241,6 +249,7 @@
       <td>6-month</td>
       <td>1</td>
       <td><span class="pill status-to-prepare">To Prepare</span></td>
+      <td><input class="needs-done-input" placeholder="What needs done?" maxLength="500" aria-label="Needs done for Ringo letter 1" value=""/></td>
       <td><span class="pill status-in-ashley-box">In Ashley Box</span></td>
       <td>
         <button type="button" class="link-button" data-profile-print-envelope="MAIL-DDCE24BA5A52D88DD71CA7EE::3">Print Envelope</button>
@@ -255,7 +264,7 @@
       </div>
       <div class="mobile-card-list profile-mobile-cards">
         
-    <article class="mobile-action-card">
+    <article class="mobile-action-card profile-current-mailing">
       <div class="mobile-card-head">
         <div>
           <strong>Aug 15, 2026</strong>
@@ -268,6 +277,7 @@
         <div><dt>Envelope</dt><dd>Need Print</dd></div>
         <div><dt>Qty</dt><dd>2</dd></div>
       </dl>
+      <label class="mobile-needs-done"><span>Needs Done</span><input class="needs-done-input" placeholder="What needs done?" maxLength="500" value=""/></label>
       <div class="mobile-card-actions">
         <button type="button" class="link-button" data-profile-print-envelope="MAIL-2383FD20718F2B0473E578E4::2">Print Envelope</button>
         <button type="button" class="link-button" data-profile-mark-envelope="MAIL-2383FD20718F2B0473E578E4::2">Mark Printed</button>
@@ -288,6 +298,7 @@
         <div><dt>Envelope</dt><dd>In Ashley Box</dd></div>
         <div><dt>Qty</dt><dd>1</dd></div>
       </dl>
+      <label class="mobile-needs-done"><span>Needs Done</span><input class="needs-done-input" placeholder="What needs done?" maxLength="500" value=""/></label>
       <div class="mobile-card-actions">
         <button type="button" class="link-button" data-profile-print-envelope="MAIL-DDCE24BA5A52D88DD71CA7EE::3">Print Envelope</button>
         <button type="button" class="link-button" data-profile-mark-envelope="MAIL-DDCE24BA5A52D88DD71CA7EE::3">Mark Printed</button>
