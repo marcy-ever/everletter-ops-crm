@@ -46,7 +46,11 @@ export function computeQueueRows(
     .filter((mailing) => mailing.activeState === "Active")
     .filter((mailing) => !highExceptionMailingIds.has(mailing.mailingId))
     .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
-    .filter((mailing) => (statusFilter === "Open" ? isOpenStatus(mailing.status) : statusFilter === "All" ? true : mailing.status === statusFilter))
+    .filter((mailing) => {
+      if (statusFilter === "Open") return isOpenStatus(mailing.status);
+      if (statusFilter === "All") return true;
+      return new Set(statusFilter.split("|").filter(Boolean)).has(mailing.status);
+    })
     .filter((mailing) => includesText([mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId], query))
     .slice(0, 120);
 

@@ -82,6 +82,28 @@ export function validateSubscriberStatusPayload(key: string, value: string): voi
   }
 }
 
+export function validateSubscriberEmailPayload(key: string, value: string): void {
+  if (!key.trim()) throw new SharedStateValidationError("Subscriber ID is required.");
+  if (value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    throw new SharedStateValidationError("Enter a valid customer email address.");
+  }
+}
+
+export function validateMailingLetterNumberPayload(key: string, value: string): void {
+  if (!parseMailingKey(key)) throw new SharedStateValidationError(`mailingLetterNumber key "${key}" is not a valid mailingKey.`);
+  const letterNumber = Number(value);
+  if (!Number.isInteger(letterNumber) || letterNumber < 1 || letterNumber > 999) {
+    throw new SharedStateValidationError("Letter number must be a whole number from 1 to 999.");
+  }
+}
+
+export function validateMailingShipDatePayload(key: string, value: string): void {
+  if (!parseMailingKey(key)) throw new SharedStateValidationError(`mailingShipDate key "${key}" is not a valid mailingKey.`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T12:00:00Z`))) {
+    throw new SharedStateValidationError("Enter a valid ship date.");
+  }
+}
+
 export function validateComponentStatusPayload(key: string, value: string): void {
   const parsed = parseComponentKey(key);
   if (!parsed) {

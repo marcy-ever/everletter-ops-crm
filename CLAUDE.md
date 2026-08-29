@@ -225,6 +225,7 @@ There is no `crm_state` table, blob, or "record kinds" list anymore — it was d
 - Account: Everletter's Squarespace account; credentials are held by Marcy/Ashley and are not in the repo.
 - Code config: none. `app/crm/views/sync/Sync.tsx` and `app/crm/views/Automation.tsx` contain only a Sync Simulator, automation rules, and explanatory UI.
 - Status: no webhook, API token, scheduled sync, or product/service mapping is implemented.
+- First planned step: a read-only sync that brings Squarespace customer, order, and subscription updates into a review queue. No automatic CRM changes or deletions until Marcy approves a later phase.
 
 ### Mailchimp (planned; not integrated)
 

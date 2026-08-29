@@ -48,7 +48,7 @@ const NOOP = () => {};
 
 function renderQueueHtml(seed, { batchFilter = "all", statusFilter = "Open", query = "" } = {}) {
   const data = computeQueueRows(seed, {}, new Set(), batchFilter, statusFilter, query, TODAY);
-  return renderToStaticMarkup(React.createElement(Queue, { data, onStatusChange: NOOP, onBulkStatus: NOOP, onRecipientClick: NOOP }));
+  return renderToStaticMarkup(React.createElement(Queue, { data, onStatusChange: NOOP, onRecipientClick: NOOP }));
 }
 
 test("Queue.tsx (default: batchFilter 'all', statusFilter 'Open', no query) renders markup equivalent to the frozen legacy snapshot", () => {
@@ -87,7 +87,7 @@ test("the real component output actually contains computed data, not just an emp
   const seed = loadSeed();
   const html = renderQueueHtml(seed);
   assert.match(html, /data-status-select="MAIL-/);
-  assert.match(html, /data-bulk-status="To Prepare"/);
+  assert.doesNotMatch(html, /data-bulk-status/);
   assert.match(html, /Production Queue/);
   assert.doesNotMatch(html, /Mailing ID/);
 });
@@ -113,12 +113,9 @@ test("all three shell controls (search, status filter, batch filter) still drive
 // matching a predicate, expanding nested function components on the fly -
 // same technique steps 10/12 established for Exceptions.tsx's ExceptionRow
 // and Subscribers.tsx's SubscriberCard. Extended here for a case those
-// didn't hit: a children array itself containing another array (a
-// "static text" child followed by a {list.map(...)} child, e.g. this
-// view's own <span>Update shown rows:</span> plus the five mapped bulk
-// buttons) - handling Array.isArray(node) directly, not just
-// Array.isArray(children), lets the walk recurse into an array found at
-// any depth instead of silently stopping at one nested inside another.
+// didn't hit: a children array itself containing another array. Handling
+// Array.isArray(node) directly lets the walk recurse into an array found
+// at any depth instead of silently stopping at one nested inside another.
 function findAll(node, predicate, out = []) {
   if (Array.isArray(node)) {
     for (const child of node) findAll(child, predicate, out);
@@ -138,7 +135,7 @@ test("each row's real onChange calls onStatusChange with that row's exact mailin
   const data = computeQueueRows(seed, {}, new Set(), "all", "Open", "", TODAY);
   assert.ok(data.rows.length > 0, "fixture invariant: at least one open mailing should be shown by default");
   const calls = [];
-  const element = Queue({ data, onStatusChange: (mailing, status) => calls.push([mailing, status]), onBulkStatus: NOOP, onRecipientClick: NOOP });
+  const element = Queue({ data, onStatusChange: (mailing, status) => calls.push([mailing, status]), onRecipientClick: NOOP });
 
   const selects = findAll(element, (node) => node.type === "select" && node.props["data-status-select"] !== undefined);
   assert.equal(selects.length, data.rows.length);
@@ -149,23 +146,11 @@ test("each row's real onChange calls onStatusChange with that row's exact mailin
   assert.equal(calls[0][1], "Mailed");
 });
 
-test("each bulk-action button's real onClick calls onBulkStatus with that button's exact status (component-level, not just static output)", () => {
-  const seed = loadSeed();
-  const data = computeQueueRows(seed, {}, new Set(), "all", "Open", "", TODAY);
-  const calls = [];
-  const element = Queue({ data, onStatusChange: NOOP, onBulkStatus: (status) => calls.push(status), onRecipientClick: NOOP });
-
-  const bulkButtons = findAll(element, (node) => node.type === "button" && node.props["data-bulk-status"] !== undefined);
-  assert.equal(bulkButtons.length, 5);
-  for (const button of bulkButtons) button.props.onClick();
-  assert.deepEqual(calls, ["To Prepare", "Printing", "Assembling", "Ready to Mail", "Mailed"]);
-});
-
 test("clicking a recipient name opens that subscriber's profile", () => {
   const seed = loadSeed();
   const data = computeQueueRows(seed, {}, new Set(), "all", "Open", "", TODAY);
   const calls = [];
-  const element = Queue({ data, onStatusChange: NOOP, onBulkStatus: NOOP, onRecipientClick: (subscriberId) => calls.push(subscriberId) });
+  const element = Queue({ data, onStatusChange: NOOP, onRecipientClick: (subscriberId) => calls.push(subscriberId) });
   const links = findAll(element, (node) => node.type === "button" && node.props.className?.includes("recipient-profile-link"));
   assert.equal(links.length, data.rows.length);
   links[0].props.onClick();

@@ -29,6 +29,7 @@
 
 import { formatDate } from "@/lib/domain/format";
 import { mailingKey } from "@/lib/domain/keys";
+import { MAILING_STATUSES } from "@/lib/domain/mailing-rules";
 import { statusClass, number } from "../../format";
 import type { ProfileMailingRow, SubscriberProfileData } from "./subscribers-selectors";
 
@@ -39,12 +40,16 @@ export interface SubscriberProfileProps {
   onMarkPrinted: (mailing: ProfileMailingRow) => void;
   onMarkAshley: (mailing: ProfileMailingRow) => void;
   onNeedsDoneChange: (mailing: ProfileMailingRow, value: string) => void;
+  onEmailChange: (email: string) => void;
+  onLetterNumberChange: (mailing: ProfileMailingRow, value: string) => void;
+  onShipDateChange: (mailing: ProfileMailingRow, value: string) => void;
+  onMailingStatusChange: (mailing: ProfileMailingRow, value: string) => void;
   onCustomerStatusChange: (active: boolean) => void;
   selectedSubscriptionId: string;
   onSubscriptionChange: (subscriptionId: string) => void;
 }
 
-export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onCustomerStatusChange, selectedSubscriptionId, onSubscriptionChange }: SubscriberProfileProps) {
+export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange, onLetterNumberChange, onShipDateChange, onMailingStatusChange, onCustomerStatusChange, selectedSubscriptionId, onSubscriptionChange }: SubscriberProfileProps) {
   const { subscriber, allRows, openRows } = data;
   const isActive = subscriber.status === "Active";
   const visibleRows = selectedSubscriptionId === "all" ? allRows : allRows.filter((mailing) => mailing.subscriptionId === selectedSubscriptionId);
@@ -56,7 +61,13 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
         <div>
           <p className="section-label">Customer Profile</p>
           <h3>{subscriber.displayName}</h3>
-          <p>{subscriber.email || "Needs email"}</p>
+          <label className="profile-email-field">
+            <span>Email</span>
+            <input type="email" defaultValue={subscriber.email} placeholder="Add customer email" onBlur={(event) => {
+              const email = event.currentTarget.value.trim();
+              if (email && email !== subscriber.email) onEmailChange(email);
+            }} />
+          </label>
         </div>
         <div className="profile-head-actions">
           <details className="customer-status-control">
@@ -91,6 +102,12 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
           <span className="panel-count">{number(visibleOpenRows.length)} open</span>
         </div>
       </div>
+      {data.customerReviewReasons.length ? (
+        <div className="profile-review-alert" role="status">
+          <strong>Needs review</strong>
+          <ul>{data.customerReviewReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+        </div>
+      ) : null}
       {data.subscriptionChoices.length > 1 ? (
         <div className="profile-subscription-picker" aria-label="Choose subscription">
           <span>Subscription</span>
@@ -147,12 +164,21 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
                   className={mailingKey(mailing) === currentMailingKey ? "profile-current-mailing" : undefined}
                   ref={mailingKey(mailing) === currentMailingKey ? (row) => row?.scrollIntoView({ block: "center" }) : undefined}
                 >
-                  <td>{formatDate(mailing.shipDate)}</td>
+                  <td><input className="ship-date-input" type="date" defaultValue={mailing.shipDate} aria-label={`Ship date for ${mailing.character} letter ${mailing.letterNumber}`} onBlur={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value && value !== mailing.shipDate) onShipDateChange(mailing, value);
+                  }} /></td>
                   <td>{mailing.character}</td>
                   <td>{mailing.plan}</td>
-                  <td>{mailing.letterNumber}</td>
+                  <td><input className="letter-number-input" type="number" min="1" defaultValue={mailing.letterNumber} aria-label={`Letter number for ${mailing.character}`} onBlur={(event) => {
+                    const value = event.currentTarget.value.trim();
+                    if (value && value !== String(mailing.letterNumber)) onLetterNumberChange(mailing, value);
+                  }} /></td>
                   <td>
-                    <span className={`pill status-${statusClass(mailing.status)}`}>{mailing.status}</span>
+                    <select className={`profile-status-select status-${statusClass(mailing.status)}`} value={mailing.status} aria-label={`Status for ${mailing.character} letter ${mailing.letterNumber}`} onChange={(event) => onMailingStatusChange(mailing, event.currentTarget.value)}>
+                      {MAILING_STATUSES.map((status) => <option value={status} key={status}>{status}</option>)}
+                    </select>
+                    {mailing.reviewReasons.map((reason) => <small className="mailing-review-reason" key={reason}>{reason}</small>)}
                   </td>
                   <td>
                     <input
@@ -208,12 +234,32 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
               </div>
               <dl>
                 <div>
+                  <dt>Ship Date</dt>
+                  <dd><input className="ship-date-input" type="date" defaultValue={mailing.shipDate} aria-label={`Ship date for ${mailing.character} letter ${mailing.letterNumber}`} onBlur={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value && value !== mailing.shipDate) onShipDateChange(mailing, value);
+                  }} /></dd>
+                </div>
+                <div>
+                  <dt>Letter</dt>
+                  <dd><input className="letter-number-input" type="number" min="1" defaultValue={mailing.letterNumber} aria-label={`Letter number for ${mailing.character}`} onBlur={(event) => {
+                    const value = event.currentTarget.value.trim();
+                    if (value && value !== String(mailing.letterNumber)) onLetterNumberChange(mailing, value);
+                  }} /></dd>
+                </div>
+                <div>
                   <dt>Plan</dt>
                   <dd>{mailing.plan}</dd>
                 </div>
                 <div>
                   <dt>Envelope</dt>
                   <dd>{mailing.envelopeStatus}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd><select className="profile-status-select" value={mailing.status} aria-label={`Status for ${mailing.character} letter ${mailing.letterNumber}`} onChange={(event) => onMailingStatusChange(mailing, event.currentTarget.value)}>
+                    {MAILING_STATUSES.map((status) => <option value={status} key={status}>{status}</option>)}
+                  </select></dd>
                 </div>
                 <div>
                   <dt>Qty</dt>

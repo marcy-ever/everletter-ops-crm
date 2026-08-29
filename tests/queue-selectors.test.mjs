@@ -112,6 +112,19 @@ test("computeQueueRows' statusFilter 'All' includes every status, and a specific
   );
 });
 
+test("computeQueueRows supports selecting several statuses at once", () => {
+  const seed = seedWith({ mailings: [
+    mailing({ mailingId: "MAIL-PREP", status: "To Prepare" }),
+    mailing({ mailingId: "MAIL-ASSEMBLING", status: "Assembling" }),
+    mailing({ mailingId: "MAIL-READY", status: "Ready to Mail" }),
+    mailing({ mailingId: "MAIL-MAILED", status: "Mailed" }),
+  ] });
+  const rows = computeQueueRows(seed, {}, new Set(), "all", "To Prepare|Assembling|Ready to Mail", "", TODAY).rows;
+  assert.ok(rows.length > 0);
+  assert.ok(rows.every((row) => ["To Prepare", "Assembling", "Ready to Mail"].includes(row.status)));
+  assert.ok(rows.every((row) => row.status !== "Mailed"));
+});
+
 test("computeQueueRows' statusFilter reflects statusOverrides, not just the mailing's original status", () => {
   const seed = seedWith({ mailings: [mailing({ mailingId: "MAIL-1", status: "To Prepare" })] });
   const { rows } = computeQueueRows(seed, { "MAIL-1::2": "Mailed" }, new Set(), "all", "Mailed", "", TODAY);

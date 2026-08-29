@@ -287,6 +287,14 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           saveSharedState("reviewedException", key, "1", saveFailures, staleness);
           render(state, notifyViewChanged);
         }}
+        onCustomerClick={(subscriberId) => {
+          state.selectedSubscriberId = subscriberId;
+          state.profileSubscriptionFilter = "all";
+          state.subscriberProfileOpen = true;
+          state.activeView = "subscribers";
+          window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;
+          render(state, notifyViewChanged);
+        }}
       />
     );
   },
@@ -422,6 +430,30 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           updateComponentStatus(mailing, "needsDone", value);
           notifyViewChanged();
         }}
+        onEmailChange={(email) => {
+          const subscriberId = selected!.subscriberId;
+          const normalizedEmail = email.toLowerCase();
+          selected!.email = normalizedEmail;
+          state.seed!.mailings.filter((item) => item.subscriberId === subscriberId).forEach((item) => (item.email = normalizedEmail));
+          saveSharedState("subscriberEmail", subscriberId, normalizedEmail, saveFailures, staleness);
+          notifyViewChanged();
+        }}
+        onLetterNumberChange={(mailing, value) => {
+          const matching = state.seed!.mailings.find((item) => item.mailingId === mailing.mailingId && item.sourceRow === mailing.sourceRow);
+          if (matching) matching.letterNumber = value;
+          saveSharedState("mailingLetterNumber", `${mailing.mailingId}::${mailing.sourceRow}`, value, saveFailures, staleness);
+          notifyViewChanged();
+        }}
+        onShipDateChange={(mailing, value) => {
+          const matching = state.seed!.mailings.find((item) => item.mailingId === mailing.mailingId && item.sourceRow === mailing.sourceRow);
+          if (matching) matching.shipDate = value;
+          saveSharedState("mailingShipDate", `${mailing.mailingId}::${mailing.sourceRow}`, value, saveFailures, staleness);
+          notifyViewChanged();
+        }}
+        onMailingStatusChange={(mailing, value) => {
+          updateMailingStatus(mailing, value);
+          render(state, notifyViewChanged);
+        }}
         onCustomerStatusChange={(active) => updateCustomerActiveStatus(selected!.subscriberId, active)}
         standaloneProfile={state.subscriberProfileOpen}
         onBack={() => {
@@ -439,11 +471,11 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // renderQueue()'s own filter chain - confirmed directly, not assumed
   // from Subscribers' (step 12) single-shell-control precedent.
   //
-  // Both onStatusChange and onBulkStatus call render(), not
+  // onStatusChange calls render(), not
   // notifyViewChanged() - unlike Subscribers' mark-printed/mark-ashley
   // (step 12), which reproduced legacy's OWN choice to call
   // renderSubscribers() only, never render(). Here legacy's own
-  // [data-status-select]/[data-bulk-status] handlers both call render()
+  // the [data-status-select] handler calls render()
   // directly - a real difference between the two views' legacy code, not
   // an inconsistency introduced by this migration. Confirmed by reading
   // renderQueue() itself, not inferred from the render()-vs-
@@ -451,13 +483,6 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   // does, per action, and has to be checked against the actual code every
   // time, not applied as a general policy.
   //
-  // onBulkStatus is migrated exactly as legacy's own handler: no
-  // confirmation, no restyling, no batching, no undo. rows.forEach(...)
-  // becomes data.rows.forEach(...) - the exact same currently-shown rows
-  // array computeQueueRows() already produced for rendering, not a
-  // fresh query. A single click rewrites every shown row, silently, same
-  // as before this migration. That's Marcy's call to guard or not - see
-  // this step's own task/PR for what's flagged, not fixed.
   queue: () => {
     if (!state.seed) return null;
     const data = computeQueueRows(state.seed, state.statusOverrides, state.reviewed, state.batchFilter, state.statusFilter, state.query, todayIso(new Date()));
@@ -466,10 +491,6 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         data={data}
         onStatusChange={(mailing, status) => {
           updateMailingStatus(mailing, status);
-          render(state, notifyViewChanged);
-        }}
-        onBulkStatus={(status) => {
-          data.rows.forEach((mailing) => updateMailingStatus(mailing, status));
           render(state, notifyViewChanged);
         }}
         onRecipientClick={(subscriberId) => {

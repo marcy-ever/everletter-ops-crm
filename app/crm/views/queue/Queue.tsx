@@ -2,8 +2,7 @@
 // view migrated out of app/crm/legacy-app.js, and the busiest
 // operational screen in the app: a per-row status write (the same write
 // path as Needs Review's Reviewed button, step 10, just one per row
-// across up to 120 rows) plus five bulk-action buttons that rewrite
-// every currently-shown row in one click.
+// across up to 120 rows).
 //
 // Input-handling shape: props with callbacks, same as every interactive
 // view since step 8. onStatusChange receives the full mailing row (not a
@@ -11,14 +10,6 @@
 // the same simplification every migrated view's callbacks have made over
 // their legacy querySelector-based originals).
 //
-// The bulk buttons are migrated exactly as they are - no confirmation
-// dialog, no restyling, no batching, no undo. That's a deliberate
-// decision with decision rights explicitly Marcy's, not an oversight
-// this migration corrects. onBulkStatus's implementation
-// (app/crm/CrmApp.tsx) reproduces rows.forEach(mailing =>
-// updateMailingStatus(mailing, nextStatus)) exactly - a single click
-// rewrites every shown row with no prompt, same as legacy.
-
 import { formatDate } from "@/lib/domain/format";
 import { mailingKey } from "@/lib/domain/keys";
 import { MAILING_STATUSES } from "@/lib/domain/mailing-rules";
@@ -29,11 +20,10 @@ import type { QueueData } from "./queue-selectors";
 export interface QueueProps {
   data: QueueData;
   onStatusChange: (mailing: EffectiveMailing, status: string) => void;
-  onBulkStatus: (status: string) => void;
   onRecipientClick: (subscriberId: string) => void;
 }
 
-export default function Queue({ data, onStatusChange, onBulkStatus, onRecipientClick }: QueueProps) {
+export default function Queue({ data, onStatusChange, onRecipientClick }: QueueProps) {
   const { rows, batchDate } = data;
   return (
     <section className="data-panel" aria-label="Production queue">
@@ -43,14 +33,6 @@ export default function Queue({ data, onStatusChange, onBulkStatus, onRecipientC
           <p>Active subscribers only. Use the batch filter to focus on the immediate 1st/15th mailing.</p>
         </div>
         <span className="panel-count">{rows.length} shown</span>
-      </div>
-      <div className="batch-actions" aria-label="Batch status actions">
-        <span>Update shown rows:</span>
-        {MAILING_STATUSES.map((status) => (
-          <button type="button" data-bulk-status={status} onClick={() => onBulkStatus(status)} key={status}>
-            {status}
-          </button>
-        ))}
       </div>
       <div className="table-wrap">
         <table>

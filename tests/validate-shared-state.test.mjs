@@ -11,6 +11,9 @@ import {
   validateMailingStatusPayload,
   validateReviewedExceptionPayload,
   validateSubscriberStatusPayload,
+  validateSubscriberEmailPayload,
+  validateMailingLetterNumberPayload,
+  validateMailingShipDatePayload,
 } from "../lib/validate-shared-state.ts";
 import { estimateKeptMailingIds } from "../lib/write-to-tables.ts";
 
@@ -73,6 +76,16 @@ test("validateSubscriberStatusPayload only accepts an ID with Active or Inactive
   assert.doesNotThrow(() => validateSubscriberStatusPayload("SUB-1", "Inactive"));
   assert.throws(() => validateSubscriberStatusPayload("", "Active"), SharedStateValidationError);
   assert.throws(() => validateSubscriberStatusPayload("SUB-1", "Archived"), SharedStateValidationError);
+});
+
+test("customer profile corrections validate email and letter number", () => {
+  assert.doesNotThrow(() => validateSubscriberEmailPayload("SUB-1", "marcy@example.com"));
+  assert.throws(() => validateSubscriberEmailPayload("SUB-1", "not-an-email"), SharedStateValidationError);
+  assert.doesNotThrow(() => validateMailingLetterNumberPayload("MAIL-X::1", "12"));
+  assert.throws(() => validateMailingLetterNumberPayload("MAIL-X::1", "0"), SharedStateValidationError);
+  assert.throws(() => validateMailingLetterNumberPayload("bad-key", "2"), SharedStateValidationError);
+  assert.doesNotThrow(() => validateMailingShipDatePayload("MAIL-X::1", "2026-09-15"));
+  assert.throws(() => validateMailingShipDatePayload("MAIL-X::1", "not-a-date"), SharedStateValidationError);
 });
 
 test("validateComponentStatusPayload accepts a free-text needs-done note up to 500 characters", () => {

@@ -149,8 +149,8 @@ export function bootCrmApp(appState: AppState): BootedCrmApp {
   const metrics = document.querySelector("#metrics") as HTMLElement;
   const statusStrip = document.querySelector("#statusStrip") as HTMLElement;
   const searchInput = document.querySelector("#searchInput") as HTMLInputElement;
-  const statusFilter = document.querySelector("#statusFilter") as HTMLSelectElement;
   const statusFilterWrap = document.querySelector("#statusFilterWrap") as HTMLElement;
+  const statusFilterOptions = Array.from(statusFilterWrap.querySelectorAll<HTMLInputElement>("[data-status-filter]"));
   const batchFilter = document.querySelector("#batchFilter") as HTMLSelectElement;
   const batchFilterWrap = document.querySelector("#batchFilterWrap") as HTMLElement;
   const pastBatchFilter = document.querySelector("#pastBatchFilter") as HTMLSelectElement;
@@ -162,7 +162,6 @@ export function bootCrmApp(appState: AppState): BootedCrmApp {
     topbarMeta,
     metrics,
     statusStrip,
-    statusFilter,
     statusFilterWrap,
     batchFilter,
     batchFilterWrap,
@@ -216,10 +215,15 @@ export function bootCrmApp(appState: AppState): BootedCrmApp {
     renderView(state, notifyViewChanged);
   });
 
-  statusFilter.addEventListener("change", (event) => {
-    state.statusFilter = (event.target as HTMLSelectElement).value;
+  statusFilterOptions.forEach((input) => input.addEventListener("change", () => {
+    const selected = statusFilterOptions.filter((option) => option.checked).map((option) => option.dataset.statusFilter || "");
+    state.statusFilter = selected.length === statusFilterOptions.length
+      ? "All"
+      : selected.length === statusFilterOptions.length - 1 && !selected.includes("Mailed")
+        ? "Open"
+        : selected.join("|");
     renderView(state, notifyViewChanged);
-  });
+  }));
 
   batchFilter.addEventListener("change", (event) => {
     state.batchFilter = (event.target as HTMLSelectElement).value;

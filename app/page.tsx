@@ -103,18 +103,17 @@ export default async function Home() {
               <span>Search</span>
               <input id="searchInput" placeholder="Search name, email, character, order, issue..." />
             </label>
-            <label className="filter-box" id="statusFilterWrap">
-              <span>Status</span>
-              <select id="statusFilter">
-                <option>Open</option>
-                <option>To Prepare</option>
-                <option>Printing</option>
-                <option>Assembling</option>
-                <option>Ready to Mail</option>
-                <option>Mailed</option>
-                <option>All</option>
-              </select>
-            </label>
+            <fieldset className="filter-box status-filter-box" id="statusFilterWrap">
+              <legend>Status</legend>
+              <div className="status-filter-options">
+                {['To Prepare', 'Printing', 'Assembling', 'Ready to Mail', 'Mailed'].map((status) => (
+                  <label key={status}>
+                    <input type="checkbox" data-status-filter={status} defaultChecked={status !== 'Mailed'} />
+                    <span>{status}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <label className="filter-box" id="batchFilterWrap">
               <span>Batch</span>
               <select id="batchFilter"></select>

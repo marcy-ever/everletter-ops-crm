@@ -13,7 +13,7 @@
  */
 
 import type { Dataset, DatasetSubscriber } from "@/lib/domain/dataset";
-import { componentStatus, effectiveMailings, includesText, type EffectiveMailing } from "@/lib/client/selectors";
+import { activeExceptions, componentStatus, effectiveMailings, includesText, type EffectiveMailing } from "@/lib/client/selectors";
 import { envelopeQuantityForMailing, numericLetter } from "@/lib/domain/plans";
 
 // Same one-line rule as legacy's own printedEnvelopeStatusForMailing()
@@ -43,6 +43,7 @@ export interface ProfileMailingRow extends EffectiveMailing {
   envelopeStatus: string;
   envelopeQuantity: number;
   needsDone: string;
+  reviewReasons: string[];
 }
 
 export interface SubscriberProfileData {
@@ -53,6 +54,7 @@ export interface SubscriberProfileData {
   totalMailings: number;
   totalEnvelopeCount: number;
   subscriptionChoices: Array<{ subscriptionId: string; character: string; plan: string; recipientName: string }>;
+  customerReviewReasons: string[];
 }
 
 export function computeSubscriberProfile(
@@ -66,11 +68,13 @@ export function computeSubscriberProfile(
     .filter((mailing) => mailing.subscriberId === subscriber.subscriberId)
     .sort((a, b) => (a.shipDate || "9999").localeCompare(b.shipDate || "9999") || numericLetter(a.letterNumber) - numericLetter(b.letterNumber));
   const recipientIds = new Set(rows.map((mailing) => mailing.recipientId));
+  const customerExceptions = activeExceptions(seed, reviewed).filter((item) => item.subscriberId === subscriber.subscriberId);
   const allRows: ProfileMailingRow[] = rows.map((mailing) => ({
       ...mailing,
       envelopeStatus: componentStatus(mailing, "envelope", seed, reviewed, componentOverrides),
       envelopeQuantity: envelopeQuantityForMailing(mailing),
       needsDone: componentStatus(mailing, "needsDone", seed, reviewed, componentOverrides),
+      reviewReasons: customerExceptions.filter((item) => item.mailingId === mailing.mailingId).map((item) => item.reason),
     }));
   const openRows = allRows.filter((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active");
   const totalEnvelopeCount = openRows.reduce((total, mailing) => total + mailing.envelopeQuantity, 0);
@@ -91,5 +95,6 @@ export function computeSubscriberProfile(
     totalMailings: rows.length,
     totalEnvelopeCount,
     subscriptionChoices,
+    customerReviewReasons: Array.from(new Set(customerExceptions.map((item) => item.reason))),
   };
 }

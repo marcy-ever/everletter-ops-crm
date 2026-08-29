@@ -470,10 +470,34 @@ async function runImport(seed: Seed, db: Db): Promise<ImportSummary> {
   // Mailing-backed exceptions are matched/preserved by mailing_id across
   // imports (so a previously reviewed exception stays reviewed on
   // re-import). Exceptions whose mailing was skipped fall back to
-  // subscription_id only, with no reviewed-state preservation - see the
-  // module docstring and docs/schema-design.md.
+  // subscription_id and preserve review state by the same customer,
+  // reason, and date identity used by the Needs Review workflow.
   const keptMailingExceptionIds = new Set<string>();
-  const subscriptionOnlyExceptions: Array<{ subscriptionId: string; type: string; reviewKeySubscriberId: string | null; reviewKeyShipDate: string | null }> = [];
+  const existingSubscriptionOnly = await db
+    .select({
+      subscriptionId: exceptions.subscriptionId,
+      type: exceptions.type,
+      reviewKeySubscriberId: exceptions.reviewKeySubscriberId,
+      reviewKeyShipDate: exceptions.reviewKeyShipDate,
+      reviewed: exceptions.reviewed,
+      reviewedAt: exceptions.reviewedAt,
+    })
+    .from(exceptions)
+    .where(isNull(exceptions.mailingId));
+  const subscriptionOnlyReviewState = new Map(
+    existingSubscriptionOnly.map((item) => [
+      [item.subscriptionId, item.type, item.reviewKeySubscriberId, item.reviewKeyShipDate].join("::"),
+      { reviewed: item.reviewed, reviewedAt: item.reviewedAt },
+    ]),
+  );
+  const subscriptionOnlyExceptions: Array<{
+    subscriptionId: string;
+    type: string;
+    reviewKeySubscriberId: string | null;
+    reviewKeyShipDate: string | null;
+    reviewed: boolean;
+    reviewedAt: Date | null;
+  }> = [];
 
   for (const e of seed.exceptions) {
     const entry = mailingByAppKey.get(appMailingKey(e));
@@ -510,7 +534,17 @@ async function runImport(seed: Seed, db: Db): Promise<ImportSummary> {
       }
       keptMailingExceptionIds.add(stableMailingIdForException!);
     } else {
-      subscriptionOnlyExceptions.push({ subscriptionId: candidateSubscriptionId!, type, reviewKeySubscriberId, reviewKeyShipDate });
+      const prior = subscriptionOnlyReviewState.get(
+        [candidateSubscriptionId!, type, reviewKeySubscriberId, reviewKeyShipDate].join("::"),
+      );
+      subscriptionOnlyExceptions.push({
+        subscriptionId: candidateSubscriptionId!,
+        type,
+        reviewKeySubscriberId,
+        reviewKeyShipDate,
+        reviewed: prior?.reviewed ?? false,
+        reviewedAt: prior?.reviewedAt ?? null,
+      });
     }
   }
 
@@ -523,8 +557,8 @@ async function runImport(seed: Seed, db: Db): Promise<ImportSummary> {
     await db.delete(exceptions).where(isNotNull(exceptions.mailingId));
   }
 
-  // Subscription-only fallback exceptions: simple clear-and-reinsert each
-  // import (no reviewed-state preservation for this degraded case).
+  // Subscription-only fallback exceptions are rebuilt each import, while
+  // preserving review state when the same customer/reason/date returns.
   await db.delete(exceptions).where(isNull(exceptions.mailingId));
   if (subscriptionOnlyExceptions.length) {
     await db.insert(exceptions).values(subscriptionOnlyExceptions);
@@ -619,6 +653,35 @@ export async function writeSubscriberStatus(subscriberId: string, status: string
     await db.update(mailings).set({ active }).where(inArray(mailings.subscriptionId, subscriptionIds));
   }
   return { previousValue, newValue: status };
+}
+
+export async function writeSubscriberEmail(subscriberId: string, email: string, db: Db): Promise<WriteOutcome | null> {
+  const rows = await db.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
+  if (rows.length !== 1) return null;
+  const normalized = email.trim().toLowerCase();
+  await db.update(subscribers).set({ email: normalized }).where(eq(subscribers.id, subscriberId));
+  return { previousValue: rows[0].email, newValue: normalized };
+}
+
+export async function writeMailingLetterNumber(key: string, value: string, db: Db): Promise<WriteOutcome | null> {
+  const parsed = parseMailingKey(key);
+  if (!parsed) return null;
+  const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow, db);
+  if (!match) return null;
+  const rows = await db.select({ letterNumber: mailings.letterNumber }).from(mailings).where(eq(mailings.id, match.id));
+  const letterNumber = Number(value);
+  await db.update(mailings).set({ letterNumber }).where(eq(mailings.id, match.id));
+  return { previousValue: rows[0]?.letterNumber == null ? null : String(rows[0].letterNumber), newValue: String(letterNumber) };
+}
+
+export async function writeMailingShipDate(key: string, value: string, db: Db): Promise<WriteOutcome | null> {
+  const parsed = parseMailingKey(key);
+  if (!parsed) return null;
+  const match = await findMailingByAppKey(parsed.mailingId, parsed.sourceRow, db);
+  if (!match) return null;
+  const rows = await db.select({ scheduledDate: mailings.scheduledDate }).from(mailings).where(eq(mailings.id, match.id));
+  await db.update(mailings).set({ scheduledDate: value }).where(eq(mailings.id, match.id));
+  return { previousValue: rows[0]?.scheduledDate ?? null, newValue: value };
 }
 
 export async function writeComponentStatus(key: string, status: string, db: Db): Promise<WriteOutcome | null> {

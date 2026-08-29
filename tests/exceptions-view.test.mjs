@@ -52,7 +52,7 @@ function loadSeed() {
 function renderExceptionsHtml(query) {
   const seed = loadSeed();
   const rows = computeExceptionRows(seed, new Set(), query);
-  return renderToStaticMarkup(React.createElement(Exceptions, { rows, onReview: () => {} }));
+  return renderToStaticMarkup(React.createElement(Exceptions, { rows, onReview: () => {}, onCustomerClick: () => {} }));
 }
 
 test("Exceptions.tsx (query \"\") renders markup equivalent to the frozen legacy snapshot", () => {
@@ -114,7 +114,7 @@ test("each row's real onClick calls onReview with that row's exact exceptionRevi
   assert.ok(rows.length > 0, "fixture invariant: at least one open exception should exist for this test to mean anything");
 
   const calls = [];
-  const element = Exceptions({ rows, onReview: (key) => calls.push(key) });
+  const element = Exceptions({ rows, onReview: (key) => calls.push(key), onCustomerClick: () => {} });
 
   const reviewButtons = findAll(element, (node) => node.type === "button" && node.props["data-review"] !== undefined);
   assert.equal(reviewButtons.length, rows.length);
@@ -124,6 +124,16 @@ test("each row's real onClick calls onReview with that row's exact exceptionRevi
     calls,
     rows.map((row) => exceptionReviewKey(row)),
   );
+});
+
+test("each customer name opens that customer's profile", () => {
+  const seed = loadSeed();
+  const rows = computeExceptionRows(seed, new Set(), "");
+  const calls = [];
+  const element = Exceptions({ rows, onReview: () => {}, onCustomerClick: (subscriberId) => calls.push(subscriberId) });
+  const customerButtons = findAll(element, (node) => node.type === "button" && node.props.className?.includes("recipient-profile-link"));
+  for (const button of customerButtons) button.props.onClick();
+  assert.deepEqual(calls, rows.map((row) => row.subscriberId));
 });
 
 test("the key format is exactly mailingId::subscriberId::reason::shipDate - a change here would orphan real reviewed flags", () => {

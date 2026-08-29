@@ -37,9 +37,10 @@ import type { DatasetException } from "@/lib/domain/dataset";
 export interface ExceptionsProps {
   rows: DatasetException[];
   onReview: (key: string) => void;
+  onCustomerClick: (subscriberId: string) => void;
 }
 
-export default function Exceptions({ rows, onReview }: ExceptionsProps) {
+export default function Exceptions({ rows, onReview, onCustomerClick }: ExceptionsProps) {
   return (
     <section className="data-panel" aria-label="Exceptions">
       <div className="panel-head">
@@ -51,7 +52,7 @@ export default function Exceptions({ rows, onReview }: ExceptionsProps) {
       </div>
       <div className="exception-list">
         {rows.length ? (
-          rows.map((item) => <ExceptionRow item={item} onReview={onReview} key={exceptionReviewKey(item)} />)
+          rows.map((item) => <ExceptionRow item={item} onReview={onReview} onCustomerClick={onCustomerClick} key={exceptionReviewKey(item)} />)
         ) : (
           <div className="empty-state">Nothing matches this search. Nicely suspicious.</div>
         )}
@@ -60,13 +61,13 @@ export default function Exceptions({ rows, onReview }: ExceptionsProps) {
   );
 }
 
-function ExceptionRow({ item, onReview }: { item: DatasetException; onReview: (key: string) => void }) {
+function ExceptionRow({ item, onReview, onCustomerClick }: { item: DatasetException; onReview: (key: string) => void; onCustomerClick: (subscriberId: string) => void }) {
   const key = exceptionReviewKey(item);
   return (
     <article className="exception-row">
       <div className={`severity severity-${item.severity.toLowerCase()}`}>{item.severity}</div>
       <div>
-        <h4>{item.recipientName}</h4>
+        <h4><button type="button" className="link-button recipient-profile-link" onClick={() => onCustomerClick(item.subscriberId)}>{item.recipientName}</button></h4>
         <p>{item.reason}</p>
         {item.suggestedShipDate && (
           <div className="suggested-date">

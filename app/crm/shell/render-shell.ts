@@ -46,7 +46,6 @@ export interface ShellElements {
   topbarMeta: HTMLElement;
   metrics: HTMLElement;
   statusStrip: HTMLElement;
-  statusFilter: HTMLSelectElement;
   statusFilterWrap: HTMLElement;
   batchFilter: HTMLSelectElement;
   batchFilterWrap: HTMLElement;
@@ -76,7 +75,7 @@ function metric(characterImage: string, characterName: string, label: string, va
 }
 
 export function renderBatchFilter(state: CrmState): void {
-  const { statusFilter, batchFilter, pastBatchFilter } = requireElements();
+  const { statusFilterWrap, batchFilter, pastBatchFilter } = requireElements();
   const today = todayIso(new Date());
   const mailings = effectiveMailings(state.seed!, state.statusOverrides);
   const dates = Array.from(new Set([...upcomingBatchDates(today), ...availableBatchDates(mailings, today)])).sort();
@@ -94,7 +93,14 @@ export function renderBatchFilter(state: CrmState): void {
     '<option value="">Past batches...</option>',
     ...pastDates.map((date) => `<option value="${escapeHtml(date)}" ${selectedPastDate === date ? "selected" : ""}>${formatDate(date)}</option>`),
   ].join("");
-  statusFilter.value = state.statusFilter;
+  const selectedStatuses = state.statusFilter === "All"
+    ? new Set(MAILING_STATUSES)
+    : state.statusFilter === "Open"
+      ? new Set(MAILING_STATUSES.filter((status) => status !== "Mailed"))
+      : new Set(state.statusFilter.split("|"));
+  statusFilterWrap.querySelectorAll<HTMLInputElement>("[data-status-filter]").forEach((input) => {
+    input.checked = selectedStatuses.has(input.dataset.statusFilter || "");
+  });
 }
 
 export function renderShell(state: CrmState): void {

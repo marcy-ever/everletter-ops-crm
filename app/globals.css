@@ -1757,6 +1757,12 @@ td span {
   min-width: 720px;
 }
 
+.status-filter-box { min-width: min(100%, 580px); padding: 8px 12px 10px; }
+.status-filter-box legend { padding: 0 4px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+.status-filter-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-filter-options label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 700; }
+.status-filter-options input { accent-color: var(--green); }
+
 .profile-mailings {
   max-height: 62vh;
   overflow: auto;
@@ -2197,6 +2203,16 @@ td span {
   color: var(--ink);
   background: #fffefa;
 }
+
+.profile-email-field { display: grid; gap: 0.25rem; margin-top: 0.35rem; }
+.profile-email-field span { color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.profile-email-field input, .letter-number-input, .ship-date-input { border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font: inherit; padding: 0.48rem 0.62rem; }
+.profile-email-field input { min-width: 17rem; }
+.letter-number-input { width: 4.5rem; }
+.profile-status-select { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-size: 0.78rem; font-weight: 700; padding: 0.45rem 1.8rem 0.45rem 0.65rem; }
+.profile-review-alert { margin: 1rem 0; padding: 0.85rem 1rem; border: 1px solid #e7c9a8; border-radius: 12px; background: #fff8ef; }
+.profile-review-alert ul { margin: 0.35rem 0 0; padding-left: 1.2rem; }
+.mailing-review-reason { display: block; max-width: 14rem; margin-top: 0.35rem; color: #8a4f2b; line-height: 1.25; }
 
 .mobile-needs-done {
   display: grid;

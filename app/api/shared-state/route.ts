@@ -9,6 +9,9 @@ import {
   writeMailingStatus,
   writeReviewedException,
   writeSubscriberStatus,
+  writeSubscriberEmail,
+  writeMailingLetterNumber,
+  writeMailingShipDate,
 } from "@/lib/write-to-tables";
 import { buildDatasetFromTables } from "@/lib/build-dataset-from-tables";
 import { fetchComponentOverrides, fetchReviewedExceptionKeys } from "@/lib/build-overrides-from-tables";
@@ -23,9 +26,12 @@ import {
   validateMailingStatusPayload,
   validateReviewedExceptionPayload,
   validateSubscriberStatusPayload,
+  validateSubscriberEmailPayload,
+  validateMailingLetterNumberPayload,
+  validateMailingShipDatePayload,
 } from "@/lib/validate-shared-state";
 
-type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "subscriberStatus" | "crmDataset";
+type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "subscriberStatus" | "subscriberEmail" | "mailingLetterNumber" | "mailingShipDate" | "crmDataset";
 
 // What actor_email gets when a request reaches this handler with no
 // session. proxy.ts gates every route this one is reachable through, so a
@@ -46,6 +52,9 @@ const allowedKinds = new Set<StateKind>([
   "componentStatus",
   "reviewedException",
   "subscriberStatus",
+  "subscriberEmail",
+  "mailingLetterNumber",
+  "mailingShipDate",
   "crmDataset",
 ]);
 
@@ -174,6 +183,12 @@ export async function POST(request: Request) {
       validateReviewedExceptionPayload(key);
     } else if (kind === "subscriberStatus") {
       validateSubscriberStatusPayload(key, value);
+    } else if (kind === "subscriberEmail") {
+      validateSubscriberEmailPayload(key, value);
+    } else if (kind === "mailingLetterNumber") {
+      validateMailingLetterNumberPayload(key, value);
+    } else if (kind === "mailingShipDate") {
+      validateMailingShipDatePayload(key, value);
     }
 
     // The write-to-tables dispatch runs inside a transaction (`tx`, not
@@ -230,6 +245,15 @@ export async function POST(request: Request) {
         if (outcome) {
           await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
         }
+      } else if (kind === "subscriberEmail") {
+        const outcome = await writeSubscriberEmail(key, value, tx);
+        if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+      } else if (kind === "mailingLetterNumber") {
+        const outcome = await writeMailingLetterNumber(key, value, tx);
+        if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+      } else if (kind === "mailingShipDate") {
+        const outcome = await writeMailingShipDate(key, value, tx);
+        if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
       }
     });
 

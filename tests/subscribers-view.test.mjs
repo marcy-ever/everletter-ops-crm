@@ -255,6 +255,38 @@ test("customer profile can print every open envelope and save a typed needs-done
   assert.equal(noteCalls[0][1], "Needs stamp");
 });
 
+test("customer profile can correct email and letter number", () => {
+  const seed = loadSeed();
+  const rows = computeSubscriberRows(seed, "");
+  const selected = selectSubscriber(rows, "");
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
+  const emailCalls = [];
+  const letterCalls = [];
+  const shipDateCalls = [];
+  const statusCalls = [];
+  const element = Subscribers({
+    rows, selected, onSelect: NOOP, profile,
+    onPrintAllEnvelopes: NOOP, onPrintEnvelope: NOOP, onMarkPrinted: NOOP, onMarkAshley: NOOP,
+    onNeedsDoneChange: NOOP, onCustomerStatusChange: NOOP,
+    onEmailChange: (email) => emailCalls.push(email),
+    onLetterNumberChange: (mailing, value) => letterCalls.push([mailing, value]),
+    onShipDateChange: (mailing, value) => shipDateCalls.push([mailing, value]),
+    onMailingStatusChange: (mailing, value) => statusCalls.push([mailing, value]),
+  });
+  const emailInput = findAll(element, (node) => node.type === "input" && node.props.type === "email")[0];
+  emailInput.props.onBlur({ currentTarget: { value: " new@example.com " } });
+  assert.deepEqual(emailCalls, ["new@example.com"]);
+  const letterInput = findAll(element, (node) => node.type === "input" && node.props.className === "letter-number-input")[0];
+  letterInput.props.onBlur({ currentTarget: { value: "47" } });
+  assert.equal(letterCalls[0][1], "47");
+  const shipDateInput = findAll(element, (node) => node.type === "input" && node.props.className === "ship-date-input")[0];
+  shipDateInput.props.onBlur({ currentTarget: { value: "2026-10-15" } });
+  assert.equal(shipDateCalls[0][1], "2026-10-15");
+  const statusSelect = findAll(element, (node) => node.type === "select" && node.props.className?.includes("profile-status-select"))[0];
+  statusSelect.props.onChange({ currentTarget: { value: "Mailed" } });
+  assert.equal(statusCalls[0][1], "Mailed");
+});
+
 test("customer status requires opening the status control before the separate confirmation action", () => {
   const seed = loadSeed();
   const rows = computeSubscriberRows(seed, "");
