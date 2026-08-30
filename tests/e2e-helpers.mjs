@@ -34,6 +34,7 @@ import { subscriptions } from "../db/schema/subscriptions";
 import { orders } from "../db/schema/orders";
 import { mailings } from "../db/schema/mailings";
 import { mailingComponents } from "../db/schema/mailing_components";
+import { mailingProofs } from "../db/schema/mailing_proofs";
 import { exceptions } from "../db/schema/exceptions";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -80,7 +81,7 @@ export function e2eSkipReason({ requiresFixture = true } = {}) {
 // this module's own import at load time instead of silently truncating
 // nothing for a name that no longer exists.
 export async function truncateAllTables(db) {
-  await db.execute(sql`TRUNCATE TABLE ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE ${mailingProofs}, ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
 }
 
 // Parses the real test spreadsheet the same way for every file that needs

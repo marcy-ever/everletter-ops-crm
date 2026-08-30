@@ -30,6 +30,9 @@
 import { formatDate } from "@/lib/domain/format";
 import { mailingKey } from "@/lib/domain/keys";
 import { MAILING_STATUSES } from "@/lib/domain/mailing-rules";
+import type { CustomerActivityEvent, CustomerActivityState } from "@/lib/client/customer-activity";
+import type { MailingProof } from "@/lib/client/mailing-proofs";
+import ProofGallery from "../../components/ProofGallery";
 import { statusClass, number } from "../../format";
 import type { ProfileMailingRow, SubscriberProfileData } from "./subscribers-selectors";
 
@@ -47,14 +50,89 @@ export interface SubscriberProfileProps {
   onCustomerStatusChange: (active: boolean) => void;
   selectedSubscriptionId: string;
   onSubscriptionChange: (subscriptionId: string) => void;
+  activity: CustomerActivityState | null;
+  onRefreshActivity: () => void;
+  proofs: MailingProof[];
 }
 
-export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange, onLetterNumberChange, onShipDateChange, onMailingStatusChange, onCustomerStatusChange, selectedSubscriptionId, onSubscriptionChange }: SubscriberProfileProps) {
+function activityDescription(event: CustomerActivityEvent): string {
+  const labels: Record<string, string> = {
+    crmDataset: "Spreadsheet imported",
+    mailingStatus: "Mailing status changed",
+    componentStatus: "Mailing details updated",
+    reviewedException: "Review item approved",
+    subscriberStatus: "Customer status changed",
+    subscriberEmail: "Email updated",
+    mailingLetterNumber: "Letter number changed",
+    mailingShipDate: "Ship date changed",
+  };
+  return labels[event.kind] ?? "Customer record updated";
+}
+
+function ordinalDay(date: string): string {
+  const day = Number(date.slice(8, 10));
+  if (!day) return "Unknown";
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? "th" : day % 10 === 1 ? "st" : day % 10 === 2 ? "nd" : day % 10 === 3 ? "rd" : "th";
+  return `${day}${suffix}`;
+}
+
+function CustomerActivity({ activity, onRefresh }: { activity: CustomerActivityState | null; onRefresh: () => void }) {
+  const events = activity?.events ?? [];
+  return (
+    <section className="customer-activity" aria-label="Customer activity history">
+      <div className="customer-activity-head">
+        <div>
+          <p className="section-label">Activity History</p>
+          <h4>Recent changes</h4>
+        </div>
+        <div className="customer-activity-actions">
+          {!activity?.loading ? <span className="panel-count">{events.length}</span> : null}
+          <button type="button" className="profile-button" onClick={onRefresh} disabled={activity?.loading}>Refresh</button>
+        </div>
+      </div>
+      {activity?.failed ? <p className="empty-state">Could not load activity history.</p> : null}
+      {activity?.loading || !activity ? <p className="empty-state">Loading activity…</p> : null}
+      {activity && !activity.loading && !activity.failed && events.length === 0 ? <p className="empty-state">No activity recorded yet.</p> : null}
+      {events.length ? (
+        <ol className="customer-activity-list">
+          {events.map((event) => (
+            <li key={event.id}>
+              <span className="customer-activity-dot" aria-hidden="true" />
+              <div>
+                <strong>{activityDescription(event)}</strong>
+                {event.kind === "crmDataset" ? (
+                  <span>{event.newValue}</span>
+                ) : event.previousValue && event.previousValue !== event.newValue ? (
+                  <span>{event.previousValue} → {event.newValue}</span>
+                ) : (
+                  <span>{event.newValue}</span>
+                )}
+                <small>{new Date(event.occurredAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}{event.actorEmail ? ` · ${event.actorEmail}` : ""}</small>
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </section>
+  );
+}
+
+export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange, onLetterNumberChange, onShipDateChange, onMailingStatusChange, onCustomerStatusChange, selectedSubscriptionId, onSubscriptionChange, activity, onRefreshActivity, proofs }: SubscriberProfileProps) {
   const { subscriber, allRows, openRows } = data;
   const isActive = subscriber.status === "Active";
   const visibleRows = selectedSubscriptionId === "all" ? allRows : allRows.filter((mailing) => mailing.subscriptionId === selectedSubscriptionId);
   const visibleOpenRows = visibleRows.filter((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active");
   const currentMailingKey = mailingKey(visibleOpenRows[0] ?? visibleRows[visibleRows.length - 1] ?? { mailingId: "", sourceRow: 0 });
+  const progress = data.subscriptionChoices
+    .filter((choice) => selectedSubscriptionId === "all" || choice.subscriptionId === selectedSubscriptionId)
+    .map((choice) => {
+      const rows = allRows.filter((mailing) => mailing.subscriptionId === choice.subscriptionId);
+      const mailed = rows.filter((mailing) => mailing.status === "Mailed");
+      const next = rows.find((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active");
+      const renewalDates = rows.map((mailing) => mailing.orderDate).filter(Boolean).sort();
+      const latestRenewal = renewalDates[renewalDates.length - 1] ?? "";
+      return { ...choice, last: mailed[mailed.length - 1] ?? null, next, latestRenewal };
+    });
   return (
     <aside className="subscriber-profile" aria-label="Subscriber profile">
       <div className="subscriber-profile-head">
@@ -103,8 +181,8 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
         </div>
       </div>
       {data.customerReviewReasons.length ? (
-        <div className="profile-review-alert" role="status">
-          <strong>Needs review</strong>
+        <div className="profile-review-alert profile-risk-warning" role="alert">
+          <strong>⚠ Stop and review before mailing</strong>
           <ul>{data.customerReviewReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
         </div>
       ) : null}
@@ -124,6 +202,43 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
           ))}
         </div>
       ) : null}
+      <section className="profile-progress" aria-label="Current mailing progress">
+        <div className="profile-progress-head">
+          <div>
+            <p className="section-label">Where they are now</p>
+            <h4>Current mailing progress</h4>
+          </div>
+        </div>
+        <div className="profile-progress-grid">
+          {progress.map((item) => (
+            <article key={item.subscriptionId}>
+              <div className="profile-progress-character">
+                <strong>{item.character}</strong>
+                <span>{item.plan}</span>
+              </div>
+              <dl>
+                {item.plan === "Month-to-month" ? (
+                  <div className="profile-renewal-date">
+                    <dt>Monthly renewal</dt>
+                    <dd>{item.latestRenewal ? `Every ${ordinalDay(item.latestRenewal)}` : "Date unknown"}</dd>
+                    {item.latestRenewal ? <small>Latest: {formatDate(item.latestRenewal)}</small> : null}
+                  </div>
+                ) : null}
+                <div>
+                  <dt>Last mailed</dt>
+                  <dd>{item.last ? `Letter ${item.last.letterNumber}` : "None yet"}</dd>
+                  {item.last ? <small>{formatDate(item.last.shipDate)}</small> : null}
+                </div>
+                <div className="profile-next-letter">
+                  <dt>Next mailing</dt>
+                  <dd>{item.next ? `Letter ${item.next.letterNumber}` : "Complete"}</dd>
+                  {item.next ? <small>{formatDate(item.next.shipDate)} · {item.next.status}</small> : null}
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      </section>
       <dl className="profile-stats">
         <div>
           <dt>Status</dt>
@@ -142,6 +257,13 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
           <dd>{number(data.totalEnvelopeCount)}</dd>
         </div>
       </dl>
+      <div className="profile-mailing-history-head">
+        <div>
+          <p className="section-label">Mailing History</p>
+          <h4>Past, current, and future letters</h4>
+        </div>
+        <span>{visibleRows.length} letters</span>
+      </div>
       <div className="table-wrap profile-mailings">
         <table>
           <thead>
@@ -293,6 +415,8 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
           <div className="empty-state">No mailings for this customer.</div>
         )}
       </div>
+      <CustomerActivity activity={activity} onRefresh={onRefreshActivity} />
+      <ProofGallery proofs={proofs} />
     </aside>
   );
 }

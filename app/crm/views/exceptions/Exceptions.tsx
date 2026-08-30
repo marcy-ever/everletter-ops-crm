@@ -46,7 +46,7 @@ export default function Exceptions({ rows, onReview, onCustomerClick }: Exceptio
       <div className="panel-head">
         <div>
           <h3>Needs Review</h3>
-          <p>Bad data stops here instead of leaking into the mailing schedule.</p>
+          <p>High-risk problems must be checked before anything is mailed.</p>
         </div>
         <span className="panel-count">{rows.length} open</span>
       </div>
@@ -64,7 +64,7 @@ export default function Exceptions({ rows, onReview, onCustomerClick }: Exceptio
 function ExceptionRow({ item, onReview, onCustomerClick }: { item: DatasetException; onReview: (key: string) => void; onCustomerClick: (subscriberId: string) => void }) {
   const key = exceptionReviewKey(item);
   return (
-    <article className="exception-row">
+    <article className={`exception-row ${item.severity === "High" ? "exception-row-critical" : ""}`}>
       <div className={`severity severity-${item.severity.toLowerCase()}`}>{item.severity}</div>
       <div>
         <h4><button type="button" className="link-button recipient-profile-link" onClick={() => onCustomerClick(item.subscriberId)}>{item.recipientName}</button></h4>

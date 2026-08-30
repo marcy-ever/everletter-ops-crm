@@ -73,9 +73,9 @@ test("buildSeedFromSpreadsheet flags two otherwise-clean colliding rows as dupli
   assert.equal(dataset.exceptions.length, 2);
 
   const bySourceRow = new Map(dataset.exceptions.map((e) => [e.sourceRow, e]));
-  assert.equal(bySourceRow.get(2).reason, "Duplicate: shares order, character, and letter number with row 3");
+  assert.equal(bySourceRow.get(2).reason, "Duplicate: shares order, character, and letter number with row 3; Duplicate letter number: letter 1 appears more than once in this subscription");
   assert.equal(bySourceRow.get(2).severity, "High");
-  assert.equal(bySourceRow.get(3).reason, "Duplicate: shares order, character, and letter number with row 2");
+  assert.equal(bySourceRow.get(3).reason, "Duplicate: shares order, character, and letter number with row 2; Duplicate letter number: letter 1 appears more than once in this subscription");
   assert.equal(bySourceRow.get(3).severity, "High");
 
   assert.equal(dataset.subscribers[0].issueCount, 2, "both colliding rows count toward the shared subscriber's issueCount");
@@ -95,11 +95,11 @@ test("buildSeedFromSpreadsheet escalates an existing per-row exception into a du
 
   const bySourceRow = new Map(dataset.exceptions.map((e) => [e.sourceRow, e]));
   const rowAException = bySourceRow.get(2);
-  assert.equal(rowAException.reason, "Ship date is not a 1st/15th batch; Duplicate: shares order, character, and letter number with row 3");
+  assert.equal(rowAException.reason, "Ship date is not a 1st/15th batch; Duplicate: shares order, character, and letter number with row 3; Duplicate letter number: letter 1 appears more than once in this subscription");
   assert.equal(rowAException.severity, "High", "escalated from Low to High by the duplicate flag");
 
   const rowBException = bySourceRow.get(3);
-  assert.equal(rowBException.reason, "Duplicate: shares order, character, and letter number with row 2");
+  assert.equal(rowBException.reason, "Duplicate: shares order, character, and letter number with row 2; Duplicate letter number: letter 1 appears more than once in this subscription");
   assert.equal(rowBException.severity, "High");
 
   assert.equal(dataset.subscribers[0].issueCount, 2, "rowA's issueCount was already counted by the per-row pass; only rowB's new exception adds one more");
@@ -110,4 +110,50 @@ test("buildSeedFromSpreadsheet does not flag duplicates for rows that don't actu
   const rowB = { ...ROW, "Letter Number": "2" };
   const dataset = buildSeedFromSpreadsheet([rowA, rowB], "smoke.xlsx", NOW, []);
   assert.equal(dataset.exceptions.length, 0);
+});
+
+test("buildSeedFromSpreadsheet flags possible duplicate customers sharing a name and address under different emails", () => {
+  const rowA = { ...ROW, "Order ID": "6001", "Email": "ava.one@example.test", "Character": "Marley" };
+  const rowB = { ...ROW, "Order ID": "6002", "Email": "ava.two@example.test", "Character": "Ringo", "Ship Date": "2026-09-01" };
+  const dataset = buildSeedFromSpreadsheet([rowA, rowB], "smoke.xlsx", NOW, []);
+  assert.equal(dataset.exceptions.length, 2);
+  assert.ok(dataset.exceptions.every((item) => item.severity === "High"));
+  assert.ok(dataset.exceptions.every((item) => item.reason.startsWith("Possible duplicate customer:")));
+});
+
+test("buildSeedFromSpreadsheet flags multiple active plans for the same customer, recipient, and character", () => {
+  const rowA = { ...ROW, "Order ID": "7001", "Subscription": "Month-to-month", "Letter Number": "1" };
+  const rowB = { ...ROW, "Order ID": "7002", "Subscription": "6-month", "Letter Number": "2", "Ship Date": "2026-09-01" };
+  const dataset = buildSeedFromSpreadsheet([rowA, rowB], "smoke.xlsx", NOW, []);
+  assert.equal(dataset.exceptions.length, 2);
+  assert.ok(dataset.exceptions.every((item) => item.severity === "High"));
+  assert.ok(dataset.exceptions.every((item) => item.reason.startsWith("Overlapping subscriptions:")));
+});
+
+test("buildSeedFromSpreadsheet does not flag consecutive subscriptions whose dates do not overlap", () => {
+  const rowA = { ...ROW, "Order ID": "7101", "Original Order Date": "2026-01-01", "End Date": "2026-06-30", "Subscription": "6-month", "Letter Number": "1" };
+  const rowB = { ...ROW, "Order ID": "7102", "Original Order Date": "2026-07-01", "Subscription": "12-month", "Letter Number": "2", "Ship Date": "2026-09-01" };
+  const dataset = buildSeedFromSpreadsheet([rowA, rowB], "smoke.xlsx", NOW, []);
+  assert.equal(dataset.exceptions.length, 0);
+});
+
+test("buildSeedFromSpreadsheet flags duplicate letter numbers within one subscription", () => {
+  const rowA = { ...ROW, "Order ID": "7201", "Letter Number": "3", "Ship Date": "2026-08-15" };
+  const rowB = { ...ROW, "Order ID": "7202", "Letter Number": "3", "Ship Date": "2026-09-01" };
+  const dataset = buildSeedFromSpreadsheet([rowA, rowB], "smoke.xlsx", NOW, []);
+  assert.equal(dataset.exceptions.length, 2);
+  assert.ok(dataset.exceptions.every((item) => item.reason.startsWith("Duplicate letter number:")));
+  assert.ok(dataset.exceptions.every((item) => item.severity === "High"));
+});
+
+test("buildSeedFromSpreadsheet flags skipped or backwards letter numbers by ship date", () => {
+  const rows = [
+    { ...ROW, "Order ID": "7301", "Letter Number": "2", "Ship Date": "2026-08-15" },
+    { ...ROW, "Order ID": "7302", "Letter Number": "4", "Ship Date": "2026-09-01" },
+    { ...ROW, "Order ID": "7303", "Letter Number": "3", "Ship Date": "2026-09-15" },
+  ];
+  const dataset = buildSeedFromSpreadsheet(rows, "smoke.xlsx", NOW, []);
+  const risks = dataset.exceptions.filter((item) => item.reason.includes("Letter sequence out of sync:"));
+  assert.equal(risks.length, 2);
+  assert.ok(risks.every((item) => item.severity === "High"));
 });

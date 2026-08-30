@@ -5,7 +5,11 @@ import { createPortal } from "react-dom";
 import { isOpenStatus, todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings, type EffectiveMailing } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
+import { saveStatusOverrides } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
+import { loadCustomerActivity } from "@/lib/client/customer-activity";
+import { loadMailingProofs, uploadMailingProof } from "@/lib/client/mailing-proofs";
+import { mailingKey } from "@/lib/domain/keys";
 import { getRenderGeneration, notifyViewChanged, saveFailures, staleness, state, subscribeViewChanged, updateComponentStatus, updateEnvelopeStatus, updateMailingStatus } from "./shell/crm-app-state";
 import { render } from "./shell/render-shell";
 import { initCrmApp } from "./shell/init-crm-app";
@@ -404,6 +408,9 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           notifyViewChanged();
         }}
         profile={profile}
+        activity={selected ? state.customerActivity[selected.subscriberId] ?? null : null}
+        proofs={selected ? state.proofsBySubscriber[selected.subscriberId]?.proofs ?? [] : []}
+        onRefreshActivity={() => selected && refreshCustomerActivity(selected.subscriberId)}
         selectedSubscriptionId={state.profileSubscriptionFilter}
         onSubscriptionChange={(subscriptionId) => {
           state.profileSubscriptionFilter = subscriptionId;
@@ -699,6 +706,33 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           notifyViewChanged();
         }}
         onPrint={() => window.print()}
+        onStart={(mailing) => {
+          updateMailingStatus(mailing, "Assembling");
+          notifyViewChanged();
+        }}
+        onNeedsSomething={(mailing, need) => updateBinComponentStatus(mailing, "needsDone", need)}
+        uploadStates={state.mailingProofUploads}
+        proofs={data.batchDate ? state.proofsByBatch[data.batchDate]?.proofs ?? [] : []}
+        onCompleteWithPhoto={(mailing, photo) => {
+          const key = mailingKey(mailing);
+          state.mailingProofUploads[key] = { busy: true, error: "" };
+          notifyViewChanged();
+          uploadMailingProof(mailing, photo)
+            .then((marker) => {
+              state.statusOverrides[key] = "Mailed";
+              saveStatusOverrides(state.statusOverrides);
+              staleness.recordOwnMarker(marker);
+              state.mailingProofUploads[key] = { busy: false, error: "" };
+              delete state.proofsByBatch[mailing.shipDate];
+              delete state.proofsBySubscriber[mailing.subscriberId];
+              refreshBatchProofs(mailing.shipDate);
+              render(state, notifyViewChanged);
+            })
+            .catch((error) => {
+              state.mailingProofUploads[key] = { busy: false, error: error instanceof Error ? error.message : "Could not save the photo." };
+              notifyViewChanged();
+            });
+        }}
       />
     );
   },
@@ -801,6 +835,43 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   },
 };
 
+function refreshCustomerActivity(subscriberId: string): void {
+  state.customerActivity[subscriberId] = { loading: true, failed: false, events: state.customerActivity[subscriberId]?.events ?? [] };
+  notifyViewChanged();
+  loadCustomerActivity(subscriberId)
+    .then((events) => {
+      state.customerActivity[subscriberId] = { loading: false, failed: false, events };
+      notifyViewChanged();
+    })
+    .catch(() => {
+      state.customerActivity[subscriberId] = { loading: false, failed: true, events: [] };
+      notifyViewChanged();
+    });
+}
+
+function refreshSubscriberProofs(subscriberId: string): void {
+  state.proofsBySubscriber[subscriberId] = { loading: true, failed: false, proofs: state.proofsBySubscriber[subscriberId]?.proofs ?? [] };
+  loadMailingProofs({ subscriberId }).then((proofs) => {
+    state.proofsBySubscriber[subscriberId] = { loading: false, failed: false, proofs };
+    notifyViewChanged();
+  }).catch(() => {
+    state.proofsBySubscriber[subscriberId] = { loading: false, failed: true, proofs: [] };
+    notifyViewChanged();
+  });
+}
+
+function refreshBatchProofs(batchDate: string): void {
+  if (!batchDate) return;
+  state.proofsByBatch[batchDate] = { loading: true, failed: false, proofs: state.proofsByBatch[batchDate]?.proofs ?? [] };
+  loadMailingProofs({ batchDate }).then((proofs) => {
+    state.proofsByBatch[batchDate] = { loading: false, failed: false, proofs };
+    notifyViewChanged();
+  }).catch(() => {
+    state.proofsByBatch[batchDate] = { loading: false, failed: true, proofs: [] };
+    notifyViewChanged();
+  });
+}
+
 // Runs initCrmApp() inside a browser-only effect specifically so nothing
 // in app/crm/shell/init-crm-app.ts executes during SSR, where
 // document/window/localStorage don't exist (a "use client" component's
@@ -819,6 +890,22 @@ export default function CrmApp() {
 
   const viewSnapshot = useSyncExternalStore(subscribeViewChanged, getViewSnapshot, getViewSnapshot);
   const activeView = viewSnapshot.slice(0, viewSnapshot.lastIndexOf(":"));
+
+  useEffect(() => {
+    if (activeView !== "subscribers" || !state.selectedSubscriberId || state.customerActivity[state.selectedSubscriberId]) return;
+    const subscriberId = state.selectedSubscriberId;
+    refreshCustomerActivity(subscriberId);
+  }, [activeView, viewSnapshot]);
+
+  useEffect(() => {
+    if (activeView === "subscribers" && state.selectedSubscriberId && !state.proofsBySubscriber[state.selectedSubscriberId]) {
+      refreshSubscriberProofs(state.selectedSubscriberId);
+    }
+    if (activeView === "bins" && state.seed) {
+      const batchDate = computeBinsData(state.seed, state.statusOverrides, state.reviewed, state.componentOverrides, state.batchFilter, state.query, todayIso(new Date())).batchDate;
+      if (batchDate && !state.proofsByBatch[batchDate]) refreshBatchProofs(batchDate);
+    }
+  }, [activeView, viewSnapshot]);
 
   if (typeof document === "undefined") return null;
   const mount = document.getElementById("reactViewMount");

@@ -252,10 +252,7 @@ test("buildExceptions: mailing-resolvable case joins through to the real mailing
   const [result] = buildExceptions(exceptionRows, mailingsByStableId, mailingsByAppId, subscriptionsById);
   assert.deepEqual(result, {
     exceptionId: "EX-5",
-    // severity check is case-sensitive and doesn't match "Ship date" (capital S) against 'ship date' or 'Missing' -> Low.
-    // suggestedShipDate's check IS case-insensitive (reason.toLowerCase().includes('ship date')) and does match -> populated.
-    // Both asymmetric case-sensitivities are copied exactly from app.js's own two checks - not a typo.
-    severity: "Low",
+    severity: "High",
     reason: "Ship date is not a 1st/15th batch",
     mailingId: "MAIL-ABC1",
     subscriberId: "SUB-1",

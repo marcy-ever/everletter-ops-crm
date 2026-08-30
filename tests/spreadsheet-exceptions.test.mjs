@@ -16,7 +16,7 @@ import { spreadsheetExceptionReasons, duplicateMailingFlags, explicitExceptionSe
 // imported - it's a two-line inline expression in build-seed.ts, not an
 // exported function) so these tests can verify severity end to end
 // against this module's real output.
-const classifySeverity = (reasons) => (reasons.some((r) => r.includes("Missing") || r.includes("ship date")) ? "High" : "Low");
+const classifySeverity = (reasons) => (reasons.some((r) => explicitExceptionSeverity(r) === "High" || r.includes("Missing") || r.includes("ship date")) ? "High" : "Low");
 
 const CLEAN_ROW = {
   recipientName: "Jane Doe",
@@ -114,14 +114,14 @@ test("severity classifier: every 'Missing *' reason and 'Missing ship date' clas
 // "Missing" nor "ship date" (lowercase - the reason is "...already marked
 // mailed", not "...ship date..."), so it also classifies Low whenever it's
 // the only reason present. There are two Low-eligible reasons, not one.
-test("severity classifier: both 'Ship date is not a 1st/15th batch' and 'Future mailing already marked mailed' classify as Low when either is the only reason present - not just the ship-date one", () => {
+test("severity classifier: unusual ship dates are High so mailing work stops until reviewed", () => {
   const offBatch = spreadsheetExceptionReasons({ ...CLEAN_ROW, shipDate: "2026-08-20" }, "Active", TODAY);
   assert.deepEqual(offBatch, ["Ship date is not a 1st/15th batch"]);
-  assert.equal(classifySeverity(offBatch), "Low");
+  assert.equal(classifySeverity(offBatch), "High");
 
   const futureMailed = spreadsheetExceptionReasons({ ...CLEAN_ROW, status: "Mailed", shipDate: "2026-09-01" }, "Active", TODAY);
   assert.deepEqual(futureMailed, ["Future mailing already marked mailed"]);
-  assert.equal(classifySeverity(futureMailed), "Low");
+  assert.equal(classifySeverity(futureMailed), "High");
 });
 
 test("severity classifier: a single 'Missing' reason bumps the whole exception to High even combined with a Low-eligible reason", () => {
@@ -186,8 +186,11 @@ test("explicitExceptionSeverity recognizes a 'Duplicate:'-prefixed reason regard
   assert.equal(explicitExceptionSeverity("Duplicate: shares order, character, and letter number with row 42"), "High");
 });
 
-test("explicitExceptionSeverity returns null for every existing, pre-existing reason - falling through to the substring classifier unchanged", () => {
-  for (const reason of ["Missing recipient", "Missing address", "Missing ship date", "Ship date is not a 1st/15th batch", "Future mailing already marked mailed"]) {
+test("explicitExceptionSeverity makes unusual ship dates and new customer risks High", () => {
+  for (const reason of ["Ship date is not a 1st/15th batch", "Future mailing already marked mailed", "Possible duplicate customer: example", "Overlapping subscriptions: example", "Duplicate letter number: example", "Letter sequence out of sync: example"]) {
+    assert.equal(explicitExceptionSeverity(reason), "High", reason);
+  }
+  for (const reason of ["Missing recipient", "Missing address", "Missing ship date"]) {
     assert.equal(explicitExceptionSeverity(reason), null, reason);
   }
 });

@@ -419,8 +419,8 @@ test("detection and dropping agree: rows that collide on order+character+letter 
     const clientSourceRows = duplicateExceptions.map((e) => e.sourceRow).sort((a, b) => a - b);
     assert.deepEqual(clientSourceRows, [2, 3], "sourceRow 2 = DUPLICATE_ROW_A, 3 = DUPLICATE_ROW_B (index + 2)");
     assert.ok(duplicateExceptions.every((e) => e.severity === "High"));
-    assert.equal(duplicateExceptions.find((e) => e.sourceRow === 2).reason, "Duplicate: shares order, character, and letter number with row 3");
-    assert.equal(duplicateExceptions.find((e) => e.sourceRow === 3).reason, "Duplicate: shares order, character, and letter number with row 2");
+    assert.equal(duplicateExceptions.find((e) => e.sourceRow === 2).reason, "Duplicate: shares order, character, and letter number with row 3; Duplicate letter number: letter 1 appears more than once in this subscription");
+    assert.equal(duplicateExceptions.find((e) => e.sourceRow === 3).reason, "Duplicate: shares order, character, and letter number with row 2; Duplicate letter number: letter 1 appears more than once in this subscription");
 
     // Publish - the actual write path.
     sandbox.state.importInfo = await saveSharedDataset(clientSeed, sandbox.state.importPreview.fileName, sandbox.staleness);

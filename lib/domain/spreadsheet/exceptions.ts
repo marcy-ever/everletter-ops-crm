@@ -103,7 +103,15 @@ export const DUPLICATE_MAILING_SEVERITY: "High" | "Low" = "High";
 // for a new reason, not a rewrite of the existing classifier, which stays
 // completely untouched (and every reason it already classifies keeps the
 // exact same severity it always had).
-const EXPLICIT_SEVERITY_BY_PREFIX: Array<{ prefix: string; severity: "High" | "Low" }> = [{ prefix: "Duplicate:", severity: DUPLICATE_MAILING_SEVERITY }];
+const EXPLICIT_SEVERITY_BY_PREFIX: Array<{ prefix: string; severity: "High" | "Low" }> = [
+  { prefix: "Duplicate:", severity: DUPLICATE_MAILING_SEVERITY },
+  { prefix: "Possible duplicate customer:", severity: "High" },
+  { prefix: "Overlapping subscriptions:", severity: "High" },
+  { prefix: "Duplicate letter number:", severity: "High" },
+  { prefix: "Letter sequence out of sync:", severity: "High" },
+  { prefix: "Ship date is not a 1st/15th batch", severity: "High" },
+  { prefix: "Future mailing already marked mailed", severity: "High" },
+];
 
 export function explicitExceptionSeverity(reason: string): "High" | "Low" | null {
   const match = EXPLICIT_SEVERITY_BY_PREFIX.find((entry) => reason.startsWith(entry.prefix));

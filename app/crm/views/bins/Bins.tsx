@@ -25,15 +25,22 @@ import { COMPONENT_FIELD_OPTIONS } from "@/lib/domain/component-fields";
 import { number, statusClass } from "../../format";
 import type { EffectiveMailing } from "@/lib/client/selectors";
 import type { BinGroup, BinRowData, BinsData } from "./bins-selectors";
+import type { MailingProof, MailingProofUploadState } from "@/lib/client/mailing-proofs";
+import ProofGallery from "../../components/ProofGallery";
 
 export interface BinsProps {
   data: BinsData;
   onFieldChange: (mailing: EffectiveMailing, field: string, value: string) => void;
   onBulkMark: (mode: "ready" | "check") => void;
   onPrint: () => void;
+  onStart: (mailing: EffectiveMailing) => void;
+  onNeedsSomething: (mailing: EffectiveMailing, need: string) => void;
+  onCompleteWithPhoto: (mailing: EffectiveMailing, photo: File) => void;
+  uploadStates: Record<string, MailingProofUploadState>;
+  proofs: MailingProof[];
 }
 
-export default function Bins({ data, onFieldChange, onBulkMark, onPrint }: BinsProps) {
+export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart = () => {}, onNeedsSomething = () => {}, onCompleteWithPhoto = () => {}, uploadStates = {}, proofs = [] }: BinsProps) {
   const { batchDate, rows, groups, readyCount, needsCheckCount, missingEnvelopeCount, missingLetterCount } = data;
 
   return (
@@ -112,14 +119,15 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint }: BinsP
                 <th>Letter Status</th>
                 <th>Location</th>
                 <th>Bin</th>
+                <th>Complete</th>
               </tr>
             </thead>
             <tbody>
               {rows.length ? (
-                rows.map((row) => <BinTableRow row={row} onFieldChange={onFieldChange} key={mailingKey(row.mailing)} />)
+                rows.map((row) => <BinTableRow row={row} onFieldChange={onFieldChange} onCompleteWithPhoto={onCompleteWithPhoto} uploadState={uploadStates[mailingKey(row.mailing)]} key={mailingKey(row.mailing)} />)
               ) : (
                 <tr>
-                  <td colSpan={9} className="empty-state">
+                  <td colSpan={10} className="empty-state">
                     No Ashley bin rows for this batch.
                   </td>
                 </tr>
@@ -128,6 +136,15 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint }: BinsP
           </table>
         </div>
       </div>
+      <div className="mobile-card-list bins-mobile-cards">
+        <div className="ashley-work-head">
+          <div><p className="section-label">Today&apos;s Work</p><h3>{rows.length ? `${rows.length} remaining` : "All done!"}</h3></div>
+          <span>{proofs.length} completed photos</span>
+        </div>
+        {rows.map((row, index) => <BinMobileCard row={row} isNext={index === 0} onStart={onStart} onNeedsSomething={onNeedsSomething} onCompleteWithPhoto={onCompleteWithPhoto} uploadState={uploadStates[mailingKey(row.mailing)]} key={mailingKey(row.mailing)} />)}
+        {!rows.length ? <div className="ashley-all-done"><strong>Batch Complete</strong><span>There are no letters left in this batch.</span></div> : null}
+      </div>
+      <ProofGallery proofs={proofs} title={batchDate ? `${formatDate(batchDate)} Mailing Photos` : "Recent Mailing Photos"} />
     </section>
   );
 }
@@ -151,7 +168,7 @@ function BinGroupCard({ group }: { group: BinGroup }) {
   );
 }
 
-function BinTableRow({ row, onFieldChange }: { row: BinRowData; onFieldChange: BinsProps["onFieldChange"] }) {
+function BinTableRow({ row, onFieldChange, onCompleteWithPhoto, uploadState }: { row: BinRowData; onFieldChange: BinsProps["onFieldChange"]; onCompleteWithPhoto: BinsProps["onCompleteWithPhoto"]; uploadState?: MailingProofUploadState }) {
   const { mailing, status, bin, fieldValues } = row;
   return (
     <tr>
@@ -203,6 +220,46 @@ function BinTableRow({ row, onFieldChange }: { row: BinRowData; onFieldChange: B
         </select>
       </td>
       <td>{bin}</td>
+      <td><PhotoCapture mailing={mailing} onCompleteWithPhoto={onCompleteWithPhoto} uploadState={uploadState} /></td>
     </tr>
+  );
+}
+
+function PhotoCapture({ mailing, onCompleteWithPhoto, uploadState }: { mailing: EffectiveMailing; onCompleteWithPhoto: BinsProps["onCompleteWithPhoto"]; uploadState?: MailingProofUploadState }) {
+  return (
+    <div className="photo-capture-action">
+      <label className={`complete-photo-button ${uploadState?.busy ? "is-busy" : ""}`}>
+        <span>{uploadState?.busy ? "Saving Photo…" : "Complete + Take Photo"}</span>
+        <input type="file" accept="image/*" capture="environment" disabled={uploadState?.busy} data-mailing-proof={mailingKey(mailing)} onChange={(event) => {
+          const photo = event.currentTarget.files?.[0];
+          if (photo) onCompleteWithPhoto(mailing, photo);
+          event.currentTarget.value = "";
+        }} />
+      </label>
+      {uploadState?.error ? <small className="photo-upload-error" role="alert">{uploadState.error}</small> : null}
+    </div>
+  );
+}
+
+const QUICK_NEEDS = ["Needs stamp", "Missing artifact", "Missing letter", "Question for Marcy"];
+
+function BinMobileCard({ row, isNext, onStart, onNeedsSomething, onCompleteWithPhoto, uploadState }: { row: BinRowData; isNext: boolean; onStart: BinsProps["onStart"]; onNeedsSomething: BinsProps["onNeedsSomething"]; onCompleteWithPhoto: BinsProps["onCompleteWithPhoto"]; uploadState?: MailingProofUploadState }) {
+  return (
+    <article className={`mobile-action-card bin-photo-card ${isNext ? "ashley-up-next" : ""}`}>
+      {isNext ? <span className="ashley-next-label">Up next</span> : null}
+      <div className="mobile-card-head"><div><strong>{row.mailing.recipientName}</strong><span>{row.mailing.character} · Letter {row.mailing.letterNumber}</span></div><span className={`pill status-${statusClass(row.status.label)}`}>{row.status.label}</span></div>
+      <p>{formatDate(row.mailing.shipDate)} · {row.bin}</p>
+      <div className="ashley-simple-actions">
+        <button type="button" className="ashley-start-button" data-ashley-start={mailingKey(row.mailing)} onClick={() => onStart(row.mailing)}>{row.mailing.status === "Assembling" ? "In Progress" : "Start"}</button>
+        <details className="ashley-needs-menu">
+          <summary>Needs Something</summary>
+          <div>
+            {QUICK_NEEDS.map((need) => <button type="button" key={need} onClick={(event) => { onNeedsSomething(row.mailing, need); event.currentTarget.closest("details")?.removeAttribute("open"); }}>{need}</button>)}
+            <button type="button" className="ashley-clear-need" onClick={(event) => { onNeedsSomething(row.mailing, ""); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Clear note</button>
+          </div>
+        </details>
+      </div>
+      <PhotoCapture mailing={row.mailing} onCompleteWithPhoto={onCompleteWithPhoto} uploadState={uploadState} />
+    </article>
   );
 }

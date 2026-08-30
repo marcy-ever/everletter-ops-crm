@@ -43,6 +43,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET must be set}
       ALLOWED_USERS: ${ALLOWED_USERS:?ALLOWED_USERS must be set}
+      PHOTO_STORAGE_DIR: /data/mailing-proofs
+    volumes:
+      - mailing-proof-data:/data/mailing-proofs
     ports:
       - "3100:3000"
     # Proves the app actually came up - `up -d` returning zero only means
@@ -73,3 +76,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+
+volumes:
+  mailing-proof-data:

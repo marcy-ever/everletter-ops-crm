@@ -97,6 +97,39 @@ test("the real component output actually contains computed data, not just an emp
   assert.match(html, /subscriber-profile/);
   assert.match(html, /profile-mobile-cards/);
   assert.match(html, /data-profile-print-envelope="MAIL-/);
+  assert.match(html, /Activity History/);
+  assert.match(html, /Current mailing progress/);
+  assert.match(html, /Next mailing/);
+  assert.match(html, /Past, current, and future letters/);
+});
+
+test("month-to-month profiles show their renewal day beside mailing progress", () => {
+  const seed = loadSeed();
+  const monthly = seed.subscribers.find((subscriber) => seed.subscriptions.some((subscription) => subscription.subscriberId === subscriber.subscriberId && subscription.plan === "Month-to-month"));
+  assert.ok(monthly);
+  const html = renderSubscribersHtml(seed, monthly.subscriberId);
+  assert.match(html, /Monthly renewal/);
+  assert.match(html, /Every \d+(?:st|nd|rd|th)/);
+  assert.match(html, /Latest:/);
+});
+
+test("customer activity shows a clear description, before-and-after values, and who made the change", () => {
+  const seed = loadSeed();
+  const rows = computeSubscriberRows(seed, "");
+  const selected = selectSubscriber(rows, "");
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
+  const html = renderToStaticMarkup(React.createElement(Subscribers, {
+    rows, selected, onSelect: NOOP, profile,
+    onPrintAllEnvelopes: NOOP, onPrintEnvelope: NOOP, onMarkPrinted: NOOP,
+    onMarkAshley: NOOP, onNeedsDoneChange: NOOP, onCustomerStatusChange: NOOP,
+    activity: { loading: false, failed: false, events: [{
+      id: 1, occurredAt: "2026-08-30T18:00:00.000Z", actorEmail: "marcy@example.test",
+      kind: "mailingShipDate", previousValue: "2026-09-01", newValue: "2026-09-15",
+    }] },
+  }));
+  assert.match(html, /Ship date changed/);
+  assert.match(html, /2026-09-01 → 2026-09-15/);
+  assert.match(html, /marcy@example\.test/);
 });
 
 test("shell-driven search still filters the migrated list: computeSubscriberRows (the same function CrmApp.tsx calls with state.query) narrows the rows exactly as includesText would", () => {

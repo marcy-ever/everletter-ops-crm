@@ -66,7 +66,10 @@ test("the real component output actually contains computed data, not just an emp
   assert.match(html, /data-bin-mark="check"/);
   assert.match(html, /data-bin-print/);
   assert.match(html, /Ashley Bins/);
-  assert.doesNotMatch(html, /mobile-card-list|mobile-action-card/, "no mobile card list here - that markup lives in Batch Packet");
+  assert.match(html, /bins-mobile-cards/);
+  assert.match(html, /Complete \+ Take Photo/);
+  assert.match(html, /Today&#x27;s Work/);
+  assert.match(html, /Needs Something/);
 });
 
 // Moved from tests/render-snapshots.test.mjs (step 16's own migration) -
@@ -79,12 +82,41 @@ test("the real component output actually contains computed data, not just an emp
 // (Packet's is in tests/packet-view.test.mjs, this one checks Bins.tsx's
 // own real output) - the harness itself, and the #viewMount element it
 // captured, are both gone now (Phase 2, CLAUDE.md).
-test("Ashley Bins renders its two desktop sections (summary cards and the detailed checklist table) - no mobile cards, verified rather than assumed", () => {
+test("Ashley Bins renders desktop sections and Ashley's phone-friendly completion cards", () => {
   const seed = loadSeed();
   const html = renderBinsHtml(seed);
   assert.match(html, /class="packet-grid bin-group-grid"/, "expected the summary bin-group cards");
   assert.match(html, /<table class="packet-table">/, "expected the desktop bin-row checklist table");
-  assert.doesNotMatch(html, /mobile-card-list|mobile-action-card/, "Bins.tsx has no mobile-card markup - if this starts matching, the finding above is stale and this test (and its comment) need updating");
+  assert.match(html, /mobile-card-list bins-mobile-cards/);
+  assert.match(html, /data-mailing-proof=/);
+});
+
+test("taking a photo calls onCompleteWithPhoto with the exact mailing and selected image", () => {
+  const seed = loadSeed();
+  const data = computeBinsData(seed, {}, new Set(), {}, "all", "", TODAY);
+  const calls = [];
+  const element = Bins({ data, onFieldChange: NOOP, onBulkMark: NOOP, onPrint: NOOP, onCompleteWithPhoto: (mailing, photo) => calls.push([mailing, photo]), uploadStates: {}, proofs: [] });
+  const inputs = findAll(element, (node) => node.type === "input" && node.props["data-mailing-proof"] !== undefined);
+  assert.equal(inputs.length, data.rows.length * 2, "one desktop and one phone camera input per row");
+  const photo = { name: "proof.jpg" };
+  inputs[0].props.onChange({ currentTarget: { files: [photo], value: "chosen" } });
+  assert.equal(calls[0][0], data.rows[0].mailing);
+  assert.equal(calls[0][1], photo);
+});
+
+test("Ashley's simple Start and missing-item buttons update the exact mailing", () => {
+  const seed = loadSeed();
+  const data = computeBinsData(seed, {}, new Set(), {}, "all", "", TODAY);
+  const starts = [];
+  const needs = [];
+  const element = Bins({ data, onFieldChange: NOOP, onBulkMark: NOOP, onPrint: NOOP, onStart: (mailing) => starts.push(mailing), onNeedsSomething: (mailing, need) => needs.push([mailing, need]) });
+  const startButton = findAll(element, (node) => node.type === "button" && node.props["data-ashley-start"] !== undefined)[0];
+  startButton.props.onClick();
+  assert.equal(starts[0], data.rows[0].mailing);
+  const missingArtifact = findAll(element, (node) => node.type === "button" && node.props.children === "Missing artifact")[0];
+  missingArtifact.props.onClick({ currentTarget: { closest: () => ({ removeAttribute: NOOP }) } });
+  assert.equal(needs[0][0], data.rows[0].mailing);
+  assert.equal(needs[0][1], "Missing artifact");
 });
 
 test("the batch filter composes with the search box (Bins has no separate filter-variant snapshots)", () => {

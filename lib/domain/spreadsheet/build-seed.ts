@@ -3,7 +3,7 @@ import { normalizePlan } from "../plans";
 import { normalizeCharacter } from "../characters";
 import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from "../ids";
 import { todayIso, monthKey, nearestBatchDate, isOverdueMailing, isDueNext14Days, isOpenStatus } from "../mailing-rules";
-import { spreadsheetExceptionReasons, duplicateMailingFlags, DUPLICATE_MAILING_SEVERITY } from "./exceptions";
+import { spreadsheetExceptionReasons, duplicateMailingFlags, DUPLICATE_MAILING_SEVERITY, explicitExceptionSeverity } from "./exceptions";
 import type { Dataset, DatasetSubscriber, DatasetRecipient, DatasetOrder, DatasetSubscription, DatasetMailing, DatasetException, DatasetSummary } from "../dataset";
 
 /**
@@ -194,7 +194,7 @@ export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], source
         // tests/spreadsheet-exceptions.test.mjs's severity-classifier tests
         // - a change here should fail those first, not surprise someone in
         // the UI.
-        severity: reasons.some((reason) => reason.includes('Missing') || reason.includes('ship date')) ? 'High' : 'Low',
+        severity: reasons.some((reason) => explicitExceptionSeverity(reason) === 'High' || reason.includes('Missing') || reason.includes('ship date')) ? 'High' : 'Low',
         reason: reasons.join('; '),
         mailingId: mailing.mailingId,
         subscriberId,
@@ -233,6 +233,30 @@ export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], source
   // silently under-report exactly the "stays silent on rows that vanish"
   // failure this feature exists to close.
   const exceptionsBySourceRow = new Map(exceptions.map((exception) => [exception.sourceRow, exception]));
+  const addHighRisk = (mailing: DatasetMailing, reason: string) => {
+    const existing = exceptionsBySourceRow.get(mailing.sourceRow);
+    if (existing) {
+      if (!existing.reason.includes(reason)) existing.reason = `${existing.reason}; ${reason}`;
+      existing.severity = 'High';
+      return;
+    }
+    const subscriber = subscribers.get(mailing.subscriberId);
+    if (subscriber) subscriber.issueCount += 1;
+    const item: DatasetException = {
+      exceptionId: `EX-${mailing.sourceRow}`,
+      severity: 'High',
+      reason,
+      mailingId: mailing.mailingId,
+      subscriberId: mailing.subscriberId,
+      recipientName: mailing.recipientName,
+      shipDate: mailing.shipDate,
+      suggestedShipDate: '',
+      status: mailing.status,
+      sourceRow: mailing.sourceRow,
+    };
+    exceptions.push(item);
+    exceptionsBySourceRow.set(mailing.sourceRow, item);
+  };
   for (const { mailing, reason } of duplicateMailingFlags(mailings)) {
     const existing = exceptionsBySourceRow.get(mailing.sourceRow);
     if (existing) {
@@ -255,6 +279,88 @@ export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], source
       };
       exceptions.push(newException);
       exceptionsBySourceRow.set(mailing.sourceRow, newException);
+    }
+  }
+
+  // A matching recipient name and address under different customer IDs is
+  // usually a duplicate record caused by a changed/mistyped email. Flag all
+  // involved active rows so a human chooses the correct customer record.
+  const identityGroups = new Map<string, typeof normalizedRows>();
+  for (const row of normalizedRows) {
+    if (!row.recipientName || row.recipientName === 'Unknown recipient' || !row.address) continue;
+    const identity = `${row.recipientName.toLowerCase()}::${row.address.toLowerCase()}`;
+    const group = identityGroups.get(identity) ?? [];
+    group.push(row);
+    identityGroups.set(identity, group);
+  }
+  for (const group of identityGroups.values()) {
+    const customerIds = new Set(group.map((row) => buildSubscriberId({ email: row.email, recipientName: row.recipientName, address: row.address })));
+    if (customerIds.size < 2) continue;
+    const rows = new Set(group.map((row) => row.sourceRow));
+    mailings.filter((mailing) => rows.has(mailing.sourceRow) && mailing.activeState === 'Active')
+      .forEach((mailing) => addHighRisk(mailing, 'Possible duplicate customer: same recipient name and address appears under multiple customer records'));
+  }
+
+  // Two active plans for the same customer, recipient, and character can
+  // generate two letters for the same subscription period.
+  const overlapGroups = new Map<string, DatasetSubscription[]>();
+  for (const subscription of subscriptions.values()) {
+    if (subscription.activeState !== 'Active') continue;
+    const key = `${subscription.subscriberId}::${subscription.recipientId}::${subscription.character.toLowerCase()}`;
+    const group = overlapGroups.get(key) ?? [];
+    group.push(subscription);
+    overlapGroups.set(key, group);
+  }
+  for (const group of overlapGroups.values()) {
+    if (group.length < 2) continue;
+    const overlapping = group.filter((subscription, index) => group.some((other, otherIndex) => {
+      if (index === otherIndex) return false;
+      const start = subscription.startDate || '0000-01-01';
+      const end = subscription.endDate || '9999-12-31';
+      const otherStart = other.startDate || '0000-01-01';
+      const otherEnd = other.endDate || '9999-12-31';
+      return start <= otherEnd && otherStart <= end;
+    }));
+    const ids = new Set(overlapping.map((subscription) => subscription.subscriptionId));
+    mailings.filter((mailing) => ids.has(mailing.subscriptionId) && mailing.activeState === 'Active')
+      .forEach((mailing) => addHighRisk(mailing, 'Overlapping subscriptions: multiple active plans exist for this recipient and character'));
+  }
+
+  // Letter numbers should be unique and move forward with ship dates inside
+  // one subscription. A gap, duplicate, or backwards step is held for review
+  // because it can send a recipient the wrong part of their story.
+  const sequenceGroups = new Map<string, DatasetMailing[]>();
+  for (const mailing of mailings) {
+    if (mailing.activeState !== 'Active') continue;
+    const group = sequenceGroups.get(mailing.subscriptionId) ?? [];
+    group.push(mailing);
+    sequenceGroups.set(mailing.subscriptionId, group);
+  }
+  for (const group of sequenceGroups.values()) {
+    const numbered = group.filter((mailing) => /^\d+$/.test(String(mailing.letterNumber)));
+    const byNumber = new Map<number, DatasetMailing[]>();
+    for (const mailing of numbered) {
+      const number = Number(mailing.letterNumber);
+      const matches = byNumber.get(number) ?? [];
+      matches.push(mailing);
+      byNumber.set(number, matches);
+    }
+    for (const [number, matches] of byNumber) {
+      if (matches.length > 1) matches.forEach((mailing) => addHighRisk(mailing, `Duplicate letter number: letter ${number} appears more than once in this subscription`));
+    }
+
+    const chronological = numbered
+      .filter((mailing) => mailing.shipDate)
+      .sort((a, b) => a.shipDate.localeCompare(b.shipDate) || a.sourceRow - b.sourceRow);
+    for (let index = 1; index < chronological.length; index += 1) {
+      const previous = chronological[index - 1];
+      const current = chronological[index];
+      const previousNumber = Number(previous.letterNumber);
+      const currentNumber = Number(current.letterNumber);
+      if (currentNumber === previousNumber) continue;
+      if (currentNumber !== previousNumber + 1) {
+        addHighRisk(current, `Letter sequence out of sync: letter ${currentNumber} follows letter ${previousNumber} by ship date`);
+      }
     }
   }
 

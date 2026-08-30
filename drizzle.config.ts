@@ -18,6 +18,7 @@ export default defineConfig({
     "./db/schema/orders.ts",
     "./db/schema/mailings.ts",
     "./db/schema/mailing_components.ts",
+    "./db/schema/mailing_proofs.ts",
     "./db/schema/exceptions.ts",
     "./db/schema/ingestion_events.ts",
     "./db/schema/audit_events.ts",

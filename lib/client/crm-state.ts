@@ -73,6 +73,8 @@ import type { SharedDatasetPayload } from "./shared-state-client";
 import { effectiveMailings } from "./selectors";
 import type { SaveFailureStore } from "./save-failures";
 import type { StalenessStore } from "./staleness";
+import type { CustomerActivityState } from "./customer-activity";
+import type { MailingProofListState, MailingProofUploadState } from "./mailing-proofs";
 
 // The shape app/crm/legacy-app.js's readWorkbookFile() (moved to
 // app/crm/views/import/import-selectors.ts in Phase 1 step 10 - CLAUDE.md)
@@ -111,6 +113,10 @@ export interface CrmState {
   reviewed: Set<string>;
   statusOverrides: Record<string, string>;
   componentOverrides: Record<string, string>;
+  customerActivity: Record<string, CustomerActivityState>;
+  mailingProofUploads: Record<string, MailingProofUploadState>;
+  proofsBySubscriber: Record<string, MailingProofListState>;
+  proofsByBatch: Record<string, MailingProofListState>;
   seed: Dataset | null;
 }
 
@@ -171,6 +177,10 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     reviewed: new Set(),
     statusOverrides: {},
     componentOverrides: {},
+    customerActivity: {},
+    mailingProofUploads: {},
+    proofsBySubscriber: {},
+    proofsByBatch: {},
     seed: null,
   };
 
