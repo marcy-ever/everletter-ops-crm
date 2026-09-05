@@ -2287,10 +2287,19 @@ td span {
   background: #fffefa;
 }
 
-.profile-email-field { display: grid; gap: 0.25rem; margin-top: 0.35rem; }
-.profile-email-field span { color: var(--muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.profile-email-field {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 2px solid rgba(42, 91, 75, 0.28);
+  border-radius: 12px;
+  background: rgba(238, 247, 241, 0.88);
+}
+.profile-email-field span { color: var(--green); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+.profile-email-field::after { content: "Add or correct the email, then click elsewhere to save."; color: var(--muted); font-size: 0.75rem; }
 .profile-email-field input, .letter-number-input, .ship-date-input { border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font: inherit; padding: 0.48rem 0.62rem; }
-.profile-email-field input { min-width: 17rem; }
+.profile-email-field input { min-width: 21rem; border-color: rgba(42, 91, 75, 0.4); background: #fff; }
 .letter-number-input { width: 4.5rem; }
 .profile-status-select { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-size: 0.78rem; font-weight: 700; padding: 0.45rem 1.8rem 0.45rem 0.65rem; }
 .profile-review-alert { margin: 1rem 0; padding: 0.85rem 1rem; border: 1px solid #e7c9a8; border-radius: 12px; background: #fff8ef; }
@@ -2777,6 +2786,12 @@ select:focus-visible {
     font-size: 24px;
   }
 
+  .profile-email-field,
+  .profile-email-field input {
+    width: 100%;
+    min-width: 0;
+  }
+
   .profile-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2890,6 +2905,11 @@ select:focus-visible {
   background: #fff8f8;
 }
 .photo-capture-action { display: grid; gap: 6px; min-width: 170px; }
+.batch-photo-upload { display: grid; grid-template-columns: minmax(240px, 1fr) 140px 190px; align-items: end; gap: 14px; margin: 18px 0; padding: 18px; border: 1px solid rgba(143, 98, 104, 0.28); border-radius: 18px; background: linear-gradient(135deg, #fffafd, var(--rose-soft)); }
+.batch-photo-upload h4, .batch-photo-upload p { margin: 2px 0; }
+.batch-photo-upload label:not(.complete-photo-button) { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.batch-photo-upload input[type="number"] { min-height: 48px; width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; }
+.batch-photo-result { grid-column: 1 / -1; color: var(--green); }
 .complete-photo-button { display: flex; min-height: 48px; align-items: center; justify-content: center; padding: 10px 14px; border-radius: 14px; background: var(--rose); color: white; font-weight: 800; text-align: center; cursor: pointer; }
 .complete-photo-button:hover { filter: brightness(0.96); }
 .complete-photo-button.is-busy { opacity: 0.65; cursor: wait; }
@@ -2925,4 +2945,24 @@ select:focus-visible {
   .bins-mobile-cards { display: grid; }
   .complete-photo-button { min-height: 58px; font-size: 16px; }
   .proof-photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .batch-photo-upload { grid-template-columns: 1fr; }
+  .batch-photo-result { grid-column: auto; }
 }
+.photo-review-section { margin: 18px 0 24px; padding: 18px; border: 2px solid rgba(184, 74, 85, 0.45); border-radius: 18px; background: #fffafa; }
+.photo-review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.photo-review-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 15px; background: white; }
+.photo-review-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; }
+.photo-review-card > div, .photo-review-card label { display: grid; gap: 4px; }
+.photo-review-card span { color: var(--muted); }
+.photo-review-card select { min-height: 46px; width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.photo-review-card small { color: #a52d3b; font-weight: 700; }
+.squarespace-preview { margin-bottom: 18px; }
+.squarespace-order-list { display: grid; gap: 12px; padding: 16px; }
+.squarespace-order-card { border: 1px solid #eadfd7; border-radius: 16px; padding: 16px; background: #fffdfa; }
+.squarespace-order-card.has-warning { border-color: #e9b9a9; background: #fff9f6; }
+.squarespace-order-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.squarespace-order-head div { display: flex; flex-direction: column; gap: 3px; }
+.squarespace-order-card h4 { margin: 12px 0 4px; }
+.squarespace-order-card p { margin: 4px 0; }
+.squarespace-order-details { color: #6f625b; font-size: .9rem; }
+.squarespace-warnings { margin-top: 12px; padding: 9px 11px; border-radius: 10px; background: #f8ded5; color: #7a3422; font-weight: 650; }

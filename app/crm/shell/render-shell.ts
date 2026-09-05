@@ -106,7 +106,7 @@ export function renderBatchFilter(state: CrmState): void {
 export function renderShell(state: CrmState): void {
   const { topbarMeta, metrics, statusStrip } = requireElements();
   const seed = state.seed!;
-  const openExceptionCount = activeExceptions(seed, state.reviewed).length;
+  const openExceptionCount = activeExceptions(seed, state.reviewed).length + (state.squarespaceOrderReviews?.reviews.length ?? 0) + (state.batchPhotoReviews?.reviews.length ?? 0);
   const activeMailings = effectiveMailings(seed, state.statusOverrides).filter((mailing) => mailing.activeState === "Active");
   const openMailingCount = activeMailings.filter((mailing) => isOpenStatus(mailing.status)).length;
   topbarMeta.innerHTML = `

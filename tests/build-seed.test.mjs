@@ -157,3 +157,16 @@ test("buildSeedFromSpreadsheet flags skipped or backwards letter numbers by ship
   assert.equal(risks.length, 2);
   assert.ok(risks.every((item) => item.severity === "High"));
 });
+
+test("buildSeedFromSpreadsheet treats an optional USA address suffix as the same sequence", () => {
+  const rows = [
+    { ...ROW, "Order ID": "2719", "Customer Name and Address": "Kami Booth\n18 Old Brazzil Trl, Pinedale, WY 82941 USA", "Character": "Harper", "Subscription": "12-Month", "Letter Number": "1", "Ship Date": "2025-12-15" },
+    { ...ROW, "Order ID": "2719", "Customer Name and Address": "Kami Booth\n18 Old Brazzil Trl, Pinedale, WY 82941 USA", "Character": "Harper", "Subscription": "12-Month", "Letter Number": "2", "Ship Date": "2026-01-01" },
+    { ...ROW, "Order ID": "2719", "Customer Name and Address": "Kami Booth\n18 Old Brazzil Trl, Pinedale, WY 82941", "Character": "Harper", "Subscription": "12-Month", "Letter Number": "3", "Ship Date": "2026-01-15" },
+    { ...ROW, "Order ID": "2719", "Customer Name and Address": "Kami Booth\n18 Old Brazzil Trl, Pinedale, WY 82941", "Character": "Harper", "Subscription": "12-Month", "Letter Number": "4", "Ship Date": "2026-02-01" },
+    { ...ROW, "Order ID": "2719", "Customer Name and Address": "Kami Booth\n18 Old Brazzil Trl, Pinedale, WY 82941 USA", "Character": "Harper", "Subscription": "12-Month", "Letter Number": "5", "Ship Date": "2026-02-15" },
+  ];
+
+  const dataset = buildSeedFromSpreadsheet(rows, "smoke.xlsx", NOW, []);
+  assert.equal(dataset.exceptions.filter((item) => item.reason.includes("Letter sequence out of sync:")).length, 0);
+});

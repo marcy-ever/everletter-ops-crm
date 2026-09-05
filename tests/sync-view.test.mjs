@@ -264,3 +264,26 @@ test("changing each of the four inputs updates state and re-renders the generate
     initial.data.generated.map((row) => row.shipDate),
   );
 });
+
+test("the real Squarespace preview shows actionable orders and hides completed or ignored orders", () => {
+  const seed = loadSeed();
+  const ava = findSubscriberByEmail(seed, "ava.example@example.test");
+  const avaMarley = findSubscription(seed, ava.subscriberId, "Marley");
+  const data = computeSyncPreview(seed, ava.subscriberId, avaMarley.subscriptionId, "Month-to-month", "2026-07-12");
+  const html = renderToStaticMarkup(React.createElement(Sync, {
+    data, onSubscriberChange() {}, onPlanChange() {}, onOrderDateChange() {}, onSubscriptionChange() {}, onRefreshSquarespace() {},
+    squarespacePreview: { loading: false, failed: false, message: "", hasMore: false, lastCheckedAt: "2026-09-02T12:00:00Z", pendingReviewCount: 2, orders: [
+      { id: "sq1", orderNumber: "101", createdOn: "2026-09-01T12:00:00Z", customerName: "New Customer", customerEmail: "new@example.test", shippingAddress: "1 Main St", products: ["Marley Subscription"], details: ["Recipient: Jamie"], paymentState: "PAID", recipientName: "Jamie", character: "Marley", plan: "Month-to-month", existing: false, warnings: [] },
+      { id: "sq2", orderNumber: "102", createdOn: "2026-09-01T13:00:00Z", customerName: "Review Customer", customerEmail: "", shippingAddress: "", products: [], details: [], paymentState: "PENDING", recipientName: "", character: "Needs Review", plan: "Needs Review", existing: true, subscriberId: "SUB-102", warnings: ["Missing email", "Missing mailing address"] },
+      { id: "sq3", orderNumber: "103", createdOn: "2026-09-01T14:00:00Z", customerName: "Ignored Customer", customerEmail: "ignored@example.test", shippingAddress: "2 Main St", products: ["Not a letter"], details: [], paymentState: "PAID", recipientName: "", character: "Needs Review", plan: "Needs Review", existing: false, reviewStatus: "Ignored", warnings: [] },
+    ] },
+  }));
+  assert.match(html, /Squarespace Orders/);
+  assert.match(html, />New</);
+  assert.doesNotMatch(html, /Review Customer/);
+  assert.doesNotMatch(html, /Ignored Customer/);
+  assert.match(html, /Jamie · Marley · Month-to-month/);
+  assert.match(html, /New paid orders are automatically sent to Needs Review/);
+  assert.match(html, /2 waiting for review/);
+  assert.doesNotMatch(html, /Squarespace Sync Simulator/);
+});

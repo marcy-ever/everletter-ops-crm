@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/.pnpm-store/
 # devops/migrate/'s own isolated, non-workspace node_modules (built fresh
 # inside devops/app.Dockerfile's runner stage - see that file and
 # devops/migrate/migrate.mjs's own header for why it's separate)

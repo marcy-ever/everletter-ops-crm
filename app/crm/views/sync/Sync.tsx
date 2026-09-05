@@ -30,20 +30,68 @@
 import { formatDate } from "@/lib/domain/format";
 import { number } from "../../format";
 import type { SyncPreviewData } from "./sync-selectors";
+import type { SquarespacePreviewState } from "@/lib/domain/squarespace-preview";
 
 const PLAN_OPTIONS = ["Month-to-month", "6-month", "12-month", "One-time"];
 
 export interface SyncProps {
-  data: SyncPreviewData;
+  data?: SyncPreviewData;
   onSubscriberChange: (subscriberId: string) => void;
   onPlanChange: (plan: string) => void;
   onOrderDateChange: (orderDate: string) => void;
   onSubscriptionChange: (subscriptionId: string) => void;
+  squarespacePreview?: SquarespacePreviewState | null;
+  onRefreshSquarespace?: () => void;
+  onStageSquarespace?: (order: SquarespacePreviewState["orders"][number]) => Promise<void>;
+  onCustomerClick?: (subscriberId: string) => void;
 }
 
-export default function Sync({ data, onSubscriberChange, onPlanChange, onOrderDateChange, onSubscriptionChange }: SyncProps) {
+export default function Sync({ data, onSubscriberChange, onPlanChange, onOrderDateChange, onSubscriptionChange, squarespacePreview, onRefreshSquarespace, onStageSquarespace = async () => {}, onCustomerClick = () => {} }: SyncProps) {
+  const actionableSquarespaceOrders = squarespacePreview?.orders.filter((order) => !order.existing && order.reviewStatus !== "Imported" && order.reviewStatus !== "Ignored") ?? [];
   return (
-    <section className="data-panel sync-panel" aria-label="Squarespace sync simulator">
+    <>
+    {squarespacePreview !== undefined && (
+      <section className="data-panel squarespace-preview" aria-label="Squarespace order preview">
+        <div className="panel-head">
+          <div>
+            <h3>Squarespace Orders</h3>
+            <p>New paid orders are automatically sent to Needs Review.</p>
+          </div>
+          <button className="btn secondary" type="button" onClick={onRefreshSquarespace} disabled={squarespacePreview?.loading}>Refresh</button>
+        </div>
+        <div className="squarespace-warnings">Automatic checks: {squarespacePreview?.lastCheckedAt ? `last checked ${new Date(squarespacePreview.lastCheckedAt).toLocaleString()}` : "starting"} · {number(squarespacePreview?.pendingReviewCount)} waiting for review</div>
+        {squarespacePreview?.loading && <div className="empty-state">Checking Squarespace…</div>}
+        {squarespacePreview?.failed && <div className="empty-state error-state">{squarespacePreview.message}</div>}
+        {!squarespacePreview?.loading && !squarespacePreview?.failed && !actionableSquarespaceOrders.length && <div className="empty-state">No new orders need attention.</div>}
+        {!!actionableSquarespaceOrders.length && (
+          <div className="squarespace-order-list">
+            {actionableSquarespaceOrders.map((order) => (
+              <article className={`squarespace-order-card ${order.warnings.length ? "has-warning" : ""}`} key={order.id}>
+                <div className="squarespace-order-head">
+                  <div><strong>Order #{order.orderNumber}</strong><span>{formatDate(order.createdOn.slice(0, 10))}</span></div>
+                  <span className={`pill ${order.existing || order.reviewStatus === "Imported" ? "status-mailed" : "status-to-prepare"}`}>{order.existing || order.reviewStatus === "Imported" ? "Already in Everletter" : order.reviewStatus === "Pending" ? "In Needs Review" : order.reviewStatus === "Ignored" ? "Ignored" : "New"}</span>
+                </div>
+                <h4>{order.subscriberId ? <button type="button" className="link-button recipient-profile-link" onClick={() => onCustomerClick(order.subscriberId!)}>{order.customerName}</button> : order.customerName}</h4>
+                <p>{order.customerEmail || "Missing email"}</p>
+                <p>{order.shippingAddress || "Missing mailing address"}</p>
+                <p><strong>{order.products.join(", ") || "No products found"}</strong></p>
+                <p><strong>Everletter:</strong> {order.recipientName || "Recipient needs review"} · {order.character} · {order.plan}</p>
+                {!!order.details.length && <p className="squarespace-order-details">{order.details.join(" · ")}</p>}
+                {!!order.warnings.length && <div className="squarespace-warnings">Needs review: {order.warnings.join(" · ")}</div>}
+                {!order.existing && !order.reviewStatus && <button type="button" className="profile-button" onClick={async (event) => {
+                  const card = event.currentTarget.closest("article"); const message = card?.querySelector("[data-squarespace-stage-message]");
+                  try { await onStageSquarespace(order); if (message) message.textContent = "Sent to Needs Review."; }
+                  catch (error) { if (message) message.textContent = error instanceof Error ? error.message : "Could not send this order."; }
+                }}>Send to Needs Review</button>}
+                <small role="status" data-squarespace-stage-message />
+              </article>
+            ))}
+            {squarespacePreview?.hasMore && <p className="muted">Showing the 50 most recently changed orders.</p>}
+          </div>
+        )}
+      </section>
+    )}
+    {squarespacePreview === undefined && data && <section className="data-panel sync-panel" aria-label="Squarespace sync simulator">
       <div className="panel-head">
         <div>
           <h3>Squarespace Sync Simulator</h3>
@@ -150,6 +198,7 @@ export default function Sync({ data, onSubscriberChange, onPlanChange, onOrderDa
           </table>
         </div>
       </div>
-    </section>
+    </section>}
+    </>
   );
 }

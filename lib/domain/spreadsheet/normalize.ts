@@ -89,6 +89,18 @@ export function splitNameAddress(block: unknown): SplitNameAddress {
   };
 }
 
+// Produces an address key for cross-row comparisons without changing the
+// address shown to staff. Country suffixes are optional in mailing exports,
+// so "... 82941" and "... 82941 USA" must compare as the same address.
+export function normalizeAddressForComparison(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\b(?:usa|u\.?s\.?a\.?|united states(?: of america)?)\s*$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 // Recognizes loose spreadsheet phrasing for a boolean cell ("Yes"/"Y"/"1"/
 // "Active"/"Checked", case-insensitive) rather than requiring a real
 // boolean value - most spreadsheet exports represent booleans as text.

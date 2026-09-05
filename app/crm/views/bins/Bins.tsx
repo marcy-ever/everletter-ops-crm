@@ -27,6 +27,7 @@ import type { EffectiveMailing } from "@/lib/client/selectors";
 import type { BinGroup, BinRowData, BinsData } from "./bins-selectors";
 import type { MailingProof, MailingProofUploadState } from "@/lib/client/mailing-proofs";
 import ProofGallery from "../../components/ProofGallery";
+import type { BatchPhotoResult } from "@/lib/client/batch-mailing-photos";
 
 export interface BinsProps {
   data: BinsData;
@@ -38,9 +39,10 @@ export interface BinsProps {
   onCompleteWithPhoto: (mailing: EffectiveMailing, photo: File) => void;
   uploadStates: Record<string, MailingProofUploadState>;
   proofs: MailingProof[];
+  onBatchPhoto: (batchDate: string, envelopeCount: number, photo: File) => Promise<BatchPhotoResult>;
 }
 
-export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart = () => {}, onNeedsSomething = () => {}, onCompleteWithPhoto = () => {}, uploadStates = {}, proofs = [] }: BinsProps) {
+export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart = () => {}, onNeedsSomething = () => {}, onCompleteWithPhoto = () => {}, onBatchPhoto = async () => ({ matched: 0, needsReview: 0 }), uploadStates = {}, proofs = [] }: BinsProps) {
   const { batchDate, rows, groups, readyCount, needsCheckCount, missingEnvelopeCount, missingLetterCount } = data;
 
   return (
@@ -52,6 +54,8 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart
         </div>
         <span className="panel-count">{number(rows.length)} bin rows</span>
       </div>
+
+      <BatchPhotoUpload batchDate={batchDate} onBatchPhoto={onBatchPhoto} />
 
       <div className="print-summary bin-summary">
         <div>
@@ -145,6 +149,28 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart
         {!rows.length ? <div className="ashley-all-done"><strong>Batch Complete</strong><span>There are no letters left in this batch.</span></div> : null}
       </div>
       <ProofGallery proofs={proofs} title={batchDate ? `${formatDate(batchDate)} Mailing Photos` : "Recent Mailing Photos"} />
+    </section>
+  );
+}
+
+function BatchPhotoUpload({ batchDate, onBatchPhoto }: { batchDate: string; onBatchPhoto: BinsProps["onBatchPhoto"] }) {
+  return (
+    <section className="batch-photo-upload" aria-label="Batch envelope photo">
+      <div><p className="section-label">Many envelopes at once</p><h4>Upload Batch Photo</h4><p>Lay out the envelopes, enter how many are visible, then take one clear photo.</p></div>
+      <label><span>Envelopes visible</span><input type="number" min="1" max="30" defaultValue="8" data-batch-envelope-count /></label>
+      <label className="complete-photo-button"><span>Take Batch Photo</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!batchDate} data-batch-mailing-photo onChange={async (event) => {
+        const photo = event.currentTarget.files?.[0];
+        const section = event.currentTarget.closest("section");
+        const count = Number((section?.querySelector("[data-batch-envelope-count]") as HTMLInputElement | null)?.value) || 1;
+        const resultNode = section?.querySelector("[data-batch-photo-result]");
+        event.currentTarget.value = "";
+        if (!photo) return;
+        if (resultNode) resultNode.textContent = "Reading names…";
+        try { const result = await onBatchPhoto(batchDate, count, photo); if (resultNode) resultNode.textContent = `${result.matched} matched automatically · ${result.needsReview} sent to Needs Review`; }
+        catch (error) { if (resultNode) resultNode.textContent = error instanceof Error ? error.message : "Could not process the photo."; }
+      }} /></label>
+      {!batchDate ? <small>Choose a batch date first.</small> : null}
+      <strong className="batch-photo-result" role="status" data-batch-photo-result />
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { normalizeSpreadsheetRow, getSpreadsheetValue, splitNameAddress, compactOrderNumber, spreadsheetDateToIso, compactNumber, normalizeStatus, normalizeBoolean } from "./normalize";
+import { normalizeSpreadsheetRow, getSpreadsheetValue, splitNameAddress, compactOrderNumber, spreadsheetDateToIso, compactNumber, normalizeStatus, normalizeBoolean, normalizeAddressForComparison } from "./normalize";
 import { normalizePlan } from "../plans";
 import { normalizeCharacter } from "../characters";
 import { buildSubscriberId, buildRecipientId, buildSubscriptionId, buildMailingId } from "../ids";
@@ -329,12 +329,17 @@ export function buildSeedFromSpreadsheet(rows: Record<string, unknown>[], source
   // Letter numbers should be unique and move forward with ship dates inside
   // one subscription. A gap, duplicate, or backwards step is held for review
   // because it can send a recipient the wrong part of their story.
+  const rowsBySourceRow = new Map(normalizedRows.map((row) => [row.sourceRow, row]));
   const sequenceGroups = new Map<string, DatasetMailing[]>();
   for (const mailing of mailings) {
     if (mailing.activeState !== 'Active') continue;
-    const group = sequenceGroups.get(mailing.subscriptionId) ?? [];
+    const source = rowsBySourceRow.get(mailing.sourceRow);
+    const comparisonKey = source
+      ? `${mailing.subscriberId}::${source.recipientName.toLowerCase()}::${normalizeAddressForComparison(source.address)}::${mailing.character.toLowerCase()}::${mailing.plan.toLowerCase()}`
+      : mailing.subscriptionId;
+    const group = sequenceGroups.get(comparisonKey) ?? [];
     group.push(mailing);
-    sequenceGroups.set(mailing.subscriptionId, group);
+    sequenceGroups.set(comparisonKey, group);
   }
   for (const group of sequenceGroups.values()) {
     const numbered = group.filter((mailing) => /^\d+$/.test(String(mailing.letterNumber)));

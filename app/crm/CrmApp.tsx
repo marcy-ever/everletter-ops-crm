@@ -9,6 +9,8 @@ import { saveStatusOverrides } from "@/lib/client/local-overrides";
 import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import { loadCustomerActivity } from "@/lib/client/customer-activity";
 import { loadMailingProofs, uploadMailingProof } from "@/lib/client/mailing-proofs";
+import { confirmBatchPhotoReview, loadBatchPhotoReviews, uploadBatchMailingPhoto } from "@/lib/client/batch-mailing-photos";
+import { ignoreSquarespaceReview, importSquarespaceReview, loadSquarespacePreview, loadSquarespaceReviews, stageSquarespaceOrder, syncNewSquarespaceOrders } from "@/lib/client/squarespace-preview";
 import { mailingKey } from "@/lib/domain/keys";
 import { getRenderGeneration, notifyViewChanged, saveFailures, staleness, state, subscribeViewChanged, updateComponentStatus, updateEnvelopeStatus, updateMailingStatus } from "./shell/crm-app-state";
 import { render } from "./shell/render-shell";
@@ -27,7 +29,7 @@ import { computeExceptionRows } from "./views/exceptions/exceptions-selectors";
 import Import from "./views/import/Import";
 import { computeImportData, defaultAutomationRules, readWorkbookFile } from "./views/import/import-selectors";
 import Subscribers from "./views/subscribers/Subscribers";
-import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriber } from "./views/subscribers/subscribers-selectors";
+import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriberForProfile } from "./views/subscribers/subscribers-selectors";
 import Queue from "./views/queue/Queue";
 import { computeQueueRows } from "./views/queue/queue-selectors";
 import Qa from "./views/qa/Qa";
@@ -186,7 +188,9 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
       state.syncSubscriberId = defaultSyncSubscriberId(state.seed);
       state.syncSubscriptionId = defaultSyncSubscriptionId(state.syncSubscriberId, state.seed);
     }
-    const data = computeSyncPreview(state.seed, state.syncSubscriberId, state.syncSubscriptionId, state.syncPlan, state.syncOrderDate);
+    const data = state.seed.subscribers.length && state.seed.subscriptions.length
+      ? computeSyncPreview(state.seed, state.syncSubscriberId, state.syncSubscriptionId, state.syncPlan, state.syncOrderDate)
+      : undefined;
     return (
       <Sync
         data={data}
@@ -206,6 +210,22 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         onSubscriptionChange={(subscriptionId) => {
           state.syncSubscriptionId = subscriptionId;
           notifyViewChanged();
+        }}
+        squarespacePreview={state.squarespacePreview}
+        onRefreshSquarespace={refreshSquarespacePreview}
+        onStageSquarespace={async (order) => {
+          await stageSquarespaceOrder(order);
+          order.staged = true;
+          state.squarespaceOrderReviews = null;
+          notifyViewChanged();
+        }}
+        onCustomerClick={(subscriberId) => {
+          state.selectedSubscriberId = subscriberId;
+          state.profileSubscriptionFilter = "all";
+          state.subscriberProfileOpen = true;
+          state.activeView = "subscribers";
+          window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;
+          render(state, notifyViewChanged);
         }}
       />
     );
@@ -285,6 +305,22 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
     return (
       <Exceptions
         rows={rows}
+        photoReviews={state.batchPhotoReviews}
+        squarespaceReviews={state.squarespaceOrderReviews}
+        onImportSquarespaceReview={async (reviewId, input) => {
+          await importSquarespaceReview(reviewId, input);
+          window.location.reload();
+        }}
+        onIgnoreSquarespaceReview={async (reviewId) => {
+          await ignoreSquarespaceReview(reviewId);
+          if (state.squarespaceOrderReviews) state.squarespaceOrderReviews.reviews = state.squarespaceOrderReviews.reviews.filter((review) => review.id !== reviewId);
+          render(state, notifyViewChanged);
+        }}
+        onConfirmPhotoReview={async (reviewId, mailingId) => {
+          await confirmBatchPhotoReview(reviewId, mailingId);
+          if (state.batchPhotoReviews) state.batchPhotoReviews.reviews = state.batchPhotoReviews.reviews.filter((review) => review.id !== reviewId);
+          render(state, notifyViewChanged);
+        }}
         onReview={(key) => {
           state.reviewed.add(key);
           saveReviewedExceptions(state.reviewed);
@@ -393,7 +429,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   subscribers: () => {
     if (!state.seed) return null;
     const rows = computeSubscriberRows(state.seed, state.query);
-    const selected = selectSubscriber(rows, state.selectedSubscriberId);
+    const selected = selectSubscriberForProfile(rows, state.seed.subscribers, state.selectedSubscriberId, state.subscriberProfileOpen);
     if (selected) state.selectedSubscriberId = selected.subscriberId;
     const profile = selected ? computeSubscriberProfile(state.seed, state.statusOverrides, state.reviewed, state.componentOverrides, selected) : null;
     return (
@@ -706,6 +742,11 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           notifyViewChanged();
         }}
         onPrint={() => window.print()}
+        onBatchPhoto={async (batchDate, envelopeCount, photo) => {
+          const result = await uploadBatchMailingPhoto(batchDate, envelopeCount, photo);
+          window.setTimeout(() => window.location.reload(), 1200);
+          return result;
+        }}
         onStart={(mailing) => {
           updateMailingStatus(mailing, "Assembling");
           notifyViewChanged();
@@ -872,6 +913,44 @@ function refreshBatchProofs(batchDate: string): void {
   });
 }
 
+function refreshBatchPhotoReviews(): void {
+  state.batchPhotoReviews = { loading: true, failed: false, reviews: state.batchPhotoReviews?.reviews ?? [], options: state.batchPhotoReviews?.options ?? [] };
+  loadBatchPhotoReviews().then(({ reviews, options }) => {
+    state.batchPhotoReviews = { loading: false, failed: false, reviews, options };
+    notifyViewChanged();
+  }).catch(() => {
+    state.batchPhotoReviews = { loading: false, failed: true, reviews: [], options: [] };
+    notifyViewChanged();
+  });
+}
+
+function refreshSquarespacePreview(): void {
+  state.squarespacePreview = { loading: true, failed: false, message: "", orders: state.squarespacePreview?.orders ?? [], hasMore: false, lastCheckedAt: state.squarespacePreview?.lastCheckedAt, pendingReviewCount: state.squarespacePreview?.pendingReviewCount };
+  notifyViewChanged();
+  loadSquarespacePreview().then(({ orders, hasMore, lastCheckedAt, pendingReviewCount }) => {
+    state.squarespacePreview = { loading: false, failed: false, message: "", orders, hasMore, lastCheckedAt, pendingReviewCount };
+    notifyViewChanged();
+  }).catch((error) => {
+    state.squarespacePreview = { loading: false, failed: true, message: error instanceof Error ? error.message : "Could not load Squarespace orders.", orders: [], hasMore: false };
+    notifyViewChanged();
+  });
+}
+
+let squarespaceReviewsInFlight = false;
+function refreshSquarespaceReviews(): void {
+  if (squarespaceReviewsInFlight) return;
+  squarespaceReviewsInFlight = true;
+  state.squarespaceOrderReviews = { loading: true, failed: false, message: "", reviews: state.squarespaceOrderReviews?.reviews ?? [] };
+  notifyViewChanged();
+  syncNewSquarespaceOrders().then(() => loadSquarespaceReviews()).then((reviews) => {
+    state.squarespaceOrderReviews = { loading: false, failed: false, message: "", reviews };
+    if (state.seed) render(state, notifyViewChanged); else notifyViewChanged();
+  }).catch((error) => {
+    state.squarespaceOrderReviews = { loading: false, failed: true, message: error instanceof Error ? error.message : "Could not load Squarespace reviews.", reviews: [] };
+    notifyViewChanged();
+  }).finally(() => { squarespaceReviewsInFlight = false; });
+}
+
 // Runs initCrmApp() inside a browser-only effect specifically so nothing
 // in app/crm/shell/init-crm-app.ts executes during SSR, where
 // document/window/localStorage don't exist (a "use client" component's
@@ -888,6 +967,12 @@ export default function CrmApp() {
     initCrmApp();
   }, []);
 
+  useEffect(() => {
+    refreshSquarespaceReviews();
+    const timer = window.setInterval(refreshSquarespaceReviews, 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const viewSnapshot = useSyncExternalStore(subscribeViewChanged, getViewSnapshot, getViewSnapshot);
   const activeView = viewSnapshot.slice(0, viewSnapshot.lastIndexOf(":"));
 
@@ -895,6 +980,11 @@ export default function CrmApp() {
     if (activeView !== "subscribers" || !state.selectedSubscriberId || state.customerActivity[state.selectedSubscriberId]) return;
     const subscriberId = state.selectedSubscriberId;
     refreshCustomerActivity(subscriberId);
+  }, [activeView, viewSnapshot]);
+
+  useEffect(() => {
+    if (activeView === "exceptions" && !state.batchPhotoReviews) refreshBatchPhotoReviews();
+    if (activeView === "sync" && !state.squarespacePreview) refreshSquarespacePreview();
   }, [activeView, viewSnapshot]);
 
   useEffect(() => {

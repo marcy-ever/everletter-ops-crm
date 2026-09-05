@@ -35,6 +35,9 @@ import { orders } from "../db/schema/orders";
 import { mailings } from "../db/schema/mailings";
 import { mailingComponents } from "../db/schema/mailing_components";
 import { mailingProofs } from "../db/schema/mailing_proofs";
+import { mailingPhotoReviews } from "../db/schema/mailing_photo_reviews";
+import { squarespaceOrderReviews } from "../db/schema/squarespace_order_reviews";
+import { integrationSyncState } from "../db/schema/integration_sync_state";
 import { exceptions } from "../db/schema/exceptions";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,8 +47,8 @@ export const XLSX_PATH = path.join(ROOT, "testing/Import_20260812_181828.xlsx");
 function loadEnvLocal() {
   const envPath = path.join(ROOT, ".env.local");
   if (!fs.existsSync(envPath)) return;
-  for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
-    const m = line.match(/^([A-Z_]+)=(.*)$/);
+  for (const line of fs.readFileSync(envPath, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
   }
 }
@@ -81,7 +84,7 @@ export function e2eSkipReason({ requiresFixture = true } = {}) {
 // this module's own import at load time instead of silently truncating
 // nothing for a name that no longer exists.
 export async function truncateAllTables(db) {
-  await db.execute(sql`TRUNCATE TABLE ${mailingProofs}, ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE ${integrationSyncState}, ${squarespaceOrderReviews}, ${mailingPhotoReviews}, ${mailingProofs}, ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
 }
 
 // Parses the real test spreadsheet the same way for every file that needs

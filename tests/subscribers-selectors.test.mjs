@@ -3,7 +3,7 @@
 // functions, tested separately, matching the view's own two panes.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriber } from "../app/crm/views/subscribers/subscribers-selectors.ts";
+import { computeSubscriberProfile, computeSubscriberRows, printedEnvelopeStatusForMailing, selectSubscriber, selectSubscriberForProfile } from "../app/crm/views/subscribers/subscribers-selectors.ts";
 
 function subscriber(overrides = {}) {
   return {
@@ -80,6 +80,17 @@ test("selectSubscriber falls back to the first row when the previous selection i
 
 test("selectSubscriber returns null when there are no rows at all", () => {
   assert.equal(selectSubscriber([], "SUB-A"), null);
+});
+
+test("a profile opened from Needs Review selects the exact customer even when they are outside the 80-row list", () => {
+  const subscribers = Array.from({ length: 90 }, (_, i) => subscriber({ subscriberId: `SUB-${i}`, displayName: `Person ${i}` }));
+  const rows = subscribers.slice(0, 80);
+  assert.equal(selectSubscriberForProfile(rows, subscribers, "SUB-89", true), subscribers[89]);
+});
+
+test("an invalid profile link does not silently open a different customer", () => {
+  const a = subscriber({ subscriberId: "SUB-A" });
+  assert.equal(selectSubscriberForProfile([a], [a], "SUB-MISSING", true), null);
 });
 
 test("computeSubscriberProfile only includes mailings for the given subscriber, sorted by ship date then letter number", () => {

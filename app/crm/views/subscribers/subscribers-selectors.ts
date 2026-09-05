@@ -39,6 +39,21 @@ export function selectSubscriber(rows: DatasetSubscriber[], selectedSubscriberId
   return rows.find((subscriber) => subscriber.subscriberId === selectedSubscriberId) || rows[0] || null;
 }
 
+// A profile opened from another view must resolve against every subscriber,
+// not the 80-row list preview. Otherwise a valid customer outside that slice
+// silently falls back to whichever customer happens to be shown first.
+export function selectSubscriberForProfile(
+  rows: DatasetSubscriber[],
+  allSubscribers: DatasetSubscriber[],
+  selectedSubscriberId: string,
+  profileOpen: boolean,
+): DatasetSubscriber | null {
+  if (profileOpen) {
+    return allSubscribers.find((subscriber) => subscriber.subscriberId === selectedSubscriberId) ?? null;
+  }
+  return selectSubscriber(rows, selectedSubscriberId);
+}
+
 export interface ProfileMailingRow extends EffectiveMailing {
   envelopeStatus: string;
   envelopeQuantity: number;
