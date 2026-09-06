@@ -65,6 +65,7 @@ export function envelopeProfileForCharacter(character: string): EnvelopeProfile 
     ringo: ['"Schoolbell", cursive', '"Schoolbell", cursive', "24pt", "17pt", "#E86600", "1.35", "0"],
     oliver: ['"Coming Soon", cursive', '"Coming Soon", cursive', "16pt", "13pt", "#26312d", "1.35", "0"],
     harper: ['"Anonymous Pro", monospace', '"Anonymous Pro", monospace', "15pt", "12.5pt", "#465FD9", "1.32", "0"],
+    legends: ['"Caveat", cursive', '"Caveat", cursive', "23pt", "16pt", "#6B4E71", "1.32", "0"],
     penelope: adultProfile,
     seraphine: adultProfile,
     marigold: adultProfile,

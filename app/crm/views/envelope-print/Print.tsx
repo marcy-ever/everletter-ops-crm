@@ -137,6 +137,7 @@ export default function Print({
             <tr>
               <th>Ship Date</th>
               <th>Recipient</th>
+              <th>Character</th>
               <th>Mode</th>
               <th>Renewal Date</th>
               <th>Status</th>
@@ -202,6 +203,10 @@ function PrintTableRow({
       <td>
         <strong>{mailing.recipientName}</strong>
         <span>{mailing.email || "Missing email"}</span>
+      </td>
+      <td>
+        <strong>{mailing.character}</strong>
+        <span>{envelopeStock}</span>
       </td>
       <td>
         <span className={`flag ${mode === "Prepaid bulk" ? "flag-green" : "flag-amber"}`}>{mode}</span>

@@ -50,7 +50,7 @@ export function letterNumberKey(value: unknown): string {
 // shared adult standard stock.
 export function envelopeStockForCharacter(character: unknown): string {
   const key = driveCharacterKey(character);
-  const kidCharacters = new Set(["harper", "marley", "oliver", "ringo"]);
+  const kidCharacters = new Set(["harper", "legends", "marley", "oliver", "ringo"]);
   if (kidCharacters.has(key)) return `${titleCase(key)} color envelope`;
   return "Adult standard envelope";
 }

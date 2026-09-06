@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getBuildInfo } from "@/lib/build-info";
 import CrmApp from "./crm/CrmApp";
 import Sidebar from "./crm/shell/Sidebar";
+import { getDriveConfig } from "@/lib/server/drive-config";
 
 export const metadata = {
   title: "Everletter Ops CRM",
@@ -12,17 +13,12 @@ export const metadata = {
 export default async function Home() {
   const session = await auth();
   const buildInfo = getBuildInfo();
+  const driveConfig = getDriveConfig();
 
   return (
     <>
       <div className="character-decor" aria-hidden="true">
-        <img className="character-peek character-peek-marley" src="/assets/marley-corner.png" alt="" />
-        <img className="character-peek character-peek-ringo" src="/assets/ringo-corner.png" alt="" />
-        <img className="character-peek character-peek-oliver" src="/assets/oliver-corner.png" alt="" />
-        <img className="character-peek character-peek-harper" src="/assets/harper-corner.png" alt="" />
-        <img className="character-peek character-peek-adult-girls" src="/assets/adult-girls.png" alt="" />
-        <img className="character-peek character-peek-seraphine" src="/assets/seraphine-adult.png" alt="" />
-        <img className="character-peek character-peek-marigold" src="/assets/marigold-adult-clothesline.png" alt="" />
+        <img className="everletter-birds-background" src="/assets/everletter-logo-gold.png" alt="" />
       </div>
 
       {/*
@@ -141,7 +137,7 @@ export default async function Home() {
 
       <Script src="/seed-data.js" strategy="beforeInteractive" />
       <Script src="/xlsx.full.min.js" strategy="beforeInteractive" />
-      <CrmApp />
+      <CrmApp driveConfig={driveConfig} />
     </>
   );
 }

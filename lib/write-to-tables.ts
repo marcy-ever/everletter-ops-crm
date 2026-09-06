@@ -660,6 +660,26 @@ export async function writeSubscriberEmail(subscriberId: string, email: string, 
   if (rows.length !== 1) return null;
   const normalized = email.trim().toLowerCase();
   await db.update(subscribers).set({ email: normalized }).where(eq(subscribers.id, subscriberId));
+
+  // Import exceptions are snapshots. Once an email is supplied, remove the
+  // stale "Missing email" portion immediately while preserving any other
+  // problem on the same row (for example, a possible duplicate customer).
+  const subscriptionRows = await db.select({ id: subscriptions.id }).from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId));
+  const subscriptionIds = subscriptionRows.map((row) => row.id);
+  if (subscriptionIds.length) {
+    const exceptionRows = await db
+      .select({ id: exceptions.id, type: exceptions.type })
+      .from(exceptions)
+      .where(inArray(exceptions.subscriptionId, subscriptionIds));
+    for (const exceptionRow of exceptionRows) {
+      const remainingReasons = exceptionRow.type.split(";").map((reason) => reason.trim()).filter((reason) => reason !== "Missing email");
+      if (remainingReasons.length === 0) {
+        await db.delete(exceptions).where(eq(exceptions.id, exceptionRow.id));
+      } else if (remainingReasons.length !== exceptionRow.type.split(";").length) {
+        await db.update(exceptions).set({ type: remainingReasons.join("; ") }).where(eq(exceptions.id, exceptionRow.id));
+      }
+    }
+  }
   return { previousValue: rows[0].email, newValue: normalized };
 }
 

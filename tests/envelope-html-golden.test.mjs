@@ -21,7 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { envelopeHtml } from "../app/crm/views/envelope-print/envelope-html.ts";
+import { envelopeHtml, envelopeProfileForCharacter } from "../app/crm/views/envelope-print/envelope-html.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -122,4 +122,11 @@ test("the golden fixture actually exercises what it claims to - five characters,
   assert.doesNotMatch(html, /Iris Adultgram[\s\S]{0,80}corner-art/, "Penelope (adult) should have no corner art");
   assert.match(html, /Missing address/, "Harper's empty recipient address should fall back to the literal 'Missing address'");
   assert.match(html, /Apt 3B, Portland, OR, 97201/, "Ringo's 3+-part address should combine parts 2+ onto the second line");
+});
+
+test("Legends uses its own envelope typography instead of the adult fallback", () => {
+  const legends = envelopeProfileForCharacter("Legends");
+  const adult = envelopeProfileForCharacter("Penelope");
+  assert.notDeepEqual(legends, adult);
+  assert.match(legends.nameFont, /Caveat/);
 });

@@ -28,7 +28,7 @@ export interface DriveConfig {
   letterFolders: Record<string, Record<string, string>>;
 }
 
-export const driveConfig: DriveConfig = {
+export const emptyDriveConfig: DriveConfig = {
   printReadyFolderUrl: "",
   characterFolders: {
     harper: "",
@@ -69,7 +69,7 @@ export const driveConfig: DriveConfig = {
   },
 };
 
-export function letterFolderUrl(mailing: { character: string; letterNumber: string | number }): string {
+export function letterFolderUrl(mailing: { character: string; letterNumber: string | number }, driveConfig: DriveConfig): string {
   const characterKey = driveCharacterKey(mailing.character);
   const letterKey = letterNumberKey(mailing.letterNumber);
   return driveConfig.letterFolders[characterKey]?.[letterKey] || "";

@@ -101,11 +101,20 @@ test("Print.tsx (default: batchFilter 'all', printScope 'all', printStockFilter 
   const seed = loadSeed();
   const actual = renderPrintHtml(seed);
   const expected = fs.readFileSync(path.join(ROOT, "tests/snapshots/print.html"), "utf8");
+  const withoutIntentionalCharacterColumn = actual
+    .replace("<th>Character</th>", "")
+    .replace(/<td><strong>(?:Marley|Ringo|Oliver|Harper|Penelope|Marigold|Seraphine|Legends|Old Marley)<\/strong><span>[^<]+ envelope<\/span><\/td>/g, "");
   assert.equal(
-    normalizeHtml(actual),
+    normalizeHtml(withoutIntentionalCharacterColumn),
     normalizeHtml(expected),
     "Print.tsx's rendered output no longer matches tests/snapshots/print.html under the normalized comparison - a real markup/attribute/text difference, not just whitespace (see tests/html-normalize.mjs).",
   );
+});
+
+test("every print row visibly identifies its character and envelope stock", () => {
+  const html = renderPrintHtml(loadSeed());
+  assert.match(html, /<th>Character<\/th>/);
+  assert.match(html, /<td><strong>Marley<\/strong><span>Marley color envelope<\/span><\/td>/);
 });
 
 test("the real component output actually contains computed data, not just an empty-vs-empty pass", () => {

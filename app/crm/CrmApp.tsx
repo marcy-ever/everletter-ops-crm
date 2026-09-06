@@ -15,7 +15,7 @@ import { mailingKey } from "@/lib/domain/keys";
 import { getRenderGeneration, notifyViewChanged, saveFailures, staleness, state, subscribeViewChanged, updateComponentStatus, updateEnvelopeStatus, updateMailingStatus } from "./shell/crm-app-state";
 import { render } from "./shell/render-shell";
 import { initCrmApp } from "./shell/init-crm-app";
-import { driveConfig, letterFolderUrl, openDriveLink } from "./shell/drive-links";
+import { emptyDriveConfig, letterFolderUrl as configuredLetterFolderUrl, openDriveLink, type DriveConfig } from "./shell/drive-links";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
 import LaunchPlan from "./views/launch-plan/LaunchPlan";
@@ -41,6 +41,9 @@ import { computeBinsData } from "./views/bins/bins-selectors";
 import Print from "./views/envelope-print/Print";
 import { computePrintData } from "./views/envelope-print/print-selectors";
 import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
+
+let driveConfig = emptyDriveConfig;
+const letterFolderUrl = (mailing: { character: string; letterNumber: string | number }) => configuredLetterFolderUrl(mailing, driveConfig);
 
 // Mounts every CRM view. This component is the sole consumer of
 // app/crm/shell/ (init-crm-app.ts/render-shell.ts/crm-app-state.ts/
@@ -478,6 +481,11 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           const normalizedEmail = email.toLowerCase();
           selected!.email = normalizedEmail;
           state.seed!.mailings.filter((item) => item.subscriberId === subscriberId).forEach((item) => (item.email = normalizedEmail));
+          state.seed!.exceptions = state.seed!.exceptions.flatMap((item) => {
+            if (item.subscriberId !== subscriberId) return [item];
+            const remainingReasons = item.reason.split(";").map((reason) => reason.trim()).filter((reason) => reason !== "Missing email");
+            return remainingReasons.length ? [{ ...item, reason: remainingReasons.join("; ") }] : [];
+          });
           saveSharedState("subscriberEmail", subscriberId, normalizedEmail, saveFailures, staleness);
           notifyViewChanged();
         }}
@@ -742,11 +750,15 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           notifyViewChanged();
         }}
         onPrint={() => window.print()}
-        onBatchPhoto={async (batchDate, envelopeCount, photo) => {
+      onBatchPhoto={async (batchDate, envelopeCount, photo) => {
           const result = await uploadBatchMailingPhoto(batchDate, envelopeCount, photo);
           window.setTimeout(() => window.location.reload(), 1200);
           return result;
-        }}
+      }}
+      onBatchDateChange={(batchDate) => {
+        state.batchFilter = batchDate;
+        render(state, notifyViewChanged);
+      }}
         onStart={(mailing) => {
           updateMailingStatus(mailing, "Assembling");
           notifyViewChanged();
@@ -962,7 +974,8 @@ function getViewSnapshot(): string {
   return `${state.activeView}:${getRenderGeneration()}`;
 }
 
-export default function CrmApp() {
+export default function CrmApp({ driveConfig: configuredDriveConfig }: { driveConfig?: DriveConfig }) {
+  driveConfig = configuredDriveConfig ?? emptyDriveConfig;
   useEffect(() => {
     initCrmApp();
   }, []);

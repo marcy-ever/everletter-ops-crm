@@ -34,7 +34,7 @@ import { formatDate } from "@/lib/domain/format";
 import { exceptionReviewKey } from "@/lib/domain/keys";
 import type { DatasetException } from "@/lib/domain/dataset";
 import type { BatchPhotoReviewState } from "@/lib/client/batch-mailing-photos";
-import type { SquarespaceImportInput, SquarespaceOrderReviewState } from "@/lib/domain/squarespace-preview";
+import { giftMessageForOrder, type SquarespaceImportInput, type SquarespaceOrderReviewState } from "@/lib/domain/squarespace-preview";
 
 export interface ExceptionsProps {
   rows: DatasetException[];
@@ -75,7 +75,9 @@ function SquarespaceReviews({ state, onImport, onIgnore, onCustomerClick }: { st
   if (!state?.reviews.length) return null;
   return <section className="photo-review-section" aria-label="Squarespace orders needing review">
     <div className="panel-head"><div><h3>Squarespace Orders</h3><p>Staged safely. No customer or mailing has been created.</p></div><span className="panel-count">{state.reviews.length} open</span></div>
-    <div className="squarespace-order-list">{state.reviews.map(({ id, order }) => <form className={`squarespace-order-card ${order.warnings.length ? "has-warning" : ""}`} key={id} onSubmit={async (event) => {
+    <div className="squarespace-order-list">{state.reviews.map(({ id, order }) => {
+      const giftMessage = giftMessageForOrder(order);
+      return <form className={`squarespace-order-card ${order.warnings.length ? "has-warning" : ""}`} key={id} onSubmit={async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
       const values = Object.fromEntries(new FormData(form)) as Record<string, string>;
@@ -95,9 +97,11 @@ function SquarespaceReviews({ state, onImport, onIgnore, onCustomerClick }: { st
       <label>ZIP<input name="postalCode" defaultValue={order.postalCode || ""} /></label>
       <label>Character<select name="character" defaultValue={order.character}>{["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends"].map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>Plan<select name="plan" defaultValue={order.plan}>{["Month-to-month", "6-month", "12-month", "One-time"].map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label>Gift message for Letter 1<textarea name="giftMessage" defaultValue={giftMessage} placeholder="None" /></label>
+      {!!giftMessage && <div className="squarespace-warnings">Handwrite this in Letter 1 before mailing.</div>}
       {!!order.warnings.length && <div className="squarespace-warnings">Needs review: {order.warnings.join(" · ")}</div>}
       <div className="profile-actions"><button type="submit" className="profile-button">Review &amp; Import</button><button type="button" className="btn secondary" onClick={async (event) => { if (!window.confirm(`Ignore Squarespace order #${order.orderNumber}?`)) return; const form = event.currentTarget.closest("form"); const error = form?.querySelector("[data-squarespace-import-error]"); try { await onIgnore(id); } catch (caught) { if (error) error.textContent = caught instanceof Error ? caught.message : "Could not ignore this order."; } }}>Ignore Order</button></div><small role="alert" data-squarespace-import-error />
-    </form>)}</div>
+    </form>})}</div>
   </section>;
 }
 

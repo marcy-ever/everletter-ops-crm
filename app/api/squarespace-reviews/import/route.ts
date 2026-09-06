@@ -5,7 +5,7 @@ import { auditEvents, ingestionEvents, mailings, orders, squarespaceOrderReviews
 import { batchDatesForOrder } from "@/lib/domain/batch-dates";
 import { buildMailingId, buildRecipientId, buildSubscriberId, buildSubscriptionId } from "@/lib/domain/ids";
 import { plannedLetterCount } from "@/lib/domain/plans";
-import type { SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
+import { giftMessageForOrder, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
 
 const CHARACTERS = new Set(["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends"]);
 const PLANS = new Set(["Month-to-month", "6-month", "12-month", "One-time"]);
@@ -57,10 +57,12 @@ export async function POST(request: Request) {
       const orderId = `SQ-${remote.id}`;
       await tx.insert(orders).values({ id: orderId, subscriptionId: subscription.id, externalOrderNumber: remote.orderNumber, orderedAt: remote.createdOn ? new Date(remote.createdOn) : null });
       const dates = batchDatesForOrder(remote.createdOn.slice(0, 10), count);
+      const giftMessage = String(input.giftMessage || giftMessageForOrder(remote) || "").trim();
       for (let index = 0; index < count; index += 1) {
         const letterNumber = firstLetter + index;
         const sourceRow = String(1_000_000_000 + review.id * 100 + index);
-        await tx.insert(mailings).values({ id: `${orderId}::${input.character}::${letterNumber}`, subscriptionId: subscription.id, appMailingId: buildMailingId({ orderId, recipientId, character: input.character, letterNumber, sourceRow }), lastSourceRow: sourceRow, letterNumber, scheduledDate: dates[index], status: "To Prepare", active: true, notes: `Imported from Squarespace order #${remote.orderNumber}`, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null });
+        const giftNote = giftMessage && letterNumber === 1 ? `; GIFT MESSAGE — handwrite in Letter 1: ${giftMessage}` : "";
+        await tx.insert(mailings).values({ id: `${orderId}::${input.character}::${letterNumber}`, subscriptionId: subscription.id, appMailingId: buildMailingId({ orderId, recipientId, character: input.character, letterNumber, sourceRow }), lastSourceRow: sourceRow, letterNumber, scheduledDate: dates[index], status: "To Prepare", active: true, notes: `Imported from Squarespace order #${remote.orderNumber}${giftNote}`, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null });
       }
       await tx.update(squarespaceOrderReviews).set({ status: "Imported", reviewedAt: new Date() }).where(eq(squarespaceOrderReviews.id, review.id));
       await tx.insert(ingestionEvents).values({ source: "squarespace_sync", rawPayload: { order: remote, corrections: input }, status: "success", summary: `Imported Squarespace order ${remote.orderNumber}: ${count} mailing(s)` });

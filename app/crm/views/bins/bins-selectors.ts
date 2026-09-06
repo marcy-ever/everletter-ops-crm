@@ -59,6 +59,7 @@ export interface BinGroup extends WorkGroup<EffectiveMailing> {
 
 export interface BinsData {
   batchDate: string;
+  batchDates: string[];
   rows: BinRowData[];
   groups: BinGroup[];
   readyCount: number;
@@ -78,6 +79,7 @@ export function computeBinsData(
 ): BinsData {
   const mailings = effectiveMailings(seed, statusOverrides);
   const batchDate = selectedBatchDate(batchFilter, mailings, today);
+  const batchDates = Array.from(new Set(mailings.filter((mailing) => mailing.activeState === "Active" && mailing.shipDate).map((mailing) => mailing.shipDate))).sort();
   const filteredRows = mailings
     .filter((mailing) => mailing.activeState === "Active")
     .filter((mailing) => !batchDate || mailing.shipDate === batchDate)
@@ -117,5 +119,5 @@ export function computeBinsData(
   const missingEnvelopeCount = rows.filter((row) => row.status.label === "Missing Envelope").length;
   const missingLetterCount = rows.filter((row) => row.status.label === "Missing Letter").length;
 
-  return { batchDate, rows, groups, readyCount, needsCheckCount, missingEnvelopeCount, missingLetterCount };
+  return { batchDate, batchDates, rows, groups, readyCount, needsCheckCount, missingEnvelopeCount, missingLetterCount };
 }

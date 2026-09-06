@@ -153,6 +153,16 @@ test("envelopeGroups bucket by envelope stock, computed from baseRows (before th
   );
 });
 
+test("Legends has its own envelope stock and print group, separate from adult letters", () => {
+  const legends = mailing({ mailingId: "MAIL-LEGENDS", character: "Legends" });
+  const adult = mailing({ mailingId: "MAIL-ADULT", character: "Penelope", sourceRow: 3 });
+  const data = baseCall(seedWith({ mailings: [legends, adult] }));
+  assert.ok(data.envelopeGroups.some((group) => group.label === "Legends color envelope"));
+  assert.ok(data.envelopeGroups.some((group) => group.label === "Adult standard envelope"));
+  const legendsOnly = baseCall(seedWith({ mailings: [legends, adult] }), { printStockFilter: "Legends color envelope" });
+  assert.deepEqual(legendsOnly.rows.map((row) => row.mailing.mailingId), ["MAIL-LEGENDS"]);
+});
+
 test("an invalid printStockFilter (no longer matches any group) is silently corrected to 'all' - effectivePrintStockFilter, not the raw input, drives row filtering", () => {
   const m = mailing({ mailingId: "MAIL-1", character: "Ringo" });
   const seed = seedWith({ mailings: [m] });

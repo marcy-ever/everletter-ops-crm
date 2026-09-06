@@ -36,17 +36,24 @@ export async function GET() {
     const reviewRows = remoteIds.length ? await getDb().select({ id: squarespaceOrderReviews.squarespaceOrderId, status: squarespaceOrderReviews.status }).from(squarespaceOrderReviews).where(inArray(squarespaceOrderReviews.squarespaceOrderId, remoteIds)) : [];
     const reviewStatus = new Map(reviewRows.map((row) => [row.id, row.status as "Pending" | "Imported" | "Ignored"]));
     const orders: SquarespacePreviewOrder[] = remote.map((order) => {
-      const address = order.shippingAddress || order.billingAddress;
-      const customerName = [address?.firstName, address?.lastName].filter(Boolean).join(" ").trim();
+      const address = order.shippingAddress;
+      const billingAddress = order.billingAddress;
+      const customerName = [billingAddress?.firstName, billingAddress?.lastName].filter(Boolean).join(" ").trim()
+        || [address?.firstName, address?.lastName].filter(Boolean).join(" ").trim();
       const products = (order.lineItems || []).map((item) => `${item.quantity && item.quantity > 1 ? `${item.quantity}× ` : ""}${item.productName || "Unnamed item"}`);
       const selections = [...(order.formSubmission || []), ...(order.lineItems || []).flatMap((item) => [...(item.variantOptions || []), ...(item.customizations || [])])];
       const details = selections.map((item) => `${item.label || item.optionName || "Detail"}: ${displayValue(item.value)}`).filter((item) => !item.endsWith(": "));
       const selectedCharacter = selections.find((item) => `${item.label || item.optionName || ""}`.toLowerCase().includes("character"));
       const selectedPlan = selections.find((item) => `${item.label || item.optionName || ""}`.toLowerCase().includes("plan"));
       const selectedRecipient = selections.find((item) => /recipient name|^name$/i.test(`${item.label || item.optionName || ""}`.trim()));
+      const selectedGiftMessage = selections.find((item) => /gift message|special instructions?/i.test(`${item.label || item.optionName || ""}`.trim()));
       const character = normalizeCharacter(displayValue(selectedCharacter?.value) || products.join(" "));
       const plan = normalizePlan(displayValue(selectedPlan?.value) || products.join(" "));
       const recipientName = displayValue(selectedRecipient?.value);
+      const giftMessage = displayValue(selectedGiftMessage?.value);
+      const countryCode = String(address?.countryCode || "").trim();
+      const internationalCountry = countryCode && !/^(US|USA|UNITED STATES)$/i.test(countryCode) ? countryCode : "";
+      const mailingAddressLine2 = [address?.address2, internationalCountry].filter(Boolean).join(", ");
       const warnings: string[] = [];
       if (!order.customerEmail) warnings.push("Missing email");
       if (!customerName) warnings.push("Missing customer name");
@@ -61,7 +68,7 @@ export async function GET() {
       const id = String(order.id || order.orderNumber || "");
       const orderNumber = String(order.orderNumber || "Unknown");
       const status = reviewStatus.get(id);
-      return { id, orderNumber, createdOn: String(order.createdOn || ""), customerName: customerName || "Missing name", customerEmail: String(order.customerEmail || ""), shippingAddress: addressText(address), addressLine1: address?.address1 || "", addressLine2: address?.address2 || "", city: address?.city || "", addressState: address?.state || "", postalCode: address?.postalCode || "", fulfillmentStatus: order.fulfillmentStatus || "", testMode: Boolean(order.testmode), products, details, paymentState: String(order.paymentState || "Unknown"), recipientName, character, plan, existing: existing.has(orderNumber), subscriberId: existing.get(orderNumber), staged: status === "Pending", reviewStatus: status, warnings };
+      return { id, orderNumber, createdOn: String(order.createdOn || ""), customerName: customerName || "Missing name", customerEmail: String(order.customerEmail || ""), shippingAddress: addressText(address), addressLine1: address?.address1 || "", addressLine2: mailingAddressLine2, city: address?.city || "", addressState: address?.state || "", postalCode: address?.postalCode || "", fulfillmentStatus: order.fulfillmentStatus || "", testMode: Boolean(order.testmode), products, details, paymentState: String(order.paymentState || "Unknown"), recipientName, character, plan, giftMessage, existing: existing.has(orderNumber), subscriberId: existing.get(orderNumber), staged: status === "Pending", reviewStatus: status, warnings };
     });
     return Response.json({ orders, hasMore: Boolean(body.pagination?.hasNextPage) });
   } catch (error) {

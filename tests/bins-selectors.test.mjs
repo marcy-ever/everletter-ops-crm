@@ -53,6 +53,7 @@ test("computeBinsData excludes archived, Mailed, and non-matching-batch-date row
     data.rows.map((row) => row.mailing.mailingId),
     ["MAIL-ACTIVE"],
   );
+  assert.deepEqual(data.batchDates, ["2026-08-15"], "mailed rows still contribute their date so old photos can be uploaded");
 });
 
 test("computeBinsData only includes prepaid bulk plans (6/12-month), never Month-to-month or One-time", () => {

@@ -40,10 +40,11 @@ export interface BinsProps {
   uploadStates: Record<string, MailingProofUploadState>;
   proofs: MailingProof[];
   onBatchPhoto: (batchDate: string, envelopeCount: number, photo: File) => Promise<BatchPhotoResult>;
+  onBatchDateChange: (batchDate: string) => void;
 }
 
-export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart = () => {}, onNeedsSomething = () => {}, onCompleteWithPhoto = () => {}, onBatchPhoto = async () => ({ matched: 0, needsReview: 0 }), uploadStates = {}, proofs = [] }: BinsProps) {
-  const { batchDate, rows, groups, readyCount, needsCheckCount, missingEnvelopeCount, missingLetterCount } = data;
+export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart = () => {}, onNeedsSomething = () => {}, onCompleteWithPhoto = () => {}, onBatchPhoto = async () => ({ matched: 0, needsReview: 0 }), onBatchDateChange = () => {}, uploadStates = {}, proofs = [] }: BinsProps) {
+  const { batchDate, batchDates, rows, groups, readyCount, needsCheckCount, missingEnvelopeCount, missingLetterCount } = data;
 
   return (
     <section className="data-panel bins-panel" aria-label="Ashley bins">
@@ -55,7 +56,7 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart
         <span className="panel-count">{number(rows.length)} bin rows</span>
       </div>
 
-      <BatchPhotoUpload batchDate={batchDate} onBatchPhoto={onBatchPhoto} />
+      <BatchPhotoUpload batchDate={batchDate} batchDates={batchDates} onBatchDateChange={onBatchDateChange} onBatchPhoto={onBatchPhoto} />
 
       <div className="print-summary bin-summary">
         <div>
@@ -153,10 +154,14 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart
   );
 }
 
-function BatchPhotoUpload({ batchDate, onBatchPhoto }: { batchDate: string; onBatchPhoto: BinsProps["onBatchPhoto"] }) {
+function BatchPhotoUpload({ batchDate, batchDates, onBatchDateChange, onBatchPhoto }: { batchDate: string; batchDates: string[]; onBatchDateChange: BinsProps["onBatchDateChange"]; onBatchPhoto: BinsProps["onBatchPhoto"] }) {
   return (
     <section className="batch-photo-upload" aria-label="Batch envelope photo">
       <div><p className="section-label">Many envelopes at once</p><h4>Upload Batch Photo</h4><p>Lay out the envelopes, enter how many are visible, then take one clear photo.</p></div>
+      <label><span>Mailing date</span><select aria-label="Mailing date" value={batchDate} onChange={(event) => onBatchDateChange(event.target.value)}>
+        <option value="">Choose a mailing date</option>
+        {batchDates.map((date) => <option value={date} key={date}>{formatDate(date)}</option>)}
+      </select></label>
       <label><span>Envelopes visible</span><input type="number" min="1" max="30" defaultValue="8" data-batch-envelope-count /></label>
       <label className="complete-photo-button"><span>Take Batch Photo</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!batchDate} data-batch-mailing-photo onChange={async (event) => {
         const photo = event.currentTarget.files?.[0];

@@ -32,7 +32,7 @@ test("a confirmed Squarespace review creates the customer, subscription, order, 
   const db = getDb();
   await truncateAllTables(db);
   await db.delete(auditEvents);
-  const order = { id: "sq-import-1", orderNumber: "202", createdOn: "2026-09-01T12:00:00Z", customerName: "Taylor Customer", customerEmail: "Taylor@Example.test", shippingAddress: "10 Pine St", addressLine1: "10 Pine St", city: "Denver", addressState: "CO", postalCode: "80202", products: ["Letters from Ringo"], details: [], paymentState: "PAID", fulfillmentStatus: "PENDING", testMode: false, recipientName: "Jamie", character: "Ringo", plan: "6-month", existing: false, warnings: [] };
+  const order = { id: "sq-import-1", orderNumber: "202", createdOn: "2026-09-01T12:00:00Z", customerName: "Taylor Customer", customerEmail: "Taylor@Example.test", shippingAddress: "10 Pine St", addressLine1: "10 Pine St", city: "Denver", addressState: "CO", postalCode: "80202", products: ["Letters from Ringo"], details: [], paymentState: "PAID", fulfillmentStatus: "PENDING", testMode: false, recipientName: "Jamie", character: "Ringo", plan: "6-month", giftMessage: "Love from Grandma", existing: false, warnings: [] };
   const staged = await stage(new Request("http://localhost/api/squarespace-reviews", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ order }) }));
   const reviewId = (await staged.json()).reviewId;
   const input = { email: "taylor@example.test", customerName: "Taylor Customer", recipientName: "Jamie", addressLine1: "10 Pine St", addressLine2: "", city: "Denver", addressState: "CO", postalCode: "80202", character: "Ringo", plan: "6-month" };
@@ -42,6 +42,9 @@ test("a confirmed Squarespace review creates the customer, subscription, order, 
   assert.equal((await db.select().from(subscriptions)).length, 1);
   assert.equal((await db.select().from(orders)).length, 1);
   assert.equal((await db.select().from(mailings)).length, 12);
+  const importedMailings = await db.select().from(mailings);
+  assert.match(importedMailings.find((mailing) => mailing.letterNumber === 1).notes, /GIFT MESSAGE.*Love from Grandma/);
+  assert.doesNotMatch(importedMailings.find((mailing) => mailing.letterNumber === 2).notes, /GIFT MESSAGE/);
   assert.equal((await db.select().from(squarespaceOrderReviews))[0].status, "Imported");
   assert.equal((await db.select().from(auditEvents).where(eq(auditEvents.kind, "squarespaceImport"))).length, 1);
   const duplicate = await importReview(new Request("http://localhost/api/squarespace-reviews/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewId, input }) }));

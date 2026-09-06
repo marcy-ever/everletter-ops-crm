@@ -62,12 +62,12 @@ test("envelopeStockForCharacter gives each kid character its own colored envelop
   assert.equal(envelopeStockForCharacter("Ringo"), "Ringo color envelope");
   assert.equal(envelopeStockForCharacter("Oliver"), "Oliver color envelope");
   assert.equal(envelopeStockForCharacter("Harper"), "Harper color envelope");
+  assert.equal(envelopeStockForCharacter("Legends"), "Legends color envelope");
 });
 
 test("envelopeStockForCharacter falls back to the shared adult standard stock for every non-kid character", () => {
   assert.equal(envelopeStockForCharacter("Penelope"), "Adult standard envelope");
   assert.equal(envelopeStockForCharacter("Seraphine"), "Adult standard envelope");
-  assert.equal(envelopeStockForCharacter("Legends"), "Adult standard envelope");
   assert.equal(envelopeStockForCharacter("Marigold"), "Adult standard envelope");
   assert.equal(envelopeStockForCharacter(""), "Adult standard envelope");
 });
