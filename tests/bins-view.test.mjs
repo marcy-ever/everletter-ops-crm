@@ -51,9 +51,11 @@ test("Bins.tsx (default: batchFilter 'all', no query) renders markup equivalent 
   const seed = loadSeed();
   const actual = renderBinsHtml(seed);
   const expected = fs.readFileSync(path.join(ROOT, "tests/snapshots/bins.html"), "utf8");
-  const withoutIntentionalDatePicker = actual.replace(/<label><span>Mailing date<\/span><select[\s\S]*?<\/select><\/label>/, "");
+  const withoutIntentionalAdditions = actual
+    .replace(/<label><span>Mailing date<\/span><select[\s\S]*?<\/select><\/label>/, "")
+    .replace(/<label class="complete-photo-button secondary"><span>Upload Existing Photo<\/span><input[^>]*data-batch-mailing-upload[^>]*\/><\/label>/, "");
   assert.equal(
-    normalizeHtml(withoutIntentionalDatePicker),
+    normalizeHtml(withoutIntentionalAdditions),
     normalizeHtml(expected),
     "Bins.tsx's rendered output no longer matches tests/snapshots/bins.html under the normalized comparison - a real markup/attribute/text difference, not just whitespace (see tests/html-normalize.mjs).",
   );
@@ -69,6 +71,15 @@ test("the batch photo area lists every mailing date and changes to the selected 
   assert.deepEqual(picker.props.children[1].map((option) => option.props.value), data.batchDates);
   picker.props.onChange({ target: { value: data.batchDates[0] } });
   assert.equal(selected[0], data.batchDates[0]);
+});
+
+test("the batch photo area offers both camera capture and existing-photo upload", () => {
+  const element = Bins({ data: computeBinsData(loadSeed(), {}, new Set(), {}, "2026-08-15", "", "2026-09-06"), onFieldChange: NOOP, onBulkMark: NOOP, onPrint: NOOP });
+  const inputs = findAll(element, (node) => node.type === "input" && node.props.type === "file");
+  const camera = inputs.find((node) => node.props["data-batch-mailing-photo"] !== undefined);
+  const upload = inputs.find((node) => node.props["data-batch-mailing-upload"] !== undefined);
+  assert.equal(camera?.props.capture, "environment");
+  assert.equal(upload?.props.capture, undefined);
 });
 
 test("the real component output actually contains computed data, not just an empty-vs-empty pass", () => {

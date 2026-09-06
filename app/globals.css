@@ -2691,7 +2691,7 @@ select:focus-visible {
     display: none;
   }
 
-  #viewMount {
+  #reactViewMount {
     order: 2;
   }
 
