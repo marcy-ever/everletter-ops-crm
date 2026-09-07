@@ -35,6 +35,8 @@ import {
   effectiveMailings,
   groupedWork,
   includesText,
+  renewalCardDue,
+  giftMessageFromNotes,
   selectedBatchDate,
   type BinStatus,
   type EffectiveMailing,
@@ -50,6 +52,8 @@ export interface BinRowData {
   status: BinStatus;
   bin: string;
   fieldValues: { envelope: string; letter: string; location: string };
+  renewalCardDue: boolean;
+  giftMessage: string;
 }
 
 export interface BinGroup extends WorkGroup<EffectiveMailing> {
@@ -99,6 +103,8 @@ export function computeBinsData(
     mailing,
     status: binStatus(mailing, seed, reviewed, componentOverrides),
     bin: storageBinForMailing(mailing),
+    renewalCardDue: renewalCardDue(mailing, seed),
+    giftMessage: giftMessageFromNotes(mailing.notes),
     fieldValues: {
       envelope: componentStatus(mailing, "envelope", seed, reviewed, componentOverrides),
       letter: componentStatus(mailing, "letter", seed, reviewed, componentOverrides),

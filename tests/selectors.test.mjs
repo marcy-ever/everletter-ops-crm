@@ -12,6 +12,7 @@ import {
   getRecipient,
   getRecipientName,
   getSubscriberSubscriptions,
+  giftMessageFromNotes,
   includesText,
   isExceptionReviewed,
   nextBatchDate,
@@ -20,6 +21,7 @@ import {
   pastBatchDates,
   qaIsReady,
   qaNeedsAttention,
+  renewalCardDue,
   selectedBatchDate,
 } from "../lib/client/selectors.ts";
 import { exceptionReviewKey, mailingKey } from "../lib/domain/keys.ts";
@@ -341,6 +343,20 @@ test("includesText matches case-insensitively against any of the given values", 
 test("includesText treats a blank/whitespace-only query as matching everything", () => {
   assert.equal(includesText(["Marley", "Ringo"], ""), true);
   assert.equal(includesText(["Marley", "Ringo"], "   "), true);
+});
+
+test("renewalCardDue flags only the final two letters of a prepaid subscription", () => {
+  const subscriptions = [{ subscriptionId: "sn1", plan: "12-month", generatedMailings: 20 }];
+  const seed = seedWith({ subscriptions });
+  assert.equal(renewalCardDue(mailing({ plan: "12-month", letterNumber: "18" }), seed), false);
+  assert.equal(renewalCardDue(mailing({ plan: "12-month", letterNumber: "19" }), seed), true);
+  assert.equal(renewalCardDue(mailing({ plan: "12-month", letterNumber: "20" }), seed), true);
+  assert.equal(renewalCardDue(mailing({ plan: "Month-to-month", letterNumber: "2" }), seed), false);
+});
+
+test("giftMessageFromNotes extracts the handwritten Letter #1 reminder", () => {
+  assert.equal(giftMessageFromNotes("Imported from Squarespace order #2987; GIFT MESSAGE — handwrite in Letter 1: Love from Grandma"), "Love from Grandma");
+  assert.equal(giftMessageFromNotes("Imported from Squarespace order #2988"), "");
 });
 
 test("packetRows excludes Archived, Mailed, and non-matching-batch-date rows", () => {

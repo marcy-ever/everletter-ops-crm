@@ -33,6 +33,7 @@ import { MAILING_STATUSES } from "@/lib/domain/mailing-rules";
 import type { CustomerActivityEvent, CustomerActivityState } from "@/lib/client/customer-activity";
 import type { MailingProof } from "@/lib/client/mailing-proofs";
 import ProofGallery from "../../components/ProofGallery";
+import { EVERLETTER_CHARACTERS } from "@/lib/domain/characters";
 import { statusClass, number } from "../../format";
 import type { ProfileMailingRow, SubscriberProfileData } from "./subscribers-selectors";
 
@@ -50,6 +51,7 @@ export interface SubscriberProfileProps {
   onCustomerStatusChange: (active: boolean) => void;
   selectedSubscriptionId: string;
   onSubscriptionChange: (subscriptionId: string) => void;
+  onCharacterChange: (subscriptionId: string, character: string) => Promise<void>;
   activity: CustomerActivityState | null;
   onRefreshActivity: () => void;
   proofs: MailingProof[];
@@ -65,6 +67,7 @@ function activityDescription(event: CustomerActivityEvent): string {
     subscriberEmail: "Email updated",
     mailingLetterNumber: "Letter number changed",
     mailingShipDate: "Ship date changed",
+    subscriptionCharacter: "Character changed",
   };
   return labels[event.kind] ?? "Customer record updated";
 }
@@ -117,7 +120,7 @@ function CustomerActivity({ activity, onRefresh }: { activity: CustomerActivityS
   );
 }
 
-export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange, onLetterNumberChange, onShipDateChange, onMailingStatusChange, onCustomerStatusChange, selectedSubscriptionId, onSubscriptionChange, activity, onRefreshActivity, proofs }: SubscriberProfileProps) {
+export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange, onLetterNumberChange, onShipDateChange, onMailingStatusChange, onCustomerStatusChange, selectedSubscriptionId, onSubscriptionChange, onCharacterChange, activity, onRefreshActivity, proofs }: SubscriberProfileProps) {
   const { subscriber, allRows, openRows } = data;
   const isActive = subscriber.status === "Active";
   const visibleRows = selectedSubscriptionId === "all" ? allRows : allRows.filter((mailing) => mailing.subscriptionId === selectedSubscriptionId);
@@ -133,6 +136,9 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
       const latestRenewal = renewalDates[renewalDates.length - 1] ?? "";
       return { ...choice, last: mailed[mailed.length - 1] ?? null, next, latestRenewal };
     });
+  const changeableSubscriptionId = selectedSubscriptionId !== "all"
+    ? selectedSubscriptionId
+    : data.subscriptionChoices.length === 1 ? data.subscriptionChoices[0].subscriptionId : "";
   return (
     <aside className="subscriber-profile" aria-label="Subscriber profile">
       <div className="subscriber-profile-head">
@@ -202,6 +208,33 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
           ))}
         </div>
       ) : null}
+      {changeableSubscriptionId ? (() => {
+        const selectedChoice = data.subscriptionChoices.find((choice) => choice.subscriptionId === changeableSubscriptionId);
+        if (!selectedChoice) return null;
+        return (
+          <details className="profile-character-change">
+            <summary className="profile-button">Change Character</summary>
+            <form onSubmit={async (event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              const character = String(new FormData(form).get("character") ?? "");
+              if (!character || character === selectedChoice.character) return;
+              const button = form.querySelector("button[type=submit]") as HTMLButtonElement | null;
+              if (button) button.disabled = true;
+              try { await onCharacterChange(selectedChoice.subscriptionId, character); }
+              catch (error) {
+                if (button) button.disabled = false;
+                window.alert(error instanceof Error ? error.message : "Could not change this character.");
+              }
+            }}>
+              <strong>Change from {selectedChoice.character}</strong>
+              <label>New character<select name="character" defaultValue=""> <option value="" disabled>Choose character…</option>{EVERLETTER_CHARACTERS.filter((item) => item !== selectedChoice.character).map((item) => <option key={item}>{item}</option>)}</select></label>
+              <p>The old mailed letters stay in history. Upcoming mailings move to the new character and restart at Letter #1.</p>
+              <div><button type="button" className="profile-button" onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}>Cancel</button><button type="submit" className="profile-button customer-status-confirm-button">Confirm Change</button></div>
+            </form>
+          </details>
+        );
+      })() : null}
       <section className="profile-progress" aria-label="Current mailing progress">
         <div className="profile-progress-head">
           <div>
@@ -301,6 +334,8 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
                       {MAILING_STATUSES.map((status) => <option value={status} key={status}>{status}</option>)}
                     </select>
                     {mailing.reviewReasons.map((reason) => <small className="mailing-review-reason" key={reason}>{reason}</small>)}
+                    {mailing.renewalCardDue ? <span className="flag flag-renewal">Add renewal card</span> : null}
+                    {mailing.giftMessage ? <span className="flag flag-gift">Handwrite gift message</span> : null}
                   </td>
                   <td>
                     <input
@@ -354,6 +389,8 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
                 </div>
                 <span className={`pill status-${statusClass(mailing.status)}`}>{mailing.status}</span>
               </div>
+              {mailing.renewalCardDue ? <strong className="renewal-card-alert">Add renewal card to this envelope</strong> : null}
+              {mailing.giftMessage ? <div className="gift-message-alert"><strong>Handwrite in Letter #1</strong><span>{mailing.giftMessage}</span></div> : null}
               <dl>
                 <div>
                   <dt>Ship Date</dt>

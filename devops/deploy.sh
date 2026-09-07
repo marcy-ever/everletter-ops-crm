@@ -87,6 +87,10 @@ else
     $COMPOSE up -d app
 fi
 
+# Existing named volumes keep their original ownership across deploys.
+# Repair it explicitly so the non-root app user can always save photos.
+$COMPOSE run --rm --user root app sh -c "mkdir -p /data/mailing-proofs && chown -R 1001:1001 /data/mailing-proofs"
+
 # `up -d` returning zero only means Docker accepted the container, not
 # that Next booted or can reach Postgres - devops/docker-compose.app.yml's
 # healthcheck (app/api/health/route.ts) is the actual proof, so wait for

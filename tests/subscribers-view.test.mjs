@@ -46,6 +46,13 @@ function loadSeed() {
 
 const NOOP = () => {};
 
+// The golden snapshots predate the intentional character-change control.
+// Keep them pinning the rest of the profile while the focused test below
+// owns this new workflow's markup.
+function normalizeSubscribersHtml(html) {
+  return normalizeHtml(html.replace(/<details class="profile-character-change">.*?<\/details>/g, ""));
+}
+
 function renderSubscribersHtml(seed, selectedSubscriberId) {
   const rows = computeSubscriberRows(seed, "");
   const selected = selectSubscriber(rows, selectedSubscriberId);
@@ -71,8 +78,8 @@ test("Subscribers.tsx (default: no prior selection, falls back to the first row)
   const actual = renderSubscribersHtml(seed, "");
   const expected = fs.readFileSync(path.join(ROOT, "tests/snapshots/subscribers.html"), "utf8");
   assert.equal(
-    normalizeHtml(actual),
-    normalizeHtml(expected),
+    normalizeSubscribersHtml(actual),
+    normalizeSubscribersHtml(expected),
     "Subscribers.tsx's rendered output no longer matches tests/snapshots/subscribers.html under the normalized comparison - a real markup/attribute/text difference, not just whitespace (see tests/html-normalize.mjs).",
   );
 });
@@ -84,8 +91,8 @@ test("Subscribers.tsx (Ava explicitly selected) renders markup equivalent to the
   const actual = renderSubscribersHtml(seed, ava.subscriberId);
   const expected = fs.readFileSync(path.join(ROOT, "tests/snapshots/subscribers-selected.html"), "utf8");
   assert.equal(
-    normalizeHtml(actual),
-    normalizeHtml(expected),
+    normalizeSubscribersHtml(actual),
+    normalizeSubscribersHtml(expected),
     "Subscribers.tsx's Ava-selected rendered output no longer matches tests/snapshots/subscribers-selected.html under the normalized comparison.",
   );
 });
@@ -111,6 +118,22 @@ test("month-to-month profiles show their renewal day beside mailing progress", (
   assert.match(html, /Monthly renewal/);
   assert.match(html, /Every \d+(?:st|nd|rd|th)/);
   assert.match(html, /Latest:/);
+});
+
+test("a single subscription offers a confirmed character change that explains the Letter #1 restart", () => {
+  const seed = loadSeed();
+  const rows = computeSubscriberRows(seed, "");
+  const selected = rows.find((subscriber) => seed.subscriptions.filter((item) => item.subscriberId === subscriber.subscriberId).length === 1);
+  assert.ok(selected);
+  const profile = computeSubscriberProfile(seed, {}, new Set(), {}, selected);
+  const html = renderToStaticMarkup(React.createElement(Subscribers, {
+    rows, selected, onSelect: NOOP, profile,
+    onPrintAllEnvelopes: NOOP, onPrintEnvelope: NOOP, onMarkPrinted: NOOP,
+    onMarkAshley: NOOP, onNeedsDoneChange: NOOP, onCustomerStatusChange: NOOP,
+  }));
+  assert.match(html, /Change Character/);
+  assert.match(html, /restart at Letter #1/);
+  assert.match(html, /Confirm Change/);
 });
 
 test("customer activity shows a clear description, before-and-after values, and who made the change", () => {

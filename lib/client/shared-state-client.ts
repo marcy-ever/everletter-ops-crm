@@ -114,6 +114,15 @@ export function saveSharedState(kind: string, key: string, value: string, failur
     });
 }
 
+export async function changeSubscriptionCharacter(subscriptionId: string, character: string): Promise<void> {
+  const response = await fetch("/api/shared-state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "subscriptionCharacter", key: subscriptionId, value: character }),
+  });
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Could not change this character."));
+}
+
 export interface SharedDatasetPayload {
   seed: Dataset;
   sourceName: string;

@@ -38,6 +38,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Photo uploads run as `nextjs`; seed the named volume mountpoint with
+# matching ownership so both fresh installs and local full-stack runs can
+# write mailing proofs.
+RUN mkdir -p /data/mailing-proofs && chown -R nextjs:nodejs /data/mailing-proofs
+
 # devops/migrate/migrate.mjs (devops.sh migrate, devops/deploy.sh) - lets a
 # migration run from this image itself, with no Node toolchain needed on the
 # host. Next's build bundles/inlines drizzle-orm directly into the compiled

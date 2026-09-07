@@ -13,7 +13,7 @@
  */
 
 import type { Dataset, DatasetSubscriber } from "@/lib/domain/dataset";
-import { activeExceptions, componentStatus, effectiveMailings, includesText, type EffectiveMailing } from "@/lib/client/selectors";
+import { activeExceptions, componentStatus, effectiveMailings, giftMessageFromNotes, includesText, renewalCardDue, type EffectiveMailing } from "@/lib/client/selectors";
 import { envelopeQuantityForMailing, numericLetter } from "@/lib/domain/plans";
 
 // Same one-line rule as legacy's own printedEnvelopeStatusForMailing()
@@ -59,6 +59,8 @@ export interface ProfileMailingRow extends EffectiveMailing {
   envelopeQuantity: number;
   needsDone: string;
   reviewReasons: string[];
+  renewalCardDue: boolean;
+  giftMessage: string;
 }
 
 export interface SubscriberProfileData {
@@ -90,6 +92,8 @@ export function computeSubscriberProfile(
       envelopeQuantity: envelopeQuantityForMailing(mailing),
       needsDone: componentStatus(mailing, "needsDone", seed, reviewed, componentOverrides),
       reviewReasons: customerExceptions.filter((item) => item.mailingId === mailing.mailingId).map((item) => item.reason),
+      renewalCardDue: renewalCardDue(mailing, seed),
+      giftMessage: giftMessageFromNotes(mailing.notes),
     }));
   const openRows = allRows.filter((mailing) => mailing.status !== "Mailed" && mailing.activeState === "Active");
   const totalEnvelopeCount = openRows.reduce((total, mailing) => total + mailing.envelopeQuantity, 0);

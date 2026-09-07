@@ -39,6 +39,7 @@ import { MAILING_STATUSES } from "./domain/mailing-rules";
 import { COMPONENT_FIELD_OPTIONS } from "./domain/component-fields";
 import { parseComponentKey, parseExceptionReviewKey, parseMailingKey } from "./domain/keys";
 import { mailings } from "@/db/schema/mailings";
+import { EVERLETTER_CHARACTERS } from "./domain/characters";
 import type { Db, Seed } from "./write-to-tables";
 import { estimateKeptMailingIds } from "./write-to-tables";
 
@@ -86,6 +87,13 @@ export function validateSubscriberEmailPayload(key: string, value: string): void
   if (!key.trim()) throw new SharedStateValidationError("Subscriber ID is required.");
   if (value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
     throw new SharedStateValidationError("Enter a valid customer email address.");
+  }
+}
+
+export function validateSubscriptionCharacterPayload(key: string, value: string): void {
+  if (!key.trim()) throw new SharedStateValidationError("Subscription ID is required.");
+  if (!(EVERLETTER_CHARACTERS as readonly string[]).includes(value)) {
+    throw new SharedStateValidationError("Choose a valid Everletter character.");
   }
 }
 

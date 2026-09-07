@@ -12,6 +12,7 @@ import {
   writeSubscriberEmail,
   writeMailingLetterNumber,
   writeMailingShipDate,
+  writeSubscriptionCharacter,
 } from "@/lib/write-to-tables";
 import { buildDatasetFromTables } from "@/lib/build-dataset-from-tables";
 import { fetchComponentOverrides, fetchReviewedExceptionKeys } from "@/lib/build-overrides-from-tables";
@@ -29,9 +30,10 @@ import {
   validateSubscriberEmailPayload,
   validateMailingLetterNumberPayload,
   validateMailingShipDatePayload,
+  validateSubscriptionCharacterPayload,
 } from "@/lib/validate-shared-state";
 
-type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "subscriberStatus" | "subscriberEmail" | "mailingLetterNumber" | "mailingShipDate" | "crmDataset";
+type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "subscriberStatus" | "subscriberEmail" | "subscriptionCharacter" | "mailingLetterNumber" | "mailingShipDate" | "crmDataset";
 
 // What actor_email gets when a request reaches this handler with no
 // session. proxy.ts gates every route this one is reachable through, so a
@@ -53,6 +55,7 @@ const allowedKinds = new Set<StateKind>([
   "reviewedException",
   "subscriberStatus",
   "subscriberEmail",
+  "subscriptionCharacter",
   "mailingLetterNumber",
   "mailingShipDate",
   "crmDataset",
@@ -185,6 +188,8 @@ export async function POST(request: Request) {
       validateSubscriberStatusPayload(key, value);
     } else if (kind === "subscriberEmail") {
       validateSubscriberEmailPayload(key, value);
+    } else if (kind === "subscriptionCharacter") {
+      validateSubscriptionCharacterPayload(key, value);
     } else if (kind === "mailingLetterNumber") {
       validateMailingLetterNumberPayload(key, value);
     } else if (kind === "mailingShipDate") {
@@ -247,6 +252,9 @@ export async function POST(request: Request) {
         }
       } else if (kind === "subscriberEmail") {
         const outcome = await writeSubscriberEmail(key, value, tx);
+        if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+      } else if (kind === "subscriptionCharacter") {
+        const outcome = await writeSubscriptionCharacter(key, value, tx);
         if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind, itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
       } else if (kind === "mailingLetterNumber") {
         const outcome = await writeMailingLetterNumber(key, value, tx);

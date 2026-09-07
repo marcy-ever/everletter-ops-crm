@@ -38,6 +38,7 @@ export interface SubscribersProps {
   onCustomerStatusChange: SubscriberProfileProps["onCustomerStatusChange"];
   selectedSubscriptionId: SubscriberProfileProps["selectedSubscriptionId"];
   onSubscriptionChange: SubscriberProfileProps["onSubscriptionChange"];
+  onCharacterChange?: SubscriberProfileProps["onCharacterChange"];
   activity?: SubscriberProfileProps["activity"];
   onRefreshActivity?: SubscriberProfileProps["onRefreshActivity"];
   proofs?: SubscriberProfileProps["proofs"];
@@ -45,14 +46,14 @@ export interface SubscribersProps {
   onBack?: () => void;
 }
 
-export default function Subscribers({ rows, selected, onSelect, profile, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange = () => {}, onLetterNumberChange = () => {}, onShipDateChange = () => {}, onMailingStatusChange = () => {}, onCustomerStatusChange, selectedSubscriptionId = "all", onSubscriptionChange = () => {}, activity = null, onRefreshActivity = () => {}, proofs = [], standaloneProfile = false, onBack }: SubscribersProps) {
+export default function Subscribers({ rows, selected, onSelect, profile, onPrintAllEnvelopes, onPrintEnvelope, onMarkPrinted, onMarkAshley, onNeedsDoneChange, onEmailChange = () => {}, onLetterNumberChange = () => {}, onShipDateChange = () => {}, onMailingStatusChange = () => {}, onCustomerStatusChange, selectedSubscriptionId = "all", onSubscriptionChange = () => {}, onCharacterChange = async () => {}, activity = null, onRefreshActivity = () => {}, proofs = [], standaloneProfile = false, onBack }: SubscribersProps) {
   if (standaloneProfile && profile) {
     return (
       <section className="data-panel subscriber-profile-page" aria-label="Customer profile page">
         <button type="button" className="profile-button profile-back-button" onClick={onBack}>
           Back to Subscribers
         </button>
-        <SubscriberProfile data={profile} onPrintAllEnvelopes={onPrintAllEnvelopes} onPrintEnvelope={onPrintEnvelope} onMarkPrinted={onMarkPrinted} onMarkAshley={onMarkAshley} onNeedsDoneChange={onNeedsDoneChange} onEmailChange={onEmailChange} onLetterNumberChange={onLetterNumberChange} onShipDateChange={onShipDateChange} onMailingStatusChange={onMailingStatusChange} onCustomerStatusChange={onCustomerStatusChange} selectedSubscriptionId={selectedSubscriptionId} onSubscriptionChange={onSubscriptionChange} activity={activity} onRefreshActivity={onRefreshActivity} proofs={proofs} />
+        <SubscriberProfile data={profile} onPrintAllEnvelopes={onPrintAllEnvelopes} onPrintEnvelope={onPrintEnvelope} onMarkPrinted={onMarkPrinted} onMarkAshley={onMarkAshley} onNeedsDoneChange={onNeedsDoneChange} onEmailChange={onEmailChange} onLetterNumberChange={onLetterNumberChange} onShipDateChange={onShipDateChange} onMailingStatusChange={onMailingStatusChange} onCustomerStatusChange={onCustomerStatusChange} selectedSubscriptionId={selectedSubscriptionId} onSubscriptionChange={onSubscriptionChange} onCharacterChange={onCharacterChange} activity={activity} onRefreshActivity={onRefreshActivity} proofs={proofs} />
       </section>
     );
   }
@@ -73,7 +74,7 @@ export default function Subscribers({ rows, selected, onSelect, profile, onPrint
           ))}
         </div>
         {profile ? (
-          <SubscriberProfile data={profile} onPrintAllEnvelopes={onPrintAllEnvelopes} onPrintEnvelope={onPrintEnvelope} onMarkPrinted={onMarkPrinted} onMarkAshley={onMarkAshley} onNeedsDoneChange={onNeedsDoneChange} onEmailChange={onEmailChange} onLetterNumberChange={onLetterNumberChange} onShipDateChange={onShipDateChange} onMailingStatusChange={onMailingStatusChange} onCustomerStatusChange={onCustomerStatusChange} selectedSubscriptionId={selectedSubscriptionId} onSubscriptionChange={onSubscriptionChange} activity={activity} onRefreshActivity={onRefreshActivity} proofs={proofs} />
+          <SubscriberProfile data={profile} onPrintAllEnvelopes={onPrintAllEnvelopes} onPrintEnvelope={onPrintEnvelope} onMarkPrinted={onMarkPrinted} onMarkAshley={onMarkAshley} onNeedsDoneChange={onNeedsDoneChange} onEmailChange={onEmailChange} onLetterNumberChange={onLetterNumberChange} onShipDateChange={onShipDateChange} onMailingStatusChange={onMailingStatusChange} onCustomerStatusChange={onCustomerStatusChange} selectedSubscriptionId={selectedSubscriptionId} onSubscriptionChange={onSubscriptionChange} onCharacterChange={onCharacterChange} activity={activity} onRefreshActivity={onRefreshActivity} proofs={proofs} />
         ) : (
           <div className="empty-state">No subscriber selected.</div>
         )}

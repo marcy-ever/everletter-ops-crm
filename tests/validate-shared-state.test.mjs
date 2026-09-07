@@ -14,6 +14,7 @@ import {
   validateSubscriberEmailPayload,
   validateMailingLetterNumberPayload,
   validateMailingShipDatePayload,
+  validateSubscriptionCharacterPayload,
 } from "../lib/validate-shared-state.ts";
 import { estimateKeptMailingIds } from "../lib/write-to-tables.ts";
 
@@ -69,6 +70,12 @@ test("validateComponentStatusPayload rejects an unknown field", () => {
 test("validateComponentStatusPayload rejects a value that's valid for a different field but not this one", () => {
   // "Active" is a real payment value but not a real envelope value.
   assert.throws(() => validateComponentStatusPayload("MAIL-X::1::envelope", "Active"), SharedStateValidationError);
+});
+
+test("validateSubscriptionCharacterPayload accepts known characters and rejects unknown ones", () => {
+  assert.doesNotThrow(() => validateSubscriptionCharacterPayload("PLAN-1", "Legends"));
+  assert.throws(() => validateSubscriptionCharacterPayload("PLAN-1", "Batman"), SharedStateValidationError);
+  assert.throws(() => validateSubscriptionCharacterPayload("", "Ringo"), SharedStateValidationError);
 });
 
 test("validateSubscriberStatusPayload only accepts an ID with Active or Inactive", () => {

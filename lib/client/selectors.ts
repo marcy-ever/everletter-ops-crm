@@ -82,6 +82,17 @@ export function includesText(values: unknown[], query: string): boolean {
   return values.some((value) => String(value ?? "").toLowerCase().includes(needle));
 }
 
+export function renewalCardDue(mailing: DatasetMailing, seed: Dataset): boolean {
+  if (printModeForPlan(mailing.plan) !== "Prepaid bulk") return false;
+  const subscription = seed.subscriptions.find((item) => item.subscriptionId === mailing.subscriptionId);
+  const letter = Number(mailing.letterNumber);
+  return Boolean(subscription && Number.isFinite(letter) && subscription.generatedMailings >= 2 && letter >= subscription.generatedMailings - 1);
+}
+
+export function giftMessageFromNotes(notes: string): string {
+  return notes.match(/GIFT MESSAGE\s*[—-]\s*handwrite in Letter 1:\s*(.+)$/i)?.[1]?.trim() ?? "";
+}
+
 export function isExceptionReviewed(item: DatasetException, reviewed: Set<string>): boolean {
   return reviewed.has(exceptionReviewKey(item)) || reviewed.has(item.exceptionId);
 }

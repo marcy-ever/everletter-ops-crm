@@ -80,6 +80,9 @@ export async function POST(request: Request) {
   } catch (error) {
     if (storedPath) await rm(storedPath, { force: true }).catch(() => {});
     console.error(error);
+    if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "EACCES") {
+      return Response.json({ error: "The server photo folder is not writable. Please contact support." }, { status: 500 });
+    }
     return Response.json({ error: "Could not process this batch photo." }, { status: 500 });
   }
 }

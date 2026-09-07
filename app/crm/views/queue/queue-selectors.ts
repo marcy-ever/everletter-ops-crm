@@ -18,11 +18,11 @@
  */
 
 import type { Dataset } from "@/lib/domain/dataset";
-import { activeExceptions, effectiveMailings, includesText, selectedBatchDate, type EffectiveMailing } from "@/lib/client/selectors";
+import { activeExceptions, effectiveMailings, giftMessageFromNotes, includesText, renewalCardDue, selectedBatchDate, type EffectiveMailing } from "@/lib/client/selectors";
 import { isOpenStatus } from "@/lib/domain/mailing-rules";
 
 export interface QueueData {
-  rows: EffectiveMailing[];
+  rows: Array<EffectiveMailing & { renewalCardDue: boolean; giftMessage: string }>;
   batchDate: string;
 }
 
@@ -52,7 +52,8 @@ export function computeQueueRows(
       return new Set(statusFilter.split("|").filter(Boolean)).has(mailing.status);
     })
     .filter((mailing) => includesText([mailing.recipientName, mailing.email, mailing.character, mailing.plan, mailing.status, mailing.mailingId, mailing.orderId], query))
-    .slice(0, 120);
+    .slice(0, 120)
+    .map((mailing) => ({ ...mailing, renewalCardDue: renewalCardDue(mailing, seed), giftMessage: giftMessageFromNotes(mailing.notes) }));
 
   return { rows, batchDate };
 }

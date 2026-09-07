@@ -6,7 +6,7 @@ import { isOpenStatus, todayIso } from "@/lib/domain/mailing-rules";
 import { effectiveMailings, type EffectiveMailing } from "@/lib/client/selectors";
 import { saveReviewedExceptions } from "@/lib/client/local-overrides";
 import { saveStatusOverrides } from "@/lib/client/local-overrides";
-import { saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
+import { changeSubscriptionCharacter, saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import { loadCustomerActivity } from "@/lib/client/customer-activity";
 import { loadMailingProofs, uploadMailingProof } from "@/lib/client/mailing-proofs";
 import { confirmBatchPhotoReview, loadBatchPhotoReviews, uploadBatchMailingPhoto } from "@/lib/client/batch-mailing-photos";
@@ -488,6 +488,10 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           });
           saveSharedState("subscriberEmail", subscriberId, normalizedEmail, saveFailures, staleness);
           notifyViewChanged();
+        }}
+        onCharacterChange={async (subscriptionId, character) => {
+          await changeSubscriptionCharacter(subscriptionId, character);
+          window.location.reload();
         }}
         onLetterNumberChange={(mailing, value) => {
           const matching = state.seed!.mailings.find((item) => item.mailingId === mailing.mailingId && item.sourceRow === mailing.sourceRow);

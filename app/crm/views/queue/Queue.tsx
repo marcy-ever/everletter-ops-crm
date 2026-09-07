@@ -59,8 +59,9 @@ export default function Queue({ data, onStatusChange, onRecipientClick }: QueueP
   );
 }
 
-function QueueRow({ mailing, onStatusChange, onRecipientClick }: { mailing: EffectiveMailing; onStatusChange: QueueProps["onStatusChange"]; onRecipientClick: QueueProps["onRecipientClick"] }) {
+function QueueRow({ mailing, onStatusChange, onRecipientClick }: { mailing: QueueData["rows"][number]; onStatusChange: QueueProps["onStatusChange"]; onRecipientClick: QueueProps["onRecipientClick"] }) {
   return (
+    <>
     <tr>
       <td>{formatDate(mailing.shipDate)}</td>
       <td>
@@ -90,8 +91,12 @@ function QueueRow({ mailing, onStatusChange, onRecipientClick }: { mailing: Effe
           {mailing.overdue && <span className="flag flag-rose">Overdue</span>}
           {mailing.dueNext14Days && <span className="flag flag-amber">Next batch</span>}
           {!mailing.shipDate && <span className="flag flag-rose">No date</span>}
+          {mailing.renewalCardDue && <span className="flag flag-renewal">Add renewal card</span>}
+          {mailing.giftMessage && <span className="flag flag-gift">Handwrite gift message</span>}
         </div>
       </td>
     </tr>
+    {mailing.giftMessage ? <tr className="gift-message-row"><td colSpan={8}><strong>Gift message for Letter #1:</strong> {mailing.giftMessage}</td></tr> : null}
+    </>
   );
 }

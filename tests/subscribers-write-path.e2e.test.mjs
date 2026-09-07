@@ -279,3 +279,39 @@ test("Print Envelope calls envelopePrintRows()/openEnvelopePrint() (relocated to
   assert.equal(expectedRows.length, 1, "fixture invariant: the mailing's default envelope status should be Need Print");
   assert.match(written, /Test Recipient T3/);
 });
+
+test("Change Character preserves mailed history and moves upcoming mailings to the new character starting at Letter 1", { skip }, async () => {
+  const db = await freshDb();
+  const { POST } = await loadRoute();
+  const { subscriptions } = await import("../db/schema/subscriptions");
+  const { mailings } = await import("../db/schema/mailings");
+  const { auditEvents } = await import("../db/schema/audit_events");
+
+  const mailed = buildMailing(41, { subscriberId: "SUB-SWITCH", subscriptionId: "PLAN-SWITCH", recipientId: "REC-SWITCH", recipientName: "Switch Test", letterNumber: 4, status: "Mailed", shipDate: "2026-08-15" });
+  const upcoming = buildMailing(42, { subscriberId: "SUB-SWITCH", subscriptionId: "PLAN-SWITCH", recipientId: "REC-SWITCH", recipientName: "Switch Test", letterNumber: 5, shipDate: "2026-09-01" });
+  const seed = buildSeed([mailed, upcoming], { [mailed.mailingId]: "12-month", [upcoming.mailingId]: "12-month" });
+  await importSeed(POST, seed, "character-switch.xlsx");
+
+  const response = await POST(postRequest(JSON.stringify({ kind: "subscriptionCharacter", key: "PLAN-SWITCH", value: "Legends" })));
+  assert.equal(response.status, 200, JSON.stringify(await response.json().catch(() => null)));
+
+  const subscriptionRows = await db.select().from(subscriptions);
+  const oldSubscription = subscriptionRows.find((row) => row.id === "PLAN-SWITCH");
+  const newSubscription = subscriptionRows.find((row) => row.character === "Legends");
+  assert.equal(oldSubscription.status, "Archived");
+  assert.equal(newSubscription.status, "Active");
+  assert.equal(newSubscription.totalLettersExpected, 1, "the new character only carries the remaining paid letters");
+
+  const mailingRows = await db.select().from(mailings);
+  const mailedRow = mailingRows.find((row) => row.status === "Mailed");
+  const upcomingRow = mailingRows.find((row) => row.scheduledDate === "2026-09-01");
+  assert.equal(mailedRow.subscriptionId, "PLAN-SWITCH", "mailed history stays on the old character");
+  assert.equal(upcomingRow.subscriptionId, newSubscription.id);
+  assert.equal(upcomingRow.letterNumber, 1);
+  assert.equal(upcomingRow.status, "To Prepare");
+
+  const auditRows = await db.select().from(auditEvents).where(eq(auditEvents.kind, "subscriptionCharacter"));
+  assert.equal(auditRows.length, 1);
+  assert.equal(auditRows[0].previousValue, "Marley");
+  assert.match(auditRows[0].newValue, /Legends.*letter 1/i);
+});

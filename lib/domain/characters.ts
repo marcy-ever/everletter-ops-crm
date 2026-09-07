@@ -10,6 +10,8 @@
 
 import { titleCase } from "./format";
 
+export const EVERLETTER_CHARACTERS = ["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends"] as const;
+
 // Recognizes loose spreadsheet phrasing (character names embedded in longer
 // strings, e.g. "Marley - Kid") rather than requiring an exact match - real
 // spreadsheet data isn't consistent about this. "old marley" is checked

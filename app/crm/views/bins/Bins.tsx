@@ -225,6 +225,8 @@ function BinTableRow({ row, onFieldChange, onCompleteWithPhoto, uploadState }: {
       <td>{mailing.letterNumber}</td>
       <td>
         <span className={`pill status-${statusClass(status.label)}`}>{status.label}</span>
+        {row.renewalCardDue ? <span className="flag flag-renewal">Add renewal card</span> : null}
+        {row.giftMessage ? <span className="flag flag-gift">Handwrite gift message</span> : null}
         <span>{status.detail}</span>
       </td>
       <td>
@@ -292,6 +294,8 @@ function BinMobileCard({ row, isNext, onStart, onNeedsSomething, onCompleteWithP
     <article className={`mobile-action-card bin-photo-card ${isNext ? "ashley-up-next" : ""}`}>
       {isNext ? <span className="ashley-next-label">Up next</span> : null}
       <div className="mobile-card-head"><div><strong>{row.mailing.recipientName}</strong><span>{row.mailing.character} · Letter {row.mailing.letterNumber}</span></div><span className={`pill status-${statusClass(row.status.label)}`}>{row.status.label}</span></div>
+      {row.renewalCardDue ? <strong className="renewal-card-alert">Add renewal card to this envelope</strong> : null}
+      {row.giftMessage ? <div className="gift-message-alert"><strong>Handwrite in Letter #1</strong><span>{row.giftMessage}</span></div> : null}
       <p>{formatDate(row.mailing.shipDate)} · {row.bin}</p>
       <div className="ashley-simple-actions">
         <button type="button" className="ashley-start-button" data-ashley-start={mailingKey(row.mailing)} onClick={() => onStart(row.mailing)}>{row.mailing.status === "Assembling" ? "In Progress" : "Start"}</button>

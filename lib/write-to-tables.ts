@@ -683,6 +683,47 @@ export async function writeSubscriberEmail(subscriberId: string, email: string, 
   return { previousValue: rows[0].email, newValue: normalized };
 }
 
+export async function writeSubscriptionCharacter(subscriptionId: string, character: string, db: Db): Promise<WriteOutcome | null> {
+  const current = await db.select().from(subscriptions).where(eq(subscriptions.id, subscriptionId));
+  if (current.length !== 1) return null;
+  const old = current[0];
+  if (old.character === character) return null;
+
+  const recipientId = buildRecipientId({
+    subscriberId: old.subscriberId,
+    recipientName: old.recipientName,
+    address: old.addressLine1 ?? "",
+  });
+  const newSubscriptionId = buildSubscriptionId({ recipientId, character, plan: old.termType });
+  const existing = await db.select({ id: subscriptions.id }).from(subscriptions).where(eq(subscriptions.id, newSubscriptionId));
+  if (existing.length) throw new Error(`${old.recipientName} already has a ${character} ${old.termType} subscription.`);
+
+  const future = await db.select().from(mailings)
+    .where(and(eq(mailings.subscriptionId, subscriptionId), eq(mailings.active, true), sql`${mailings.status} <> 'Mailed'`))
+    .orderBy(mailings.scheduledDate, mailings.letterNumber);
+  if (!future.length) throw new Error("This subscription has no upcoming mailings to move to the new character.");
+
+  await db.insert(subscriptions).values({
+    ...old,
+    id: newSubscriptionId,
+    character,
+    status: "Active",
+    totalLettersExpected: future.length,
+    startedAt: new Date(),
+    endedAt: null,
+  });
+  await db.update(subscriptions).set({ status: "Archived", endedAt: new Date() }).where(eq(subscriptions.id, subscriptionId));
+  const futureIds = future.map((item) => item.id);
+  await db.delete(mailingComponents).where(inArray(mailingComponents.mailingId, futureIds));
+  await db.delete(exceptions).where(inArray(exceptions.mailingId, futureIds));
+  for (let index = 0; index < future.length; index += 1) {
+    await db.update(mailings)
+      .set({ subscriptionId: newSubscriptionId, letterNumber: index + 1, status: "To Prepare" })
+      .where(eq(mailings.id, future[index].id));
+  }
+  return { previousValue: old.character, newValue: `${character} (restarted at letter 1)` };
+}
+
 export async function writeMailingLetterNumber(key: string, value: string, db: Db): Promise<WriteOutcome | null> {
   const parsed = parseMailingKey(key);
   if (!parsed) return null;
