@@ -308,6 +308,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
     return (
       <Exceptions
         rows={rows}
+        today={todayIso(new Date())}
         photoReviews={state.batchPhotoReviews}
         squarespaceReviews={state.squarespaceOrderReviews}
         onImportSquarespaceReview={async (reviewId, input) => {
@@ -1000,9 +1001,15 @@ export default function CrmApp({ driveConfig: configuredDriveConfig }: { driveCo
   }, [activeView, viewSnapshot]);
 
   useEffect(() => {
-    if (activeView === "exceptions" && !state.batchPhotoReviews) refreshBatchPhotoReviews();
     if (activeView === "sync" && !state.squarespacePreview) refreshSquarespacePreview();
   }, [activeView, viewSnapshot]);
+
+  useEffect(() => {
+    if (activeView !== "exceptions") return;
+    refreshBatchPhotoReviews();
+    const timer = window.setInterval(refreshBatchPhotoReviews, 15_000);
+    return () => window.clearInterval(timer);
+  }, [activeView]);
 
   useEffect(() => {
     if (activeView === "subscribers" && state.selectedSubscriberId && !state.proofsBySubscriber[state.selectedSubscriberId]) {

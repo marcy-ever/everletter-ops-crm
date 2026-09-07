@@ -50,6 +50,14 @@ export function todayIso(now: Date): string {
   return local.toISOString().slice(0, 10);
 }
 
+export function everletterTodayIso(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Denver", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 // Whole days from startIso to endIso, parsing both as local midnight so
 // the result isn't sensitive to either string's implicit time component.
 export function daysBetween(startIso: string, endIso: string): number {

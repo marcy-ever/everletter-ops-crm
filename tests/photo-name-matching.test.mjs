@@ -17,3 +17,10 @@ test("partial names are review matches and unrelated names are ignored", () => {
   const matches = matchEnvelopeNames("Karsen Booth\nSomeone Else", candidates);
   assert.deepEqual(matches.map((item) => [item.id, item.confidence]), [["2", "review"]]);
 });
+
+test("a partly misread name becomes a clear match when its address also agrees", () => {
+  const matches = matchEnvelopeNames("Karsen Booth 18 Old Brazzil Trl Pinedale WY 82941", [
+    { id: "2", recipientName: "Karson Booth", address: "18 Old Brazzil Trl Pinedale WY 82941" },
+  ]);
+  assert.deepEqual(matches.map((item) => [item.id, item.confidence]), [["2", "clear"]]);
+});

@@ -4,12 +4,18 @@ import {
   OPEN_STATUSES,
   isOpenStatus,
   todayIso,
+  everletterTodayIso,
   daysBetween,
   isOverdueMailing,
   isDueNext14Days,
   monthKey,
   nearestBatchDate,
 } from "../lib/domain/mailing-rules.ts";
+
+test("Everletter's business date uses Mountain Time", () => {
+  assert.equal(everletterTodayIso(new Date("2026-09-08T05:30:00Z")), "2026-09-07");
+  assert.equal(everletterTodayIso(new Date("2026-09-08T06:30:00Z")), "2026-09-08");
+});
 
 // Format/behavior-locking tests, not parity tests - see tests/ids.test.mjs's
 // module comment for why (same reasoning, same step 3a change:

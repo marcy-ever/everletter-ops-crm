@@ -45,9 +45,10 @@ export interface ExceptionsProps {
   squarespaceReviews?: SquarespaceOrderReviewState | null;
   onImportSquarespaceReview?: (reviewId: number, input: SquarespaceImportInput) => Promise<void>;
   onIgnoreSquarespaceReview?: (reviewId: number) => Promise<void>;
+  today?: string;
 }
 
-export default function Exceptions({ rows, onReview, onCustomerClick, photoReviews = null, onConfirmPhotoReview = async () => {}, squarespaceReviews = null, onImportSquarespaceReview = async () => {}, onIgnoreSquarespaceReview = async () => {} }: ExceptionsProps) {
+export default function Exceptions({ rows, onReview, onCustomerClick, photoReviews = null, onConfirmPhotoReview = async () => {}, squarespaceReviews = null, onImportSquarespaceReview = async () => {}, onIgnoreSquarespaceReview = async () => {}, today = "" }: ExceptionsProps) {
   return (
     <section className="data-panel" aria-label="Exceptions">
       <div className="panel-head">
@@ -57,7 +58,7 @@ export default function Exceptions({ rows, onReview, onCustomerClick, photoRevie
         </div>
         <span className="panel-count">{rows.length} open</span>
       </div>
-      <BatchPhotoReviews state={photoReviews} onConfirm={onConfirmPhotoReview} />
+      <BatchPhotoReviews state={photoReviews} onConfirm={onConfirmPhotoReview} today={today} />
       <SquarespaceReviews state={squarespaceReviews} onImport={onImportSquarespaceReview} onIgnore={onIgnoreSquarespaceReview} onCustomerClick={onCustomerClick} />
       <div className="exception-list">
         {rows.length ? (
@@ -105,23 +106,24 @@ function SquarespaceReviews({ state, onImport, onIgnore, onCustomerClick }: { st
   </section>;
 }
 
-function BatchPhotoReviews({ state, onConfirm }: { state: BatchPhotoReviewState | null; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]> }) {
+function BatchPhotoReviews({ state, onConfirm, today }: { state: BatchPhotoReviewState | null; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]>; today: string }) {
   if (state?.failed) return <p className="empty-state">Could not load batch-photo reviews.</p>;
   if (!state?.reviews.length) return null;
   return (
     <section className="photo-review-section" aria-label="Batch photos needing review">
       <div className="panel-head"><div><h3>Batch Photos</h3><p>Confirm any envelope names the app could not read safely.</p></div><span className="panel-count">{state.reviews.length} open</span></div>
-      <div className="photo-review-grid">{state.reviews.map((review) => <PhotoReviewCard review={review} options={state.options.filter((option) => option.shipDate === review.batchDate)} onConfirm={onConfirm} key={review.id} />)}</div>
+      <div className="photo-review-grid">{state.reviews.map((review) => <PhotoReviewCard review={review} options={state.options.filter((option) => option.shipDate === review.batchDate)} onConfirm={onConfirm} isFuturePreparation={!!today && review.batchDate > today} key={review.id} />)}</div>
     </section>
   );
 }
 
-function PhotoReviewCard({ review, options, onConfirm }: { review: BatchPhotoReviewState["reviews"][number]; options: BatchPhotoReviewState["options"]; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]> }) {
+function PhotoReviewCard({ review, options, onConfirm, isFuturePreparation }: { review: BatchPhotoReviewState["reviews"][number]; options: BatchPhotoReviewState["options"]; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]>; isFuturePreparation: boolean }) {
+  const sortedOptions = [...options].sort((left, right) => left.recipientName.localeCompare(right.recipientName, undefined, { sensitivity: "base" }));
   return (
     <article className="photo-review-card">
       <img src={review.imageUrl} alt="Batch of envelopes needing name review" />
-      <div><strong>{review.suggestedName ? `Possible match: ${review.suggestedName}` : "Name could not be read"}</strong><span>{formatDate(review.batchDate)}</span></div>
-      <label><span>Attach this proof to</span><select defaultValue={review.suggestedMailingId ?? ""} data-photo-review-choice><option value="">Choose customer mailing…</option>{options.map((option) => <option value={option.mailingId} key={option.mailingId}>{option.recipientName} · {option.character} · Letter {option.letterNumber}</option>)}</select></label>
+      <div><strong>{review.suggestedName ? `Possible match: ${review.suggestedName}` : review.extractedText === "Reading names…" ? "Reading names…" : "Name could not be read"}</strong><span>{formatDate(review.batchDate)}</span></div>
+      <label><span>Attach this proof to</span><select defaultValue={review.suggestedMailingId ?? ""} data-photo-review-choice><option value="">Choose customer mailing…</option>{sortedOptions.map((option) => <option value={option.mailingId} key={option.mailingId}>{option.recipientName} · {option.character} · Letter {option.letterNumber}</option>)}</select></label>
       <button type="button" className="profile-button" onClick={async (event) => {
         const card = event.currentTarget.closest("article");
         const select = card?.querySelector("[data-photo-review-choice]") as HTMLSelectElement | null;
@@ -129,7 +131,7 @@ function PhotoReviewCard({ review, options, onConfirm }: { review: BatchPhotoRev
         if (!select?.value) { if (error) error.textContent = "Choose a customer mailing first."; return; }
         try { await onConfirm(review.id, select.value); }
         catch (caught) { if (error) error.textContent = caught instanceof Error ? caught.message : "Could not confirm this envelope."; }
-      }}>Confirm &amp; Mark Mailed</button>
+      }}>{isFuturePreparation ? "Confirm & Attach Photo" : "Confirm & Mark Mailed"}</button>
       <small role="alert" data-photo-review-error />
     </article>
   );
