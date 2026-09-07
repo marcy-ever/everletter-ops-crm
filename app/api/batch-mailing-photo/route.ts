@@ -6,7 +6,6 @@ import { auth } from "@/auth";
 import { getDb } from "@/db";
 import { auditEvents, mailingPhotoReviews, mailingProofs, mailings, subscriptions } from "@/db/schema";
 import { normalizedOcrText, matchEnvelopeNames } from "@/lib/domain/photo-name-matching";
-import { readEnvelopePhoto } from "@/lib/server/local-ocr";
 import { writeMailingStatus } from "@/lib/write-to-tables";
 
 export const runtime = "nodejs";
@@ -43,15 +42,11 @@ export async function POST(request: Request) {
     await mkdir(directory(), { recursive: true });
     storedPath = path.join(directory(), storageKey);
     await writeFile(storedPath, buffer);
-    let extractedText = "";
-    try {
-      extractedText = await readEnvelopePhoto(buffer);
-    } catch (error) {
-      // A proof photo is still valuable even when OCR is unavailable or
-      // cannot read it. Keep the upload and route every expected envelope
-      // to human review instead of losing the whole batch.
-      console.error("Batch photo OCR failed; sending photo to Needs Review.", error);
-    }
+    // The NAS cannot complete local OCR reliably within a phone request;
+    // it was leaving Marcy waiting several minutes and then losing the
+    // upload. Preserve the proof immediately and send each visible
+    // envelope to Needs Review for safe assignment instead.
+    const extractedText = "";
     const db = getDb();
     const candidates = await db.select({ id: mailings.id, appMailingId: mailings.appMailingId, sourceRow: mailings.lastSourceRow, recipientName: mailings.recipientName })
       .from(mailings).innerJoin(subscriptions, eq(mailings.subscriptionId, subscriptions.id))
