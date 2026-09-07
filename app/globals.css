@@ -2932,6 +2932,12 @@ select:focus-visible {
 .batch-photo-upload h4, .batch-photo-upload p { margin: 2px 0; }
 .batch-photo-upload label:not(.complete-photo-button) { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .batch-photo-upload input[type="number"] { min-height: 48px; width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: white; font: inherit; }
+.marketing-address-list { display: grid; gap: 12px; padding: 18px; }
+.marketing-address-card { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(240px, 1fr) minmax(240px, 1.2fr); gap: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.72); }
+.marketing-address-card > div { display: grid; align-content: start; gap: 5px; }
+.marketing-address-card strong { color: var(--ink); line-height: 1.45; }
+.marketing-address-card span { line-height: 1.45; }
+.marketing-address-buyer .link-button { justify-self: start; font-weight: 800; font-size: 16px; }
 .batch-photo-result { grid-column: 1 / -1; color: var(--green); }
 .complete-photo-button { display: flex; min-height: 48px; align-items: center; justify-content: center; padding: 10px 14px; border-radius: 14px; background: var(--rose); color: white; font-weight: 800; text-align: center; cursor: pointer; }
 .complete-photo-button:hover { filter: brightness(0.96); }
@@ -2964,6 +2970,7 @@ select:focus-visible {
 .proof-photo span { color: var(--muted); font-size: 12px; }
 
 @media (max-width: 760px) {
+  .marketing-address-card { grid-template-columns: 1fr; }
   .bins-panel .packet-section, .bins-panel .bin-group-grid, .bins-panel .batch-actions { display: none; }
   .bins-mobile-cards { display: grid; }
   .complete-photo-button { min-height: 58px; font-size: 16px; }

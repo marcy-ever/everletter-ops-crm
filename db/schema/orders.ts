@@ -15,4 +15,10 @@ export const orders = pgTable("orders", {
   // app.js doesn't flag that as bad data the way it does a missing ship
   // date - so there's no principled fallback timestamp to invent here.
   orderedAt: timestamp("ordered_at", { withTimezone: true }),
+  billingAddressLine1: text("billing_address_line_1"),
+  billingAddressLine2: text("billing_address_line_2"),
+  billingCity: text("billing_city"),
+  billingState: text("billing_state"),
+  billingZip: text("billing_zip"),
+  billingCountry: text("billing_country"),
 });

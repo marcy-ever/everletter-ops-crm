@@ -35,10 +35,11 @@ const EXPECTED_ORDER = [
   "bins",
   "launch",
   "sync",
+  "marketing",
   "automation",
 ];
 
-test("NAV_ITEMS contains exactly twelve views, in the exact pre-change order", () => {
+test("NAV_ITEMS contains every CRM view in the expected order", () => {
   assert.deepEqual(
     NAV_ITEMS.map((item) => item.id),
     EXPECTED_ORDER,

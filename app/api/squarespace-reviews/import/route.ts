@@ -55,7 +55,7 @@ export async function POST(request: Request) {
         [subscription] = await tx.insert(subscriptions).values({ id: subscriptionId, subscriberId: subscriber.id, character: input.character, termType: input.plan, status: "Active", startedAt: remote.createdOn ? new Date(remote.createdOn) : null, totalLettersExpected: count, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null }).returning();
       }
       const orderId = `SQ-${remote.id}`;
-      await tx.insert(orders).values({ id: orderId, subscriptionId: subscription.id, externalOrderNumber: remote.orderNumber, orderedAt: remote.createdOn ? new Date(remote.createdOn) : null });
+      await tx.insert(orders).values({ id: orderId, subscriptionId: subscription.id, externalOrderNumber: remote.orderNumber, orderedAt: remote.createdOn ? new Date(remote.createdOn) : null, billingAddressLine1: remote.billingAddressLine1 || null, billingAddressLine2: remote.billingAddressLine2 || null, billingCity: remote.billingCity || null, billingState: remote.billingState || null, billingZip: remote.billingPostalCode || null, billingCountry: remote.billingCountry || null });
       const dates = batchDatesForOrder(remote.createdOn.slice(0, 10), count);
       const giftMessage = String(input.giftMessage || giftMessageForOrder(remote) || "").trim();
       for (let index = 0; index < count; index += 1) {

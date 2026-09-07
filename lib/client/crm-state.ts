@@ -77,6 +77,7 @@ import type { CustomerActivityState } from "./customer-activity";
 import type { MailingProofListState, MailingProofUploadState } from "./mailing-proofs";
 import type { BatchPhotoReviewState } from "./batch-mailing-photos";
 import type { SquarespaceOrderReviewState, SquarespacePreviewState } from "../domain/squarespace-preview";
+import type { MarketingAddressState } from "./marketing-addresses";
 
 // The shape app/crm/legacy-app.js's readWorkbookFile() (moved to
 // app/crm/views/import/import-selectors.ts in Phase 1 step 10 - CLAUDE.md)
@@ -122,6 +123,7 @@ export interface CrmState {
   batchPhotoReviews: BatchPhotoReviewState | null;
   squarespacePreview: SquarespacePreviewState | null;
   squarespaceOrderReviews: SquarespaceOrderReviewState | null;
+  marketingAddresses: MarketingAddressState | null;
   seed: Dataset | null;
 }
 
@@ -189,6 +191,7 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     batchPhotoReviews: null,
     squarespacePreview: null,
     squarespaceOrderReviews: null,
+    marketingAddresses: null,
     seed: null,
   };
 

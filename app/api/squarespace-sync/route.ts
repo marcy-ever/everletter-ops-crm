@@ -1,7 +1,7 @@
 import { count, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDb } from "@/db";
-import { auditEvents, integrationSyncState, squarespaceOrderReviews } from "@/db/schema";
+import { auditEvents, integrationSyncState, orders, squarespaceOrderReviews } from "@/db/schema";
 import type { SquarespacePreviewOrder } from "@/lib/domain/squarespace-preview";
 import { GET as getSquarespacePreview } from "@/app/api/squarespace-preview/route";
 
@@ -25,6 +25,16 @@ export async function POST() {
     let actorEmail = "no-session@test.invalid";
     try { actorEmail = (await auth())?.user?.email ?? actorEmail; } catch {}
     const result = await getDb().transaction(async (tx) => {
+      for (const order of remoteOrders.filter((item) => item.existing && item.billingAddressLine1)) {
+        await tx.update(orders).set({
+          billingAddressLine1: order.billingAddressLine1,
+          billingAddressLine2: order.billingAddressLine2 || null,
+          billingCity: order.billingCity || null,
+          billingState: order.billingState || null,
+          billingZip: order.billingPostalCode || null,
+          billingCountry: order.billingCountry || null,
+        }).where(eq(orders.externalOrderNumber, order.orderNumber));
+      }
       const states = await tx.select().from(integrationSyncState).where(eq(integrationSyncState.provider, PROVIDER)).limit(1);
       if (!states.length) {
         const newest = remoteOrders.map((order) => new Date(order.createdOn)).filter((date) => !Number.isNaN(date.valueOf())).sort((a, b) => b.valueOf() - a.valueOf())[0] ?? new Date();

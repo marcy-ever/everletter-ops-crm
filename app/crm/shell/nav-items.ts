@@ -38,5 +38,6 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "bins", badge: "N", label: "Ashley Bins" },
   { id: "launch", badge: "L", label: "Launch Plan" },
   { id: "sync", badge: "Y", label: "Squarespace Orders" },
+  { id: "marketing", badge: "M", label: "Marketing Addresses" },
   { id: "automation", badge: "A", label: "Automation Map" },
 ];

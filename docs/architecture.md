@@ -170,7 +170,7 @@ these functions testable with a fixed, fake date and zero
 `globalThis.Date` patching - see any `tests/*-selectors.test.mjs` file for
 the pattern in practice.
 
-## How to add a thirteenth view
+## How to add another view
 
 Concrete steps, in order. `app/crm/views/Automation.tsx` (the smallest
 existing view - static content, no derivation, no writes) is the simplest

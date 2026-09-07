@@ -2,6 +2,8 @@ export interface SquarespacePreviewOrder {
   id: string; orderNumber: string; createdOn: string; customerName: string; customerEmail: string;
   shippingAddress: string; products: string[]; details: string[]; paymentState: string;
   addressLine1?: string; addressLine2?: string; city?: string; addressState?: string; postalCode?: string;
+  billingAddress?: string; billingAddressLine1?: string; billingAddressLine2?: string;
+  billingCity?: string; billingState?: string; billingPostalCode?: string; billingCountry?: string;
   fulfillmentStatus?: string; testMode?: boolean;
   giftMessage?: string;
   recipientName: string; character: string; plan: string;

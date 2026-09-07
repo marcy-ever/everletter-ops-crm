@@ -35,5 +35,6 @@ export const VIEW_REGISTRY: Record<string, ViewRegistryEntry> = {
   bins: { showStatusFilter: false, showBatchFilter: true },
   launch: { showStatusFilter: false, showBatchFilter: false },
   sync: { showStatusFilter: false, showBatchFilter: false },
+  marketing: { showStatusFilter: false, showBatchFilter: false },
   automation: { showStatusFilter: false, showBatchFilter: false },
 };

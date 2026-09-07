@@ -11,6 +11,7 @@ import { loadCustomerActivity } from "@/lib/client/customer-activity";
 import { loadMailingProofs, uploadMailingProof } from "@/lib/client/mailing-proofs";
 import { confirmBatchPhotoReview, loadBatchPhotoReviews, uploadBatchMailingPhoto } from "@/lib/client/batch-mailing-photos";
 import { ignoreSquarespaceReview, importSquarespaceReview, loadSquarespacePreview, loadSquarespaceReviews, stageSquarespaceOrder, syncNewSquarespaceOrders } from "@/lib/client/squarespace-preview";
+import { loadMarketingAddresses } from "@/lib/client/marketing-addresses";
 import { mailingKey } from "@/lib/domain/keys";
 import { getRenderGeneration, notifyViewChanged, saveFailures, staleness, state, subscribeViewChanged, updateComponentStatus, updateEnvelopeStatus, updateMailingStatus } from "./shell/crm-app-state";
 import { render } from "./shell/render-shell";
@@ -41,13 +42,14 @@ import { computeBinsData } from "./views/bins/bins-selectors";
 import Print from "./views/envelope-print/Print";
 import { computePrintData } from "./views/envelope-print/print-selectors";
 import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
+import MarketingAddresses from "./views/marketing-addresses/MarketingAddresses";
 
 let driveConfig = emptyDriveConfig;
 const letterFolderUrl = (mailing: { character: string; letterNumber: string | number }) => configuredLetterFolderUrl(mailing, driveConfig);
 
 // Mounts every CRM view. This component is the sole consumer of
 // app/crm/shell/ (init-crm-app.ts/render-shell.ts/crm-app-state.ts/
-// drive-links.ts) and hosts all twelve views, each a real React component
+// drive-links.ts) and hosts every view, each a real React component
 // under app/crm/views/ - the end state of the app.js decomposition
 // (CLAUDE.md): Phase 1 (steps 6-17) migrated the twelve views one at a
 // time onto this same seam; Phase 2 deleted the vanilla-JS monolith
@@ -154,6 +156,14 @@ function updateCustomerActiveStatus(subscriberId: string, active: boolean) {
 }
 
 const REACT_VIEWS: Record<string, () => ReactNode> = {
+  marketing: () => <MarketingAddresses state={state.marketingAddresses} query={state.query} onCustomerClick={(subscriberId) => {
+    state.selectedSubscriberId = subscriberId;
+    state.profileSubscriptionFilter = "all";
+    state.subscriberProfileOpen = true;
+    state.activeView = "subscribers";
+    window.location.hash = `subscriber/${encodeURIComponent(subscriberId)}`;
+    render(state, notifyViewChanged);
+  }} />,
   automation: () => {
     const automationRules = (state.seed?.automationRules as AutomationRule[] | undefined) ?? [];
     return <Automation automationRules={automationRules} />;
@@ -953,6 +963,17 @@ function refreshSquarespacePreview(): void {
   });
 }
 
+function refreshMarketingAddresses(): void {
+  state.marketingAddresses = { loading: true, failed: false, rows: state.marketingAddresses?.rows ?? [] };
+  loadMarketingAddresses().then((rows) => {
+    state.marketingAddresses = { loading: false, failed: false, rows };
+    notifyViewChanged();
+  }).catch(() => {
+    state.marketingAddresses = { loading: false, failed: true, rows: [] };
+    notifyViewChanged();
+  });
+}
+
 let squarespaceReviewsInFlight = false;
 function refreshSquarespaceReviews(): void {
   if (squarespaceReviewsInFlight) return;
@@ -1010,6 +1031,10 @@ export default function CrmApp({ driveConfig: configuredDriveConfig }: { driveCo
     const timer = window.setInterval(refreshBatchPhotoReviews, 15_000);
     return () => window.clearInterval(timer);
   }, [activeView]);
+
+  useEffect(() => {
+    if (activeView === "marketing" && !state.marketingAddresses) refreshMarketingAddresses();
+  }, [activeView, viewSnapshot]);
 
   useEffect(() => {
     if (activeView === "subscribers" && state.selectedSubscriberId && !state.proofsBySubscriber[state.selectedSubscriberId]) {
