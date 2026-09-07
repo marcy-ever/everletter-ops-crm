@@ -53,7 +53,7 @@ test("Bins.tsx (default: batchFilter 'all', no query) renders markup equivalent 
   const expected = fs.readFileSync(path.join(ROOT, "tests/snapshots/bins.html"), "utf8");
   const withoutIntentionalAdditions = actual
     .replace(/<label><span>Mailing date<\/span><select[\s\S]*?<\/select><\/label>/, "")
-    .replace(/<label class="complete-photo-button secondary"><span>Upload Existing Photo<\/span><input[^>]*data-batch-mailing-upload[^>]*\/><\/label>/, "");
+    .replace(/<label class="complete-photo-button secondary"><span>Upload Existing Photos<\/span><input[^>]*data-batch-mailing-upload[^>]*\/><\/label>/, "");
   assert.equal(
     normalizeHtml(withoutIntentionalAdditions),
     normalizeHtml(expected),
@@ -80,6 +80,7 @@ test("the batch photo area offers both camera capture and existing-photo upload"
   const upload = inputs.find((node) => node.props["data-batch-mailing-upload"] !== undefined);
   assert.equal(camera?.props.capture, "environment");
   assert.equal(upload?.props.capture, undefined);
+  assert.equal(upload?.props.multiple, true);
 });
 
 test("the real component output actually contains computed data, not just an empty-vs-empty pass", () => {

@@ -43,7 +43,15 @@ export async function POST(request: Request) {
     await mkdir(directory(), { recursive: true });
     storedPath = path.join(directory(), storageKey);
     await writeFile(storedPath, buffer);
-    const extractedText = await readEnvelopePhoto(buffer);
+    let extractedText = "";
+    try {
+      extractedText = await readEnvelopePhoto(buffer);
+    } catch (error) {
+      // A proof photo is still valuable even when OCR is unavailable or
+      // cannot read it. Keep the upload and route every expected envelope
+      // to human review instead of losing the whole batch.
+      console.error("Batch photo OCR failed; sending photo to Needs Review.", error);
+    }
     const db = getDb();
     const candidates = await db.select({ id: mailings.id, appMailingId: mailings.appMailingId, sourceRow: mailings.lastSourceRow, recipientName: mailings.recipientName })
       .from(mailings).innerJoin(subscriptions, eq(mailings.subscriptionId, subscriptions.id))

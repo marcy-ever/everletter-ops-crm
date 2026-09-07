@@ -155,16 +155,27 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart
 }
 
 function BatchPhotoUpload({ batchDate, batchDates, onBatchDateChange, onBatchPhoto }: { batchDate: string; batchDates: string[]; onBatchDateChange: BinsProps["onBatchDateChange"]; onBatchPhoto: BinsProps["onBatchPhoto"] }) {
-  const processPhoto = async (input: HTMLInputElement) => {
-    const photo = input.files?.[0];
+  const processPhotos = async (input: HTMLInputElement) => {
+    const photos = Array.from(input.files || []);
     const section = input.closest("section");
     const count = Number((section?.querySelector("[data-batch-envelope-count]") as HTMLInputElement | null)?.value) || 1;
     const resultNode = section?.querySelector("[data-batch-photo-result]");
     input.value = "";
-    if (!photo) return;
-    if (resultNode) resultNode.textContent = "Reading names…";
-    try { const result = await onBatchPhoto(batchDate, count, photo); if (resultNode) resultNode.textContent = `${result.matched} matched automatically · ${result.needsReview} sent to Needs Review`; }
-    catch (error) { if (resultNode) resultNode.textContent = error instanceof Error ? error.message : "Could not process the photo."; }
+    if (!photos.length) return;
+    let matched = 0;
+    let needsReview = 0;
+    for (const [index, photo] of photos.entries()) {
+      if (resultNode) resultNode.textContent = `Reading photo ${index + 1} of ${photos.length}…`;
+      try {
+        const result = await onBatchPhoto(batchDate, count, photo);
+        matched += result.matched;
+        needsReview += result.needsReview;
+      } catch (error) {
+        if (resultNode) resultNode.textContent = error instanceof Error ? error.message : "Could not process the photo.";
+        return;
+      }
+    }
+    if (resultNode) resultNode.textContent = `${photos.length} photos processed · ${matched} matched automatically · ${needsReview} sent to Needs Review`;
   };
   return (
     <section className="batch-photo-upload" aria-label="Batch envelope photo">
@@ -174,8 +185,8 @@ function BatchPhotoUpload({ batchDate, batchDates, onBatchDateChange, onBatchPho
         {batchDates.map((date) => <option value={date} key={date}>{formatDate(date)}</option>)}
       </select></label>
       <label><span>Envelopes visible</span><input type="number" min="1" max="30" defaultValue="8" data-batch-envelope-count /></label>
-      <label className="complete-photo-button"><span>Take Batch Photo</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!batchDate} data-batch-mailing-photo onChange={(event) => processPhoto(event.currentTarget)} /></label>
-      <label className="complete-photo-button secondary"><span>Upload Existing Photo</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!batchDate} data-batch-mailing-upload onChange={(event) => processPhoto(event.currentTarget)} /></label>
+      <label className="complete-photo-button"><span>Take Batch Photo</span><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={!batchDate} data-batch-mailing-photo onChange={(event) => processPhotos(event.currentTarget)} /></label>
+      <label className="complete-photo-button secondary"><span>Upload Existing Photos</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={!batchDate} data-batch-mailing-upload onChange={(event) => processPhotos(event.currentTarget)} /></label>
       {!batchDate ? <small>Choose a batch date first.</small> : null}
       <strong className="batch-photo-result" role="status" data-batch-photo-result />
     </section>
