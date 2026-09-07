@@ -155,6 +155,26 @@ export default function Bins({ data, onFieldChange, onBulkMark, onPrint, onStart
 }
 
 function BatchPhotoUpload({ batchDate, batchDates, onBatchDateChange, onBatchPhoto }: { batchDate: string; batchDates: string[]; onBatchDateChange: BinsProps["onBatchDateChange"]; onBatchPhoto: BinsProps["onBatchPhoto"] }) {
+  const preparePhoto = async (photo: File): Promise<File> => {
+    try {
+      const bitmap = await createImageBitmap(photo);
+      const maxSide = 1800;
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1) {
+        bitmap.close();
+        return photo;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+      return blob ? new File([blob], photo.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : photo;
+    } catch {
+      return photo;
+    }
+  };
   const processPhotos = async (input: HTMLInputElement) => {
     const photos = Array.from(input.files || []);
     const section = input.closest("section");
@@ -165,9 +185,11 @@ function BatchPhotoUpload({ batchDate, batchDates, onBatchDateChange, onBatchPho
     let matched = 0;
     let needsReview = 0;
     for (const [index, photo] of photos.entries()) {
-      if (resultNode) resultNode.textContent = `Reading photo ${index + 1} of ${photos.length}…`;
+      if (resultNode) resultNode.textContent = `Preparing photo ${index + 1} of ${photos.length}…`;
       try {
-        const result = await onBatchPhoto(batchDate, count, photo);
+        const preparedPhoto = await preparePhoto(photo);
+        if (resultNode) resultNode.textContent = `Reading photo ${index + 1} of ${photos.length}…`;
+        const result = await onBatchPhoto(batchDate, count, preparedPhoto);
         matched += result.matched;
         needsReview += result.needsReview;
       } catch (error) {
