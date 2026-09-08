@@ -14,7 +14,8 @@
 # Postgres service started by `pnpm docker:up`, and there's no reason to also
 # run a redundant containerized instance alongside it.
 #
-# AUTH_SECRET/AUTH_URL/GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/ALLOWED_USERS are
+# AUTH_SECRET/AUTH_URL/GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET/ALLOWED_USERS and
+# SQUARESPACE_API_KEY are
 # required and fail loudly if unset (or empty - Compose's `:?` guard rejects
 # both) rather than silently booting with broken auth; AUTH_TRUST_HOST has a
 # dev-safe fallback. `--env-file .env.local` only handles Compose's own
@@ -43,6 +44,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET must be set}
       ALLOWED_USERS: ${ALLOWED_USERS:?ALLOWED_USERS must be set}
+      SQUARESPACE_API_KEY: ${SQUARESPACE_API_KEY:?SQUARESPACE_API_KEY must be set}
       PHOTO_STORAGE_DIR: /data/mailing-proofs
     volumes:
       - mailing-proof-data:/data/mailing-proofs
