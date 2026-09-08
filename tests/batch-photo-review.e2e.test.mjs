@@ -58,6 +58,35 @@ test("a batch photo review can be assigned to a customer and marked mailed", { s
   }
 });
 
+test("an unwanted uploaded batch photo and all of its review cards can be deleted", { skip }, async () => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), "everletter-batch-delete-"));
+  process.env.PHOTO_STORAGE_DIR = storage;
+  try {
+    const { getDb } = await import("../db/index.ts");
+    const { auditEvents, mailingPhotoReviews } = await import("../db/schema/index.ts");
+    const { DELETE } = await import("../app/api/batch-mailing-photo/reviews/[id]/route.ts");
+    const db = getDb();
+    await truncateAllTables(db);
+
+    fs.writeFileSync(path.join(storage, "unwanted-batch.jpg"), new Uint8Array([255, 216, 255, 217]));
+    const reviews = await db.insert(mailingPhotoReviews).values([0, 1, 2].map(() => ({
+      storageKey: "unwanted-batch.jpg", originalName: "unwanted-batch.jpg", contentType: "image/jpeg", sizeBytes: 4,
+      batchDate: "2026-09-01", extractedText: "Name could not be read",
+    }))).returning();
+
+    const response = await DELETE(new Request("http://localhost/api/batch-mailing-photo/reviews/1", { method: "DELETE" }), {
+      params: Promise.resolve({ id: String(reviews[0].id) }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).deleted, 3);
+    assert.equal((await db.select().from(mailingPhotoReviews)).length, 0);
+    assert.equal(fs.existsSync(path.join(storage, "unwanted-batch.jpg")), false);
+    assert.equal((await db.select().from(auditEvents)).some((event) => event.kind === "batchPhotoDeleted"), true);
+  } finally {
+    fs.rmSync(storage, { recursive: true, force: true });
+  }
+});
+
 test("background OCR attaches clear envelope matches and leaves uncertain envelopes for review", { skip }, async () => {
   const storage = fs.mkdtempSync(path.join(os.tmpdir(), "everletter-batch-ocr-"));
   process.env.PHOTO_STORAGE_DIR = storage;

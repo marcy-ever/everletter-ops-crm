@@ -25,3 +25,9 @@ export async function confirmBatchPhotoReview(reviewId: number, mailingId: strin
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || "Could not confirm this envelope.");
 }
+
+export async function deleteBatchPhotoReview(reviewId: number): Promise<void> {
+  const response = await fetch(`/api/batch-mailing-photo/reviews/${reviewId}`, { method: "DELETE" });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Could not delete this photo.");
+}

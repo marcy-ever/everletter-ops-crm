@@ -9,7 +9,7 @@ import { saveStatusOverrides } from "@/lib/client/local-overrides";
 import { changeSubscriptionCharacter, saveSharedDataset, saveSharedState } from "@/lib/client/shared-state-client";
 import { loadCustomerActivity } from "@/lib/client/customer-activity";
 import { loadMailingProofs, uploadMailingProof } from "@/lib/client/mailing-proofs";
-import { confirmBatchPhotoReview, loadBatchPhotoReviews, uploadBatchMailingPhoto } from "@/lib/client/batch-mailing-photos";
+import { confirmBatchPhotoReview, deleteBatchPhotoReview, loadBatchPhotoReviews, uploadBatchMailingPhoto } from "@/lib/client/batch-mailing-photos";
 import { ignoreSquarespaceReview, importSquarespaceReview, loadSquarespacePreview, loadSquarespaceReviews, stageSquarespaceOrder, syncNewSquarespaceOrders } from "@/lib/client/squarespace-preview";
 import { loadMarketingAddresses } from "@/lib/client/marketing-addresses";
 import { mailingKey } from "@/lib/domain/keys";
@@ -334,6 +334,10 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           await confirmBatchPhotoReview(reviewId, mailingId);
           if (state.batchPhotoReviews) state.batchPhotoReviews.reviews = state.batchPhotoReviews.reviews.filter((review) => review.id !== reviewId);
           render(state, notifyViewChanged);
+        }}
+        onDeletePhotoReview={async (reviewId) => {
+          await deleteBatchPhotoReview(reviewId);
+          refreshBatchPhotoReviews();
         }}
         onReview={(key) => {
           state.reviewed.add(key);

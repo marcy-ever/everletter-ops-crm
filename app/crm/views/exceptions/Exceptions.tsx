@@ -42,13 +42,14 @@ export interface ExceptionsProps {
   onCustomerClick: (subscriberId: string) => void;
   photoReviews?: BatchPhotoReviewState | null;
   onConfirmPhotoReview?: (reviewId: number, mailingId: string) => Promise<void>;
+  onDeletePhotoReview?: (reviewId: number) => Promise<void>;
   squarespaceReviews?: SquarespaceOrderReviewState | null;
   onImportSquarespaceReview?: (reviewId: number, input: SquarespaceImportInput) => Promise<void>;
   onIgnoreSquarespaceReview?: (reviewId: number) => Promise<void>;
   today?: string;
 }
 
-export default function Exceptions({ rows, onReview, onCustomerClick, photoReviews = null, onConfirmPhotoReview = async () => {}, squarespaceReviews = null, onImportSquarespaceReview = async () => {}, onIgnoreSquarespaceReview = async () => {}, today = "" }: ExceptionsProps) {
+export default function Exceptions({ rows, onReview, onCustomerClick, photoReviews = null, onConfirmPhotoReview = async () => {}, onDeletePhotoReview = async () => {}, squarespaceReviews = null, onImportSquarespaceReview = async () => {}, onIgnoreSquarespaceReview = async () => {}, today = "" }: ExceptionsProps) {
   return (
     <section className="data-panel" aria-label="Exceptions">
       <div className="panel-head">
@@ -58,7 +59,7 @@ export default function Exceptions({ rows, onReview, onCustomerClick, photoRevie
         </div>
         <span className="panel-count">{rows.length} open</span>
       </div>
-      <BatchPhotoReviews state={photoReviews} onConfirm={onConfirmPhotoReview} today={today} />
+      <BatchPhotoReviews state={photoReviews} onConfirm={onConfirmPhotoReview} onDelete={onDeletePhotoReview} today={today} />
       <SquarespaceReviews state={squarespaceReviews} onImport={onImportSquarespaceReview} onIgnore={onIgnoreSquarespaceReview} onCustomerClick={onCustomerClick} />
       <div className="exception-list">
         {rows.length ? (
@@ -106,18 +107,18 @@ function SquarespaceReviews({ state, onImport, onIgnore, onCustomerClick }: { st
   </section>;
 }
 
-function BatchPhotoReviews({ state, onConfirm, today }: { state: BatchPhotoReviewState | null; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]>; today: string }) {
+function BatchPhotoReviews({ state, onConfirm, onDelete, today }: { state: BatchPhotoReviewState | null; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]>; onDelete: NonNullable<ExceptionsProps["onDeletePhotoReview"]>; today: string }) {
   if (state?.failed) return <p className="empty-state">Could not load batch-photo reviews.</p>;
   if (!state?.reviews.length) return null;
   return (
     <section className="photo-review-section" aria-label="Batch photos needing review">
       <div className="panel-head"><div><h3>Batch Photos</h3><p>Confirm any envelope names the app could not read safely.</p></div><span className="panel-count">{state.reviews.length} open</span></div>
-      <div className="photo-review-grid">{state.reviews.map((review) => <PhotoReviewCard review={review} options={state.options.filter((option) => option.shipDate === review.batchDate)} onConfirm={onConfirm} isFuturePreparation={!!today && review.batchDate > today} key={review.id} />)}</div>
+      <div className="photo-review-grid">{state.reviews.map((review) => <PhotoReviewCard review={review} options={state.options.filter((option) => option.shipDate === review.batchDate)} onConfirm={onConfirm} onDelete={onDelete} isFuturePreparation={!!today && review.batchDate > today} key={review.id} />)}</div>
     </section>
   );
 }
 
-function PhotoReviewCard({ review, options, onConfirm, isFuturePreparation }: { review: BatchPhotoReviewState["reviews"][number]; options: BatchPhotoReviewState["options"]; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]>; isFuturePreparation: boolean }) {
+function PhotoReviewCard({ review, options, onConfirm, onDelete, isFuturePreparation }: { review: BatchPhotoReviewState["reviews"][number]; options: BatchPhotoReviewState["options"]; onConfirm: NonNullable<ExceptionsProps["onConfirmPhotoReview"]>; onDelete: NonNullable<ExceptionsProps["onDeletePhotoReview"]>; isFuturePreparation: boolean }) {
   const sortedOptions = [...options].sort((left, right) => left.recipientName.localeCompare(right.recipientName, undefined, { sensitivity: "base" }));
   return (
     <article className="photo-review-card">
@@ -132,6 +133,12 @@ function PhotoReviewCard({ review, options, onConfirm, isFuturePreparation }: { 
         try { await onConfirm(review.id, select.value); }
         catch (caught) { if (error) error.textContent = caught instanceof Error ? caught.message : "Could not confirm this envelope."; }
       }}>{isFuturePreparation ? "Confirm & Attach Photo" : "Confirm & Mark Mailed"}</button>
+      <button type="button" className="btn secondary" onClick={async (event) => {
+        if (!window.confirm("Delete this uploaded batch photo and all of its review cards? This cannot be undone.")) return;
+        const error = event.currentTarget.closest("article")?.querySelector("[data-photo-review-error]");
+        try { await onDelete(review.id); }
+        catch (caught) { if (error) error.textContent = caught instanceof Error ? caught.message : "Could not delete this photo."; }
+      }}>Delete Photo</button>
       <small role="alert" data-photo-review-error />
     </article>
   );
