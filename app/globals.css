@@ -2938,6 +2938,7 @@ select:focus-visible {
 .marketing-address-card strong { color: var(--ink); line-height: 1.45; }
 .marketing-address-card span { line-height: 1.45; }
 .marketing-address-buyer .link-button { justify-self: start; font-weight: 800; font-size: 16px; }
+.marketing-ending-soon { justify-self: start; padding: 5px 9px; border-radius: 999px; background: #f3e5a8; color: #654f16; border: 1px solid #d7bd58; font-weight: 800; }
 .batch-photo-result { grid-column: 1 / -1; color: var(--green); }
 .complete-photo-button { display: flex; min-height: 48px; align-items: center; justify-content: center; padding: 10px 14px; border-radius: 14px; background: var(--rose); color: white; font-weight: 800; text-align: center; cursor: pointer; }
 .complete-photo-button:hover { filter: brightness(0.96); }

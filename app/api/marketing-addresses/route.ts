@@ -26,11 +26,18 @@ export async function GET() {
     mailingState: subscriptions.state,
     mailingZip: subscriptions.zip,
     character: subscriptions.character,
+    plan: subscriptions.termType,
+    endedAt: subscriptions.endedAt,
   }).from(orders)
     .innerJoin(subscriptions, eq(orders.subscriptionId, subscriptions.id))
     .innerJoin(subscribers, eq(subscriptions.subscriberId, subscribers.id))
     .where(isNotNull(orders.billingAddressLine1))
     .orderBy(asc(subscribers.name), asc(orders.orderedAt));
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const sixtyDaysFromToday = new Date(today);
+  sixtyDaysFromToday.setUTCDate(sixtyDaysFromToday.getUTCDate() + 60);
 
   return Response.json({ rows: rows.map((row) => ({
     subscriberId: row.subscriberId,
@@ -42,5 +49,8 @@ export async function GET() {
     recipientName: row.recipientName,
     mailingAddress: address([row.mailingAddressLine1, row.mailingAddressLine2, [row.mailingCity, row.mailingState, row.mailingZip].filter(Boolean).join(", ")]),
     character: row.character,
+    plan: row.plan,
+    endDate: row.endedAt?.toISOString().slice(0, 10) ?? "",
+    endingSoon: !!row.endedAt && row.endedAt >= today && row.endedAt <= sixtyDaysFromToday,
   })) });
 }

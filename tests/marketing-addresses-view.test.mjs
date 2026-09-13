@@ -6,7 +6,8 @@ import MarketingAddresses from "../app/crm/views/marketing-addresses/MarketingAd
 const state = { loading: false, failed: false, rows: [{
   subscriberId: "SUB-1", buyerName: "Taylor Customer", email: "buyer@example.test",
   orderNumber: "202", orderedAt: "2026-09-01T12:00:00Z", billingAddress: "99 Buyer Lane · Boulder, CO, 80301",
-  recipientName: "Jamie", mailingAddress: "10 Pine St · Denver, CO, 80202", character: "Ringo",
+  recipientName: "Jamie", mailingAddress: "10 Pine St · Denver, CO, 80202", character: "Ringo", plan: "6-month",
+  endDate: "2026-10-01", endingSoon: true,
 }] };
 
 test("marketing addresses clearly separates buyer billing and recipient mailing addresses", () => {
@@ -15,6 +16,13 @@ test("marketing addresses clearly separates buyer billing and recipient mailing 
   assert.match(html, /99 Buyer Lane/);
   assert.match(html, /Gift recipient — letter mailing/);
   assert.match(html, /10 Pine St/);
+});
+
+test("marketing addresses highlights subscriptions ending soon", () => {
+  const html = renderToStaticMarkup(MarketingAddresses({ state, query: "", onCustomerClick: () => {} }));
+  assert.match(html, /6-month/);
+  assert.match(html, /Ending soon/);
+  assert.match(html, /Oct 1, 2026/);
 });
 
 test("marketing address buyer link opens the correct customer", () => {

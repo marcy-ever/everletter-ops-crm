@@ -8,6 +8,9 @@ export interface MarketingAddressRow {
   recipientName: string;
   mailingAddress: string;
   character: string;
+  plan: string;
+  endDate: string;
+  endingSoon: boolean;
 }
 
 export interface MarketingAddressState {
