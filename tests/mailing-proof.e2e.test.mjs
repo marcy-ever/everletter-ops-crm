@@ -53,3 +53,37 @@ test("Ashley camera upload stores proof, marks the mailing Mailed, and makes the
     fs.rmSync(storage, { recursive: true, force: true });
   }
 });
+
+test("a future-bin photo attaches to the customer without marking the mailing Mailed", { skip }, async () => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), "everletter-future-proof-"));
+  process.env.PHOTO_STORAGE_DIR = storage;
+  try {
+    const { getDb } = await import("../db/index.ts");
+    const { writeImport } = await import("../lib/write-to-tables.ts");
+    const { mailingProofs, mailings } = await import("../db/schema/index.ts");
+    const { eq } = await import("drizzle-orm");
+    const { POST } = await import("../app/api/mailing-proof/route.ts");
+    const db = getDb();
+    await truncateAllTables(db);
+    const seed = buildSeedFromSpreadsheet([{
+      "Order ID": "FUTURE-PHOTO-1", "Original Order Date": "2026-09-01",
+      "Customer Name and Address": "Future Customer\n1 Future Way\nDenver, CO 80000",
+      Character: "Ringo", "Letter Number": "1", "Ship Date": "2099-10-01",
+      Subscription: "12-month", Status: "Assembling", "Active?": "Yes", Email: "future@example.test",
+    }], "future-photo-test.xlsx", new Date("2026-09-01T12:00:00Z"), []);
+    await db.transaction((tx) => writeImport(seed, tx));
+    const mailing = seed.mailings[0];
+    const form = new FormData();
+    form.set("mailingId", mailing.mailingId);
+    form.set("sourceRow", String(mailing.sourceRow));
+    form.set("photo", new File([new Uint8Array([255, 216, 255, 217])], "future-proof.jpg", { type: "image/jpeg" }));
+    const response = await POST(new Request("http://localhost/api/mailing-proof", { method: "POST", body: form }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).markedMailed, false);
+    assert.equal((await db.select().from(mailingProofs)).length, 1);
+    const [storedMailing] = await db.select().from(mailings).where(eq(mailings.appMailingId, mailing.mailingId));
+    assert.equal(storedMailing.status, "Assembling");
+  } finally {
+    fs.rmSync(storage, { recursive: true, force: true });
+  }
+});

@@ -790,9 +790,11 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           state.mailingProofUploads[key] = { busy: true, error: "" };
           notifyViewChanged();
           uploadMailingProof(mailing, photo)
-            .then((marker) => {
-              state.statusOverrides[key] = "Mailed";
-              saveStatusOverrides(state.statusOverrides);
+            .then(({ marker, markedMailed }) => {
+              if (markedMailed) {
+                state.statusOverrides[key] = "Mailed";
+                saveStatusOverrides(state.statusOverrides);
+              }
               staleness.recordOwnMarker(marker);
               state.mailingProofUploads[key] = { busy: false, error: "" };
               delete state.proofsByBatch[mailing.shipDate];

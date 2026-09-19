@@ -7,6 +7,7 @@ import { getDb } from "@/db";
 import { auditEvents, mailingProofs, mailings, subscriptions } from "@/db/schema";
 import { writeMailingStatus } from "@/lib/write-to-tables";
 import { currentChangeMarker } from "@/lib/change-marker";
+import { everletterTodayIso } from "@/lib/domain/mailing-rules";
 
 export const runtime = "nodejs";
 
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
     if (!ALLOWED_TYPES.has(photo.type)) return Response.json({ error: "Please upload a photo from the phone camera." }, { status: 400 });
 
     const db = getDb();
-    const matches = await db.select({ id: mailings.id }).from(mailings).where(and(eq(mailings.appMailingId, mailingId), eq(mailings.lastSourceRow, sourceRow))).limit(2);
+    const matches = await db.select({ id: mailings.id, scheduledDate: mailings.scheduledDate }).from(mailings).where(and(eq(mailings.appMailingId, mailingId), eq(mailings.lastSourceRow, sourceRow))).limit(2);
     if (matches.length !== 1) return Response.json({ error: "Could not identify this mailing safely. Refresh and try again." }, { status: 409 });
 
     const storageKey = `${randomUUID()}${EXTENSIONS[photo.type] || ".img"}`;
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       if (code !== "E251") throw error;
     }
     let proofId = 0;
+    const markMailed = matches[0].scheduledDate <= everletterTodayIso(new Date());
     await db.transaction(async (tx) => {
       const [proof] = await tx.insert(mailingProofs).values({
         mailingId: matches[0].id,
@@ -93,12 +95,14 @@ export async function POST(request: Request) {
       }).returning({ id: mailingProofs.id });
       proofId = proof.id;
       const key = `${mailingId}::${sourceRow}`;
-      const outcome = await writeMailingStatus(key, "Mailed", tx);
-      if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind: "mailingStatus", itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
-      await tx.insert(auditEvents).values({ actorEmail, kind: "mailingProof", itemKey: key, previousValue: null, newValue: `Photo ${proof.id}` });
+      if (markMailed) {
+        const outcome = await writeMailingStatus(key, "Mailed", tx);
+        if (outcome) await tx.insert(auditEvents).values({ actorEmail, kind: "mailingStatus", itemKey: key, previousValue: outcome.previousValue, newValue: outcome.newValue });
+      }
+      await tx.insert(auditEvents).values({ actorEmail, kind: "mailingProof", itemKey: key, previousValue: null, newValue: `${markMailed ? "Mailed" : "Prepared"} photo ${proof.id}` });
     });
 
-    return Response.json({ ok: true, proofId, imageUrl: `/api/mailing-proof/${proofId}`, marker: await currentChangeMarker(db) });
+    return Response.json({ ok: true, proofId, imageUrl: `/api/mailing-proof/${proofId}`, markedMailed: markMailed, marker: await currentChangeMarker(db) });
   } catch (error) {
     if (storedPath) await rm(storedPath, { force: true }).catch(() => {});
     console.error(error);

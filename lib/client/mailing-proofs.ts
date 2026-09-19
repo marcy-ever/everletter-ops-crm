@@ -30,7 +30,7 @@ export async function loadMailingProofs(filter: { subscriberId?: string; batchDa
   return Array.isArray(body.proofs) ? body.proofs : [];
 }
 
-export async function uploadMailingProof(mailing: MailingLike, photo: File): Promise<number | null> {
+export async function uploadMailingProof(mailing: MailingLike, photo: File): Promise<{ marker: number | null; markedMailed: boolean }> {
   const form = new FormData();
   form.set("mailingId", mailing.mailingId);
   form.set("sourceRow", String(mailing.sourceRow));
@@ -40,6 +40,9 @@ export async function uploadMailingProof(mailing: MailingLike, photo: File): Pro
     const body = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error || "Could not save the photo.");
   }
-  const body = await response.json() as { marker?: number | null };
-  return typeof body.marker === "number" || body.marker === null ? body.marker : null;
+  const body = await response.json() as { marker?: number | null; markedMailed?: boolean };
+  return {
+    marker: typeof body.marker === "number" || body.marker === null ? body.marker : null,
+    markedMailed: body.markedMailed === true,
+  };
 }
