@@ -25,6 +25,7 @@ export interface ViewRegistryEntry {
 
 export const VIEW_REGISTRY: Record<string, ViewRegistryEntry> = {
   queue: { showStatusFilter: true, showBatchFilter: true },
+  fulfillment: { showStatusFilter: false, showBatchFilter: true },
   exceptions: { showStatusFilter: false, showBatchFilter: false },
   subscribers: { showStatusFilter: false, showBatchFilter: false },
   samples: { showStatusFilter: false, showBatchFilter: false },

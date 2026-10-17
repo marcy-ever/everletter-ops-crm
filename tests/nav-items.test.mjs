@@ -25,6 +25,7 @@ import { VIEW_REGISTRY } from "../app/crm/shell/view-registry.ts";
 // simulation. It matches this list exactly.
 const EXPECTED_ORDER = [
   "queue",
+  "fulfillment",
   "exceptions",
   "subscribers",
   "samples",
@@ -71,7 +72,7 @@ test("every VIEW_REGISTRY entry has explicit boolean showStatusFilter/showBatchF
   }
 });
 
-test("exactly queue/print/qa/packet/bins show the batch filter, and only queue shows the status filter - preserving the shell's pre-Phase-2 conditionals", () => {
+test("the operational batch views show the batch filter, and only queue shows the status filter", () => {
   const batchFilterViews = Object.entries(VIEW_REGISTRY)
     .filter(([, entry]) => entry.showBatchFilter)
     .map(([id]) => id)
@@ -80,6 +81,6 @@ test("exactly queue/print/qa/packet/bins show the batch filter, and only queue s
     .filter(([, entry]) => entry.showStatusFilter)
     .map(([id]) => id)
     .sort();
-  assert.deepEqual(batchFilterViews, ["bins", "packet", "print", "qa", "queue"]);
+  assert.deepEqual(batchFilterViews, ["bins", "fulfillment", "packet", "print", "qa", "queue"]);
   assert.deepEqual(statusFilterViews, ["queue"]);
 });

@@ -34,7 +34,7 @@ export default async function Home() {
               <img src="/assets/everletter-logo-gold.png" alt="Everletter" />
               <span>Ops CRM</span>
             </div>
-            <p className="sidebar-copy">Letters, bins, envelopes, and the tiny details that keep mailing day calm.</p>
+            <p className="sidebar-copy">A quiet place to guide every story safely from order to mailbox.</p>
             <div className="sidebar-seal" aria-hidden="true">
               <img src="/assets/everletter-wax-seal.png" alt="" />
             </div>
@@ -61,8 +61,8 @@ export default async function Home() {
         <main className="workspace">
           <header className="topbar">
             <div>
-              <p className="section-label">Shared launch mode</p>
-              <h2>Mailing operations command center</h2>
+              <p className="section-label">Everletter fulfillment</p>
+              <h2>Stories on their way</h2>
             </div>
             <div className="topbar-meta" id="topbarMeta"></div>
           </header>

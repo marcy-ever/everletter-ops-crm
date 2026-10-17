@@ -43,6 +43,8 @@ import Print from "./views/envelope-print/Print";
 import { computePrintData } from "./views/envelope-print/print-selectors";
 import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
 import MarketingAddresses from "./views/marketing-addresses/MarketingAddresses";
+import PrinterFulfillment from "./views/printer-fulfillment/PrinterFulfillment";
+import { computeFulfillmentData, downloadFulfillmentWorkbook } from "./views/printer-fulfillment/fulfillment-selectors";
 
 let driveConfig = emptyDriveConfig;
 const letterFolderUrl = (mailing: { character: string; letterNumber: string | number }) => configuredLetterFolderUrl(mailing, driveConfig);
@@ -156,6 +158,20 @@ function updateCustomerActiveStatus(subscriberId: string, active: boolean) {
 }
 
 const REACT_VIEWS: Record<string, () => ReactNode> = {
+  fulfillment: () => {
+    if (!state.seed) return null;
+    const data = computeFulfillmentData(
+      state.seed,
+      state.statusOverrides,
+      state.reviewed,
+      state.componentOverrides,
+      state.batchFilter,
+      state.query,
+      todayIso(new Date()),
+      letterFolderUrl,
+    );
+    return <PrinterFulfillment data={data} onDownload={() => void downloadFulfillmentWorkbook(data)} />;
+  },
   marketing: () => <MarketingAddresses state={state.marketingAddresses} query={state.query} onCustomerClick={(subscriberId) => {
     state.selectedSubscriberId = subscriberId;
     state.profileSubscriptionFilter = "all";

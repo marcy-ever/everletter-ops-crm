@@ -28,6 +28,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: "queue", badge: "Q", label: "Production Queue" },
+  { id: "fulfillment", badge: "F", label: "Printer Fulfillment" },
   { id: "exceptions", badge: "!", label: "Needs Review" },
   { id: "subscribers", badge: "S", label: "Subscribers" },
   { id: "samples", badge: "@", label: "Sample Requests" },
