@@ -31,7 +31,7 @@ export default async function Home() {
         <aside className="sidebar">
           <div>
             <div className="brand-lockup">
-              <img src="/assets/everletter-logo-gold.png" alt="Everletter" />
+              <img src="/assets/everletter-logo-current.png" alt="Everletter" />
               <span>Ops CRM</span>
             </div>
             <p className="sidebar-copy">A quiet place to guide every story safely from order to mailbox.</p>
@@ -60,9 +60,10 @@ export default async function Home() {
 
         <main className="workspace">
           <header className="topbar">
-            <div>
-              <p className="section-label">Everletter fulfillment</p>
-              <h2>Stories on their way</h2>
+            <div className="topbar-copy">
+              <p className="section-label">Everletter operations</p>
+              <h2>Every story, safely on its way.</h2>
+              <p className="topbar-intro">A thoughtful home for orders, mailings, and every detail in between.</p>
             </div>
             <div className="topbar-meta" id="topbarMeta"></div>
           </header>
