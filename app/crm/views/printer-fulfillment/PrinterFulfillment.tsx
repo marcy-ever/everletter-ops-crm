@@ -5,9 +5,10 @@ import type { FulfillmentData } from "./fulfillment-selectors";
 export interface PrinterFulfillmentProps {
   data: FulfillmentData;
   onDownload: () => void;
+  onDownloadSubscriberSchedule: () => void;
 }
 
-export default function PrinterFulfillment({ data, onDownload }: PrinterFulfillmentProps) {
+export default function PrinterFulfillment({ data, onDownload, onDownloadSubscriberSchedule }: PrinterFulfillmentProps) {
   return (
     <section className="data-panel fulfillment-panel" aria-label="Printer fulfillment">
       <div className="panel-head">
@@ -30,6 +31,7 @@ export default function PrinterFulfillment({ data, onDownload }: PrinterFulfillm
         <button type="button" className="primary-action" disabled={!data.batchDate || !data.readyRows.length} onClick={onDownload}>
           Download Printer Spreadsheet
         </button>
+        <button type="button" onClick={onDownloadSubscriberSchedule}>Download Master Subscriber Schedule</button>
         <small>High-risk rows are held back automatically.</small>
       </div>
 

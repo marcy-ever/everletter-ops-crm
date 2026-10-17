@@ -44,7 +44,7 @@ import { computePrintData } from "./views/envelope-print/print-selectors";
 import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
 import MarketingAddresses from "./views/marketing-addresses/MarketingAddresses";
 import PrinterFulfillment from "./views/printer-fulfillment/PrinterFulfillment";
-import { computeFulfillmentData, downloadFulfillmentWorkbook } from "./views/printer-fulfillment/fulfillment-selectors";
+import { computeFulfillmentData, downloadFulfillmentWorkbook, downloadSubscriberScheduleWorkbook } from "./views/printer-fulfillment/fulfillment-selectors";
 
 let driveConfig = emptyDriveConfig;
 const letterFolderUrl = (mailing: { character: string; letterNumber: string | number }) => configuredLetterFolderUrl(mailing, driveConfig);
@@ -170,7 +170,13 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
       todayIso(new Date()),
       letterFolderUrl,
     );
-    return <PrinterFulfillment data={data} onDownload={() => void downloadFulfillmentWorkbook(data)} />;
+    return (
+      <PrinterFulfillment
+        data={data}
+        onDownload={() => void downloadFulfillmentWorkbook(data)}
+        onDownloadSubscriberSchedule={() => void downloadSubscriberScheduleWorkbook(state.seed!, state.statusOverrides)}
+      />
+    );
   },
   marketing: () => <MarketingAddresses state={state.marketingAddresses} query={state.query} onCustomerClick={(subscriberId) => {
     state.selectedSubscriberId = subscriberId;

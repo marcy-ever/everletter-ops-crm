@@ -49,6 +49,8 @@ export interface FulfillmentSpreadsheetRow {
   "Mailing ID": string;
 }
 
+export type SubscriberScheduleRow = Record<string, string>;
+
 export function subtractCalendarDays(isoDate: string, days: number): string {
   if (!isoDate) return "";
   const [year, month, day] = isoDate.split("-").map(Number);
@@ -119,6 +121,51 @@ export function fulfillmentSpreadsheetRows(rows: FulfillmentRow[]): FulfillmentS
     "Order ID": row.mailing.orderId,
     "Mailing ID": row.mailing.mailingId,
   }));
+}
+
+export function subscriberScheduleRows(seed: Dataset, statusOverrides: Record<string, string>): SubscriberScheduleRow[] {
+  const mailings = effectiveMailings(seed, statusOverrides);
+  const subscribers = new Map(seed.subscribers.map((subscriber) => [subscriber.subscriberId, subscriber]));
+  const recipients = new Map(seed.recipients.map((recipient) => [recipient.recipientId, recipient]));
+
+  return seed.subscriptions
+    .map((subscription) => {
+      const subscriber = subscribers.get(subscription.subscriberId);
+      const recipient = recipients.get(subscription.recipientId);
+      const subscriptionMailings = mailings
+        .filter((mailing) => mailing.subscriptionId === subscription.subscriptionId)
+        .sort((a, b) => Number(a.letterNumber) - Number(b.letterNumber));
+      const row: SubscriberScheduleRow = {
+        "Plan": subscription.plan,
+        "Customer Name": subscriber?.displayName || "",
+        "Customer Email": subscriber?.email || "",
+        "Recipient Name": recipient?.name || subscriptionMailings[0]?.recipientName || "",
+        "Mailing Address": recipient?.address || "",
+        "Character": subscription.character,
+        "Subscription Start": subscription.startDate,
+        "Subscription End": subscription.endDate,
+        "Active": subscription.activeState,
+      };
+
+      for (let letter = 1; letter <= 24; letter += 1) {
+        const mailing = subscriptionMailings.find((item) => Number(item.letterNumber) === letter);
+        row[`L${letter}`] = mailing ? (mailing.status === "Mailed" ? "Mailed" : mailing.shipDate || mailing.status) : "";
+      }
+      return row;
+    })
+    .sort((a, b) => a["Recipient Name"].localeCompare(b["Recipient Name"]) || a.Character.localeCompare(b.Character));
+}
+
+export async function downloadSubscriberScheduleWorkbook(seed: Dataset, statusOverrides: Record<string, string>): Promise<void> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
+  const rows = subscriberScheduleRows(seed, statusOverrides);
+  const sheet = XLSX.utils.json_to_sheet(rows);
+  sheet["!cols"] = [16, 24, 30, 28, 42, 16, 16, 16, 12, ...Array.from({ length: 24 }, () => 13)].map((wch) => ({ wch }));
+  sheet["!autofilter"] = { ref: `A1:AG${Math.max(rows.length + 1, 1)}` };
+  sheet["!freeze"] = { xSplit: 6, ySplit: 1 };
+  XLSX.utils.book_append_sheet(workbook, sheet, "Subscriber Schedule");
+  XLSX.writeFile(workbook, `Everletter_Master_Subscriber_Schedule_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 export async function downloadFulfillmentWorkbook(data: FulfillmentData): Promise<void> {

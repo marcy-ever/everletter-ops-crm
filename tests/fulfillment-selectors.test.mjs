@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeFulfillmentData, fulfillmentSpreadsheetRows, subtractCalendarDays } from "../app/crm/views/printer-fulfillment/fulfillment-selectors.ts";
+import { computeFulfillmentData, fulfillmentSpreadsheetRows, subscriberScheduleRows, subtractCalendarDays } from "../app/crm/views/printer-fulfillment/fulfillment-selectors.ts";
 
 function mailing(overrides = {}) {
   return { mailingId: "MAIL-1", subscriberId: "SUB-1", recipientId: "REC-1", orderId: "ORDER-1", orderDate: "2026-10-01", subscriptionId: "PLAN-1", recipientName: "Aubrey Nichols", email: "buyer@example.test", character: "Legends", plan: "6-month", letterNumber: "11", shipDate: "2026-11-01", suggestedShipDate: "2026-11-01", status: "To Prepare", activeState: "Active", notes: "GIFT MESSAGE — handwrite in Letter 1: Love from Grammy", overdue: false, dueNext14Days: false, sourceRow: 2, ...overrides };
@@ -44,4 +44,19 @@ test("mailed and inactive rows never enter a printer batch", () => {
   const data = computeFulfillmentData(dataset([mailing({ mailingId: "MAIL-MAILED", status: "Mailed" }), mailing({ mailingId: "MAIL-INACTIVE", activeState: "Archived" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "");
   assert.equal(data.readyRows.length, 0);
   assert.equal(data.heldRows.length, 0);
+});
+
+test("master subscriber schedule replaces the manual L1-L24 tracking grid", () => {
+  const seed = dataset([
+    mailing({ letterNumber: "1", status: "Mailed", shipDate: "2026-05-01" }),
+    mailing({ mailingId: "MAIL-2", letterNumber: "2", status: "To Prepare", shipDate: "2026-05-15" }),
+  ]);
+  seed.subscribers = [{ subscriberId: "SUB-1", displayName: "Customer Name", email: "buyer@example.test", status: "Active", firstOrderDate: "2026-05-01", openMailings: 1, totalMailings: 2, nextShipDate: "2026-05-15", issueCount: 0 }];
+  const [row] = subscriberScheduleRows(seed, {});
+  assert.equal(row["Customer Name"], "Customer Name");
+  assert.equal(row["Recipient Name"], "Aubrey Nichols");
+  assert.equal(row.Character, "Legends");
+  assert.equal(row.L1, "Mailed");
+  assert.equal(row.L2, "2026-05-15");
+  assert.equal(row.L24, "");
 });
