@@ -115,10 +115,10 @@ export function renderShell(state: CrmState): void {
   `;
 
   metrics.innerHTML = [
-    metric("/assets/marley-corner.png", "Marley", "Active subscribers", seed.summary.activeSubscriberCount ?? seed.summary.subscriberCount, "blue"),
-    metric("/assets/harper-corner.png", "Harper", "Open mailings", openMailingCount, "green"),
-    metric("/assets/oliver-corner.png", "Oliver", "Due next 14 days", seed.summary.dueNext14Count, "amber"),
-    metric("/assets/ringo-corner.png", "Ringo", "Needs review", openExceptionCount, "rose"),
+    metric("/assets/portrait-marley.png", "Marley", "Active subscribers", seed.summary.activeSubscriberCount ?? seed.summary.subscriberCount, "blue"),
+    metric("/assets/portrait-harper.png", "Harper", "Open mailings", openMailingCount, "green"),
+    metric("/assets/portrait-oliver.png", "Oliver", "Due next 14 days", seed.summary.dueNext14Count, "amber"),
+    metric("/assets/portrait-ringo.png", "Ringo", "Needs review", openExceptionCount, "rose"),
   ].join("");
 
   statusStrip.innerHTML = MAILING_STATUSES.map((status) => {

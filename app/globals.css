@@ -2430,7 +2430,9 @@ th,
 .metric-icon {
   width: 46px;
   height: 46px;
-  border-radius: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(180, 154, 53, 0.3);
+  background: #f8f0df;
 }
 
 .metric strong {
