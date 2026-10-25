@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { orders as storedOrders, squarespaceOrderReviews, subscriptions } from "@/db/schema";
-import type { SquarespacePreviewOrder } from "@/lib/domain/squarespace-preview";
+import { birthdayPostcardMailDate, normalizeBirthdayDate, type SquarespacePreviewOrder } from "@/lib/domain/squarespace-preview";
 import { normalizeCharacter } from "@/lib/domain/characters";
 import { normalizePlan } from "@/lib/domain/plans";
 
@@ -47,10 +47,13 @@ export async function GET() {
       const selectedPlan = selections.find((item) => `${item.label || item.optionName || ""}`.toLowerCase().includes("plan"));
       const selectedRecipient = selections.find((item) => /recipient name|^name$/i.test(`${item.label || item.optionName || ""}`.trim()));
       const selectedGiftMessage = selections.find((item) => /gift message|special instructions?/i.test(`${item.label || item.optionName || ""}`.trim()));
-      const character = normalizeCharacter(displayValue(selectedCharacter?.value) || products.join(" "));
-      const plan = normalizePlan(displayValue(selectedPlan?.value) || products.join(" "));
+      const selectedBirthday = selections.find((item) => /birthday|birth date|date of birth/i.test(`${item.label || item.optionName || ""}`.trim()));
+      const isBirthdayPostcard = /birthday.*postcard|postcard.*birthday/i.test(products.join(" "));
+      const character = isBirthdayPostcard ? "Birthday Postcard" : normalizeCharacter(displayValue(selectedCharacter?.value) || products.join(" "));
+      const plan = isBirthdayPostcard ? "One-time" : normalizePlan(displayValue(selectedPlan?.value) || products.join(" "));
       const recipientName = displayValue(selectedRecipient?.value);
       const giftMessage = displayValue(selectedGiftMessage?.value);
+      const birthdayDate = normalizeBirthdayDate(displayValue(selectedBirthday?.value));
       const countryCode = String(address?.countryCode || "").trim();
       const internationalCountry = countryCode && !/^(US|USA|UNITED STATES)$/i.test(countryCode) ? countryCode : "";
       const mailingAddressLine2 = [address?.address2, internationalCountry].filter(Boolean).join(", ");
@@ -59,7 +62,9 @@ export async function GET() {
       if (!customerName) warnings.push("Missing customer name");
       if (!addressText(address)) warnings.push("Missing mailing address");
       if (!products.length) warnings.push("No products found");
-      if (character === "Needs Review" || !["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends"].includes(character)) warnings.push("Character needs review");
+      if (character === "Needs Review" || !["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Birthday Postcard"].includes(character)) warnings.push("Character needs review");
+      if (isBirthdayPostcard && !birthdayDate) warnings.push("Birthday date needs review");
+      if (birthdayDate && birthdayPostcardMailDate(birthdayDate) < String(order.createdOn || "").slice(0, 10)) warnings.push("Birthday postcard mail date has already passed");
       if (!["Month-to-month", "6-month", "12-month", "One-time"].includes(plan)) warnings.push("Plan needs review");
       if (!recipientName) warnings.push("Recipient name needs review");
       if (order.paymentState !== "PAID") warnings.push(`Payment is ${order.paymentState || "unknown"}`);
@@ -68,7 +73,7 @@ export async function GET() {
       const id = String(order.id || order.orderNumber || "");
       const orderNumber = String(order.orderNumber || "Unknown");
       const status = reviewStatus.get(id);
-      return { id, orderNumber, createdOn: String(order.createdOn || ""), customerName: customerName || "Missing name", customerEmail: String(order.customerEmail || ""), shippingAddress: addressText(address), addressLine1: address?.address1 || "", addressLine2: mailingAddressLine2, city: address?.city || "", addressState: address?.state || "", postalCode: address?.postalCode || "", billingAddress: addressText(billingAddress), billingAddressLine1: billingAddress?.address1 || "", billingAddressLine2: billingAddress?.address2 || "", billingCity: billingAddress?.city || "", billingState: billingAddress?.state || "", billingPostalCode: billingAddress?.postalCode || "", billingCountry: billingAddress?.countryCode || "", fulfillmentStatus: order.fulfillmentStatus || "", testMode: Boolean(order.testmode), products, details, paymentState: String(order.paymentState || "Unknown"), recipientName, character, plan, giftMessage, existing: existing.has(orderNumber), subscriberId: existing.get(orderNumber), staged: status === "Pending", reviewStatus: status, warnings };
+      return { id, orderNumber, createdOn: String(order.createdOn || ""), customerName: customerName || "Missing name", customerEmail: String(order.customerEmail || ""), shippingAddress: addressText(address), addressLine1: address?.address1 || "", addressLine2: mailingAddressLine2, city: address?.city || "", addressState: address?.state || "", postalCode: address?.postalCode || "", billingAddress: addressText(billingAddress), billingAddressLine1: billingAddress?.address1 || "", billingAddressLine2: billingAddress?.address2 || "", billingCity: billingAddress?.city || "", billingState: billingAddress?.state || "", billingPostalCode: billingAddress?.postalCode || "", billingCountry: billingAddress?.countryCode || "", fulfillmentStatus: order.fulfillmentStatus || "", testMode: Boolean(order.testmode), products, details, paymentState: String(order.paymentState || "Unknown"), recipientName, character, plan, giftMessage, birthdayDate, existing: existing.has(orderNumber), subscriberId: existing.get(orderNumber), staged: status === "Pending", reviewStatus: status, warnings };
     });
     return Response.json({ orders, hasMore: Boolean(body.pagination?.hasNextPage) });
   } catch (error) {

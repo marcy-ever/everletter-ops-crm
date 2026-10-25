@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeCharacter, driveCharacterKey, letterNumberKey, envelopeStockForCharacter } from "../lib/domain/characters.ts";
+import { birthdayPostcardMailDate, normalizeBirthdayDate } from "../lib/domain/squarespace-preview.ts";
 
 // New coverage from step 3b's extraction (lib/domain/characters.ts didn't
 // exist before this) - not a re-assertion of what the render snapshots
@@ -10,6 +11,7 @@ import { normalizeCharacter, driveCharacterKey, letterNumberKey, envelopeStockFo
 test("normalizeCharacter recognizes a known character embedded in longer spreadsheet text", () => {
   assert.equal(normalizeCharacter("Marley"), "Marley");
   assert.equal(normalizeCharacter("RINGO kid"), "Ringo");
+  assert.equal(normalizeCharacter("Kids Birthday Postcard"), "Birthday Postcard");
 });
 
 test("normalizeCharacter treats 'old marley' as a distinct character identity, not a substring match on 'marley'", () => {
@@ -74,4 +76,14 @@ test("envelopeStockForCharacter falls back to the shared adult standard stock fo
 
 test("envelopeStockForCharacter groups Old Marley with Marley (via driveCharacterKey's new/old stripping), not as its own stock", () => {
   assert.equal(envelopeStockForCharacter("Old Marley"), "Marley color envelope");
+});
+
+test("birthday postcards are identified as having no envelope", () => {
+  assert.equal(envelopeStockForCharacter("Birthday Postcard"), "Birthday postcard — no envelope");
+});
+
+test("birthday postcards are scheduled exactly ten calendar days before the birthday", () => {
+  assert.equal(normalizeBirthdayDate("10/31/2027"), "2027-10-31");
+  assert.equal(birthdayPostcardMailDate("2027-10-31"), "2027-10-21");
+  assert.equal(birthdayPostcardMailDate("2027-01-05"), "2026-12-26");
 });

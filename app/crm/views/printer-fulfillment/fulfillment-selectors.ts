@@ -83,17 +83,20 @@ export function computeFulfillmentData(
 
   const readyRows = candidates
     .filter((mailing) => !heldIds.has(mailing.mailingId))
-    .map((mailing) => ({
-      mailing,
-      recipientAddress: recipients.get(mailing.recipientId)?.address || "",
-      envelopeType: envelopeStockForCharacter(mailing.character),
-      envelopeQuantity: envelopeQuantityForMailing(mailing),
-      letterFolderUrl: letterFolderUrl(mailing),
-      artifact: componentStatus(mailing, "artifact", seed, reviewed, componentOverrides),
-      insert: componentStatus(mailing, "insert", seed, reviewed, componentOverrides),
-      giftMessage: giftMessageFromNotes(mailing.notes),
-      renewalCard: renewalCardDue(mailing, seed) ? "Include renewal card" : "",
-    }));
+    .map((mailing) => {
+      const isBirthdayPostcard = mailing.character === "Birthday Postcard";
+      return {
+        mailing,
+        recipientAddress: recipients.get(mailing.recipientId)?.address || "",
+        envelopeType: envelopeStockForCharacter(mailing.character),
+        envelopeQuantity: isBirthdayPostcard ? 0 : envelopeQuantityForMailing(mailing),
+        letterFolderUrl: letterFolderUrl(mailing),
+        artifact: isBirthdayPostcard ? "Not needed" : componentStatus(mailing, "artifact", seed, reviewed, componentOverrides),
+        insert: isBirthdayPostcard ? "Birthday postcard" : componentStatus(mailing, "insert", seed, reviewed, componentOverrides),
+        giftMessage: giftMessageFromNotes(mailing.notes),
+        renewalCard: isBirthdayPostcard ? "" : renewalCardDue(mailing, seed) ? "Include renewal card" : "",
+      };
+    });
 
   return {
     batchDate,
@@ -109,7 +112,7 @@ export function fulfillmentSpreadsheetRows(rows: FulfillmentRow[]): FulfillmentS
     "Recipient Name": row.mailing.recipientName,
     "Mailing Address": row.recipientAddress,
     Character: row.mailing.character,
-    "Letter Number": String(row.mailing.letterNumber),
+    "Letter Number": row.mailing.character === "Birthday Postcard" ? "Birthday postcard" : String(row.mailing.letterNumber),
     "Envelope Type / Color": row.envelopeType,
     "Envelope Quantity": row.envelopeQuantity,
     "Letter Folder": row.letterFolderUrl,

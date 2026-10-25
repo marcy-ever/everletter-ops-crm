@@ -5,9 +5,9 @@ import { auditEvents, ingestionEvents, mailings, orders, squarespaceOrderReviews
 import { batchDatesForOrder } from "@/lib/domain/batch-dates";
 import { buildMailingId, buildRecipientId, buildSubscriberId, buildSubscriptionId } from "@/lib/domain/ids";
 import { plannedLetterCount } from "@/lib/domain/plans";
-import { giftMessageForOrder, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
+import { birthdayPostcardMailDate, giftMessageForOrder, normalizeBirthdayDate, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
 
-const CHARACTERS = new Set(["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends"]);
+const CHARACTERS = new Set(["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Birthday Postcard"]);
 const PLANS = new Set(["Month-to-month", "6-month", "12-month", "One-time"]);
 
 export async function POST(request: Request) {
@@ -15,8 +15,11 @@ export async function POST(request: Request) {
     const { reviewId, input } = await request.json() as { reviewId?: number; input?: SquarespaceImportInput };
     if (!Number.isInteger(reviewId) || !input) return Response.json({ error: "That order review is incomplete." }, { status: 400 });
     const email = input.email.trim().toLowerCase();
+    const isBirthdayPostcard = input.character === "Birthday Postcard";
+    const birthdayDate = normalizeBirthdayDate(input.birthdayDate);
     const required = [email, input.customerName, input.recipientName, input.addressLine1];
     if (required.some((value) => !String(value || "").trim()) || !CHARACTERS.has(input.character) || !PLANS.has(input.plan)) return Response.json({ error: "Complete the customer, recipient, address, character, and plan first." }, { status: 400 });
+    if (isBirthdayPostcard && !birthdayDate) return Response.json({ error: "Add the child's birthday before importing this postcard." }, { status: 400 });
     let actorEmail = "no-session@test.invalid";
     try { actorEmail = (await auth())?.user?.email ?? actorEmail; } catch {}
     const result = await getDb().transaction(async (tx) => {
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
         [subscriber] = await tx.update(subscribers).set({ name: input.customerName.trim() }).where(eq(subscribers.id, subscriber.id)).returning();
       }
 
-      const subscriptionMatches = await tx.select().from(subscriptions).where(and(eq(subscriptions.subscriberId, subscriber.id), sql`lower(${subscriptions.recipientName}) = ${input.recipientName.trim().toLowerCase()}`, sql`lower(${subscriptions.character}) = ${input.character.toLowerCase()}`)).limit(2);
+      const subscriptionMatches = isBirthdayPostcard ? [] : await tx.select().from(subscriptions).where(and(eq(subscriptions.subscriberId, subscriber.id), sql`lower(${subscriptions.recipientName}) = ${input.recipientName.trim().toLowerCase()}`, sql`lower(${subscriptions.character}) = ${input.character.toLowerCase()}`)).limit(2);
       if (subscriptionMatches.length > 1) throw new ImportError(409, "This customer has duplicate matching subscriptions. Please resolve them first.");
       const count = plannedLetterCount(input.plan);
       const address = [input.addressLine1, input.addressLine2, input.city, input.addressState, input.postalCode].filter(Boolean).join(" ");
@@ -51,18 +54,19 @@ export async function POST(request: Request) {
         firstLetter = Math.max(0, ...existingMailings.map((row) => row.letterNumber || 0)) + 1;
         [subscription] = await tx.update(subscriptions).set({ status: "Active", termType: input.plan, totalLettersExpected: Math.max(subscription.totalLettersExpected, firstLetter - 1) + count, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null }).where(eq(subscriptions.id, subscription.id)).returning();
       } else {
-        const subscriptionId = buildSubscriptionId({ recipientId, character: input.character, plan: input.plan });
+        const subscriptionId = buildSubscriptionId({ recipientId, character: input.character, plan: isBirthdayPostcard ? `${input.plan}-${remote.id}` : input.plan });
         [subscription] = await tx.insert(subscriptions).values({ id: subscriptionId, subscriberId: subscriber.id, character: input.character, termType: input.plan, status: "Active", startedAt: remote.createdOn ? new Date(remote.createdOn) : null, totalLettersExpected: count, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null }).returning();
       }
       const orderId = `SQ-${remote.id}`;
       await tx.insert(orders).values({ id: orderId, subscriptionId: subscription.id, externalOrderNumber: remote.orderNumber, orderedAt: remote.createdOn ? new Date(remote.createdOn) : null, billingAddressLine1: remote.billingAddressLine1 || null, billingAddressLine2: remote.billingAddressLine2 || null, billingCity: remote.billingCity || null, billingState: remote.billingState || null, billingZip: remote.billingPostalCode || null, billingCountry: remote.billingCountry || null });
-      const dates = batchDatesForOrder(remote.createdOn.slice(0, 10), count);
+      const dates = isBirthdayPostcard ? [birthdayPostcardMailDate(birthdayDate)] : batchDatesForOrder(remote.createdOn.slice(0, 10), count);
       const giftMessage = String(input.giftMessage || giftMessageForOrder(remote) || "").trim();
       for (let index = 0; index < count; index += 1) {
         const letterNumber = firstLetter + index;
         const sourceRow = String(1_000_000_000 + review.id * 100 + index);
-        const giftNote = giftMessage && letterNumber === 1 ? `; GIFT MESSAGE — handwrite in Letter 1: ${giftMessage}` : "";
-        await tx.insert(mailings).values({ id: `${orderId}::${input.character}::${letterNumber}`, subscriptionId: subscription.id, appMailingId: buildMailingId({ orderId, recipientId, character: input.character, letterNumber, sourceRow }), lastSourceRow: sourceRow, letterNumber, scheduledDate: dates[index], status: "To Prepare", active: true, notes: `Imported from Squarespace order #${remote.orderNumber}${giftNote}`, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null });
+        const giftNote = giftMessage && letterNumber === 1 ? `; GIFT MESSAGE — include with first mailing: ${giftMessage}` : "";
+        const birthdayNote = isBirthdayPostcard ? `; BIRTHDAY: ${birthdayDate}; MAIL 10 DAYS BEFORE` : "";
+        await tx.insert(mailings).values({ id: `${orderId}::${input.character}::${letterNumber}`, subscriptionId: subscription.id, appMailingId: buildMailingId({ orderId, recipientId, character: input.character, letterNumber, sourceRow }), lastSourceRow: sourceRow, letterNumber, scheduledDate: dates[index], status: "To Prepare", active: true, notes: `Imported from Squarespace order #${remote.orderNumber}${birthdayNote}${giftNote}`, recipientName: input.recipientName.trim(), addressLine1: input.addressLine1.trim(), addressLine2: input.addressLine2.trim() || null, city: input.city.trim() || null, state: input.addressState.trim() || null, zip: input.postalCode.trim() || null });
       }
       await tx.update(squarespaceOrderReviews).set({ status: "Imported", reviewedAt: new Date() }).where(eq(squarespaceOrderReviews.id, review.id));
       await tx.insert(ingestionEvents).values({ source: "squarespace_sync", rawPayload: { order: remote, corrections: input }, status: "success", summary: `Imported Squarespace order ${remote.orderNumber}: ${count} mailing(s)` });

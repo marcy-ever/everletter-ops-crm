@@ -97,8 +97,9 @@ function SquarespaceReviews({ state, onImport, onIgnore, onCustomerClick }: { st
       <label>City<input name="city" defaultValue={order.city || ""} /></label>
       <label>State<input name="addressState" defaultValue={order.addressState || ""} /></label>
       <label>ZIP<input name="postalCode" defaultValue={order.postalCode || ""} /></label>
-      <label>Character<select name="character" defaultValue={order.character}>{["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends"].map((value) => <option key={value}>{value}</option>)}</select></label>
+      <label>Character<select name="character" defaultValue={order.character}>{["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Birthday Postcard"].map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>Plan<select name="plan" defaultValue={order.plan}>{["Month-to-month", "6-month", "12-month", "One-time"].map((value) => <option key={value}>{value}</option>)}</select></label>
+      {order.character === "Birthday Postcard" && <label>Child&apos;s birthday<input name="birthdayDate" type="date" defaultValue={order.birthdayDate || ""} required /><small>Mail date is automatically set to 10 days before.</small></label>}
       <label>Gift message for Letter 1<textarea name="giftMessage" defaultValue={giftMessage} placeholder="None" /></label>
       {!!giftMessage && <div className="squarespace-warnings">Handwrite this in Letter 1 before mailing.</div>}
       {!!order.warnings.length && <div className="squarespace-warnings">Needs review: {order.warnings.join(" · ")}</div>}

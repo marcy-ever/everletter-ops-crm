@@ -43,7 +43,7 @@ export default function PrinterFulfillment({ data, onDownload, onDownloadSubscri
               <tr key={row.mailing.mailingId}>
                 <td><strong>{row.mailing.recipientName}</strong><span>{row.recipientAddress || "Address missing"}</span></td>
                 <td>{row.mailing.character}</td>
-                <td>#{row.mailing.letterNumber}</td>
+                <td>{row.mailing.character === "Birthday Postcard" ? "Birthday postcard" : `#${row.mailing.letterNumber}`}</td>
                 <td>{row.envelopeType}<span>Qty {row.envelopeQuantity}</span></td>
                 <td>
                   <span>Artifact: {row.artifact}</span>
