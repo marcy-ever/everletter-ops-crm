@@ -61,7 +61,8 @@ export default function PrinterFulfillment({ data, onDownload, onDownloadSubscri
       {data.heldRows.length > 0 && (
         <div className="fulfillment-held">
           <strong>{data.heldRows.length} row{data.heldRows.length === 1 ? " is" : "s are"} held for Needs Review.</strong>
-          <span>They are not included in the downloaded printer spreadsheet.</span>
+          <span>They are included in the printer spreadsheet as red STOP rows so they cannot be missed.</span>
+          <ul>{data.heldRows.map((row) => <li key={row.mailing.mailingId}><strong>{row.mailing.recipientName}</strong>: {row.stopReasons.join("; ")}</li>)}</ul>
         </div>
       )}
     </section>

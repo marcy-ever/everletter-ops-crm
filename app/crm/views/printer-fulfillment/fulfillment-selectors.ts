@@ -22,31 +22,32 @@ export interface FulfillmentRow {
   insert: string;
   giftMessage: string;
   renewalCard: string;
+  orderNumber: string;
+  seriesName: string;
+  letterFileName: string;
+  insideInstructions: string;
+  outsideInstructions: string;
+  stopReasons: string[];
 }
 
 export interface FulfillmentData {
   batchDate: string;
   printerDueDate: string;
   readyRows: FulfillmentRow[];
-  heldRows: EffectiveMailing[];
+  heldRows: FulfillmentRow[];
 }
 
 export interface FulfillmentSpreadsheetRow {
-  "Mailing Date": string;
-  "Recipient Name": string;
-  "Mailing Address": string;
-  Character: string;
-  "Letter Number": string;
-  "Envelope Type / Color": string;
-  "Envelope Quantity": number;
-  "Letter Folder": string;
-  "Artifact / Extra": string;
-  "Map / Insert": string;
-  "Gift Message for Letter 1": string;
-  "Renewal Card": string;
-  "Special Instructions": string;
+  "Done?": string;
   "Order ID": string;
-  "Mailing ID": string;
+  "Mail To": string;
+  "Series - USE EXACTLY": string;
+  "Letter #": string;
+  "Letter PDF": string;
+  "PUT INSIDE": string;
+  "ENVELOPE / OUTSIDE": string;
+  "IMPORTANT NOTES": string;
+  Status: "Ready" | "STOP";
 }
 
 export type SubscriberScheduleRow = Record<string, string>;
@@ -57,6 +58,58 @@ export function subtractCalendarDays(isoDate: string, days: number): string {
   const date = new Date(Date.UTC(year, month - 1, day));
   date.setUTCDate(date.getUTCDate() - days);
   return date.toISOString().slice(0, 10);
+}
+
+const VERIFIED_INSIDE_RULES: Record<string, string> = {
+  "Harper|10": "No extra item listed",
+  "Harper|23": "No extra item listed",
+  "Marigold|18": "No extra item listed",
+  "Marley|5": "Add item: Leaf charm",
+  "Marley|13": "No extra item listed",
+  "Marley|16": "No extra item listed",
+  "Oliver - Legacy|7": "No extra item listed",
+  "Oliver - Legacy|10": "No extra item listed",
+  "Oliver - Legacy|16": "No extra item listed",
+  "Oliver - New|2": "No extra item listed",
+  "Penelope|4": "No extra item listed",
+  "Penelope|18": "No extra item listed",
+  "Ringo|2": "Add item: Arrow charm",
+  "Ringo|10": "Add item: Key wood charm",
+  "Ringo|11": "Add item: Pawprint charm",
+  "Seraphine|10": "No extra item listed",
+  "Seraphine|18": "No extra item listed",
+};
+
+export function printerSeriesName(mailing: Pick<EffectiveMailing, "character" | "notes">): string {
+  if (mailing.character !== "Oliver") return mailing.character;
+  return /\bnew oliver\b/i.test(mailing.notes || "") ? "Oliver - New" : "Oliver - Legacy";
+}
+
+export function printerAssemblyRule(seriesName: string, letterNumber: string | number): { inside: string; outside: string } | null {
+  const letter = String(letterNumber);
+  if (seriesName === "Legends") return { inside: `Printed insert/artifact: Journal Entry (${letter} Legends_A-4.5 x 6)`, outside: "No special envelope instruction listed" };
+  if (seriesName === "Birthday Postcard") return { inside: "Birthday postcard", outside: "Postcard — no envelope" };
+  const inside = VERIFIED_INSIDE_RULES[`${seriesName}|${letter}`];
+  if (!inside) return null;
+  return { inside, outside: seriesName === "Ringo" ? "Inner: Yes/yellow" : "No special envelope instruction listed" };
+}
+
+export function printerLetterFileName(seriesName: string, letterNumber: string | number): string {
+  if (seriesName === "Birthday Postcard") return "Birthday_Postcard_PRINT_READY.pdf";
+  const base = seriesName.replace(/ - (New|Legacy)$/i, "").replace(/[^a-z0-9]+/gi, "_");
+  return `${base}_Letter_${String(letterNumber).padStart(2, "0")}_PRINT_READY.pdf`;
+}
+
+function printerOrderId(orderId: string): string {
+  return orderId.replace(/^(ORD-|SQ-)/i, "");
+}
+
+function mailTo(row: FulfillmentRow): string {
+  const addressParts = row.recipientAddress.split(/\s*,\s*/).filter(Boolean);
+  const address = addressParts.length >= 3
+    ? [...addressParts.slice(0, -2), `${addressParts.at(-2)} ${addressParts.at(-1)}`].join("\n")
+    : row.recipientAddress;
+  return [row.mailing.recipientName, address].filter(Boolean).join("\n");
 }
 
 export function computeFulfillmentData(
@@ -72,31 +125,43 @@ export function computeFulfillmentData(
   const mailings = effectiveMailings(seed, statusOverrides);
   const batchDate = selectedBatchDate(batchFilter, mailings, today);
   const candidates = packetRows(mailings, batchDate, "all", query);
-  const heldRows = candidates.filter((mailing) =>
-    exceptionsForMailing(mailing, seed, reviewed).some((exception) => exception.severity === "High") ||
-    componentStatus(mailing, "payment", seed, reviewed, componentOverrides) !== "Active" ||
-    componentStatus(mailing, "qa", seed, reviewed, componentOverrides) === "Problem" ||
-    !mailing.shipDate,
-  );
-  const heldIds = new Set(heldRows.map((mailing) => mailing.mailingId));
   const recipients = new Map(seed.recipients.map((recipient) => [recipient.recipientId, recipient]));
+  const orders = new Map(seed.orders.map((order) => [order.orderId, order]));
 
-  const readyRows = candidates
-    .filter((mailing) => !heldIds.has(mailing.mailingId))
-    .map((mailing) => {
+  const rows = candidates.map((mailing) => {
       const isBirthdayPostcard = mailing.character === "Birthday Postcard";
+      const folderUrl = letterFolderUrl(mailing);
+      const seriesName = printerSeriesName(mailing);
+      const assemblyRule = printerAssemblyRule(seriesName, mailing.letterNumber);
+      const highIssues = exceptionsForMailing(mailing, seed, reviewed).filter((exception) => exception.severity === "High");
+      const stopReasons = [
+        ...highIssues.map((exception) => exception.reason),
+        componentStatus(mailing, "payment", seed, reviewed, componentOverrides) !== "Active" ? "Payment is not active" : "",
+        componentStatus(mailing, "qa", seed, reviewed, componentOverrides) === "Problem" ? "QA is marked Problem" : "",
+        !mailing.shipDate ? "Mailing date is missing" : "",
+        !folderUrl ? "Letter file is not attached/confirmed" : "",
+        !assemblyRule ? "Printer assembly instructions are not confirmed" : "",
+      ].filter(Boolean);
       return {
         mailing,
         recipientAddress: recipients.get(mailing.recipientId)?.address || "",
         envelopeType: envelopeStockForCharacter(mailing.character),
         envelopeQuantity: isBirthdayPostcard ? 0 : envelopeQuantityForMailing(mailing),
-        letterFolderUrl: letterFolderUrl(mailing),
+        letterFolderUrl: folderUrl,
         artifact: isBirthdayPostcard ? "Not needed" : componentStatus(mailing, "artifact", seed, reviewed, componentOverrides),
         insert: isBirthdayPostcard ? "Birthday postcard" : componentStatus(mailing, "insert", seed, reviewed, componentOverrides),
         giftMessage: giftMessageFromNotes(mailing.notes),
         renewalCard: isBirthdayPostcard ? "" : renewalCardDue(mailing, seed) ? "Include renewal card" : "",
+        orderNumber: orders.get(mailing.orderId)?.sourceOrderNumber || printerOrderId(mailing.orderId),
+        seriesName,
+        letterFileName: folderUrl ? printerLetterFileName(seriesName, mailing.letterNumber) : "",
+        insideInstructions: [assemblyRule?.inside || "", giftMessageFromNotes(mailing.notes) ? `Gift message: ${giftMessageFromNotes(mailing.notes)}` : "", !isBirthdayPostcard && renewalCardDue(mailing, seed) ? "Include renewal card" : ""].filter(Boolean).join("; "),
+        outsideInstructions: assemblyRule?.outside || "",
+        stopReasons,
       };
     });
+  const readyRows = rows.filter((row) => row.stopReasons.length === 0);
+  const heldRows = rows.filter((row) => row.stopReasons.length > 0);
 
   return {
     batchDate,
@@ -108,21 +173,16 @@ export function computeFulfillmentData(
 
 export function fulfillmentSpreadsheetRows(rows: FulfillmentRow[]): FulfillmentSpreadsheetRow[] {
   return rows.map((row) => ({
-    "Mailing Date": row.mailing.shipDate,
-    "Recipient Name": row.mailing.recipientName,
-    "Mailing Address": row.recipientAddress,
-    Character: row.mailing.character,
-    "Letter Number": row.mailing.character === "Birthday Postcard" ? "Birthday postcard" : String(row.mailing.letterNumber),
-    "Envelope Type / Color": row.envelopeType,
-    "Envelope Quantity": row.envelopeQuantity,
-    "Letter Folder": row.letterFolderUrl,
-    "Artifact / Extra": row.artifact,
-    "Map / Insert": row.insert,
-    "Gift Message for Letter 1": row.giftMessage,
-    "Renewal Card": row.renewalCard,
-    "Special Instructions": row.mailing.notes,
-    "Order ID": row.mailing.orderId,
-    "Mailing ID": row.mailing.mailingId,
+    "Done?": "No",
+    "Order ID": row.orderNumber,
+    "Mail To": mailTo(row),
+    "Series - USE EXACTLY": row.seriesName,
+    "Letter #": row.mailing.character === "Birthday Postcard" ? "Birthday postcard" : String(row.mailing.letterNumber),
+    "Letter PDF": row.letterFileName,
+    "PUT INSIDE": row.insideInstructions,
+    "ENVELOPE / OUTSIDE": row.outsideInstructions,
+    "IMPORTANT NOTES": [row.mailing.notes || "None", ...row.stopReasons.map((reason) => `STOP: ${reason}.`)].join(" "),
+    Status: row.stopReasons.length ? "STOP" : "Ready",
   }));
 }
 
@@ -174,16 +234,19 @@ export async function downloadSubscriberScheduleWorkbook(seed: Dataset, statusOv
 export async function downloadFulfillmentWorkbook(data: FulfillmentData): Promise<void> {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
-  const summary = XLSX.utils.aoa_to_sheet([
-    ["Everletter Printer Fulfillment"],
-    ["Mailing date", data.batchDate],
-    ["Due to printer", data.printerDueDate],
-    ["Ready mailings", data.readyRows.length],
-    ["Held for review", data.heldRows.length],
-  ]);
-  const sheet = XLSX.utils.json_to_sheet(fulfillmentSpreadsheetRows(data.readyRows));
-  sheet["!cols"] = [12, 28, 42, 16, 12, 24, 12, 42, 18, 18, 38, 22, 48, 16, 28].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(workbook, summary, "Batch Summary");
-  XLSX.utils.book_append_sheet(workbook, sheet, "Fulfillment");
-  XLSX.writeFile(workbook, `Everletter_Printer_Fulfillment_${data.batchDate || "all-open"}.xlsx`);
+  const allRows = [...data.readyRows, ...data.heldRows];
+  const titleDate = data.batchDate ? new Date(`${data.batchDate}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }).toUpperCase() : "OPEN MAILINGS";
+  const sheet = XLSX.utils.aoa_to_sheet([]);
+  XLSX.utils.sheet_add_json(sheet, fulfillmentSpreadsheetRows(allRows), { origin: "A5" });
+  XLSX.utils.sheet_add_aoa(sheet, [
+    [`EVERLETTER - ${titleDate} PRINTER FULFILLMENT`],
+    [`${allRows.length} total rows: ${data.readyRows.length} ready to send and ${data.heldRows.length} STOP row${data.heldRows.length === 1 ? "" : "s"} awaiting review. Each row is one envelope.`],
+    ["Ashley: check only that the recipient, series and letter number look right. The printer uses the remaining columns to assemble each envelope."],
+  ], { origin: "A1" });
+  sheet["!merges"] = [XLSX.utils.decode_range("A1:J1"), XLSX.utils.decode_range("A2:J2"), XLSX.utils.decode_range("A3:J3")];
+  sheet["!cols"] = [9, 12, 38, 22, 10, 32, 46, 34, 58, 12].map((wch) => ({ wch }));
+  sheet["!autofilter"] = { ref: `A5:J${Math.max(allRows.length + 5, 5)}` };
+  sheet["!freeze"] = { ySplit: 5 };
+  XLSX.utils.book_append_sheet(workbook, sheet, "SEND TO PRINTER");
+  XLSX.writeFile(workbook, `EverLetter_${data.batchDate || "open"}_Printer_Fulfillment.xlsx`);
 }

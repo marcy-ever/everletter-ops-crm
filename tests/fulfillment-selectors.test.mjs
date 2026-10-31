@@ -29,8 +29,11 @@ test("fulfillment data includes the operational details the printer needs", () =
   assert.equal(data.readyRows[0].giftMessage, "Love from Grammy");
   assert.equal(data.readyRows[0].renewalCard, "Include renewal card");
   const [sheetRow] = fulfillmentSpreadsheetRows(data.readyRows);
-  assert.equal(sheetRow["Recipient Name"], "Aubrey Nichols");
-  assert.equal(sheetRow["Letter Folder"], "https://drive.test/legends/11");
+  assert.match(sheetRow["Mail To"], /^Aubrey Nichols\n/);
+  assert.equal(sheetRow["Series - USE EXACTLY"], "Legends");
+  assert.equal(sheetRow["Letter PDF"], "Legends_Letter_11_PRINT_READY.pdf");
+  assert.equal(sheetRow["PUT INSIDE"], "Printed insert/artifact: Journal Entry (11 Legends_A-4.5 x 6); Gift message: Love from Grammy; Include renewal card");
+  assert.equal(sheetRow.Status, "Ready");
 });
 
 test("high-risk rows are held and excluded from the printer spreadsheet", () => {
@@ -38,6 +41,18 @@ test("high-risk rows are held and excluded from the printer spreadsheet", () => 
   const data = computeFulfillmentData(dataset([mailing()], [highIssue]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "");
   assert.equal(data.readyRows.length, 0);
   assert.equal(data.heldRows.length, 1);
+  assert.ok(data.heldRows[0].stopReasons.includes("Missing address"));
+});
+
+test("missing printer files and unverified assembly rules become visible STOP rows", () => {
+  const data = computeFulfillmentData(dataset([mailing({ character: "Oliver", letterNumber: "2", notes: "NEW OLIVER - use the new package" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "");
+  assert.equal(data.readyRows.length, 0);
+  assert.equal(data.heldRows.length, 1);
+  assert.equal(data.heldRows[0].seriesName, "Oliver - New");
+  assert.ok(data.heldRows[0].stopReasons.includes("Letter file is not attached/confirmed"));
+  const [sheetRow] = fulfillmentSpreadsheetRows(data.heldRows);
+  assert.equal(sheetRow.Status, "STOP");
+  assert.equal(sheetRow["Letter PDF"], "");
 });
 
 test("mailed and inactive rows never enter a printer batch", () => {
