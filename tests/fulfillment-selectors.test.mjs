@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeFulfillmentData, fulfillmentSpreadsheetRows, subscriberScheduleRows, subtractCalendarDays } from "../app/crm/views/printer-fulfillment/fulfillment-selectors.ts";
+import { artifactBatchRows, computeFulfillmentData, customerJobRows, envelopeBatches, envelopeManifestRows, fulfillmentSpreadsheetRows, subscriberScheduleRows, subtractCalendarDays } from "../app/crm/views/printer-fulfillment/fulfillment-selectors.ts";
+import { fulfillmentEnvelopeBatchHtml } from "../app/crm/views/printer-fulfillment/envelope-batch-html.ts";
 
 function mailing(overrides = {}) {
   return { mailingId: "MAIL-1", subscriberId: "SUB-1", recipientId: "REC-1", orderId: "ORDER-1", orderDate: "2026-10-01", subscriptionId: "PLAN-1", recipientName: "Aubrey Nichols", email: "buyer@example.test", character: "Legends", plan: "6-month", letterNumber: "11", shipDate: "2026-11-01", suggestedShipDate: "2026-11-01", status: "To Prepare", activeState: "Active", notes: "GIFT MESSAGE — handwrite in Letter 1: Love from Grammy", overdue: false, dueNext14Days: false, sourceRow: 2, ...overrides };
@@ -22,18 +23,52 @@ test("printer deadline is seven calendar days before mailing", () => {
 });
 
 test("fulfillment data includes the operational details the printer needs", () => {
-  const data = computeFulfillmentData(dataset(), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/legends/11");
+  const readyMailing = mailing({ character: "Marley", letterNumber: "5" });
+  const data = computeFulfillmentData(dataset([readyMailing]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/marley/5");
   assert.equal(data.printerDueDate, "2026-10-25");
   assert.equal(data.readyRows[0].recipientAddress, "887 Lake Road, Milton, VT 05468");
-  assert.equal(data.readyRows[0].envelopeType, "Legends color envelope");
+  assert.equal(data.readyRows[0].envelopeType, "Marley color envelope");
   assert.equal(data.readyRows[0].giftMessage, "Love from Grammy");
-  assert.equal(data.readyRows[0].renewalCard, "Include renewal card");
+  assert.equal(data.readyRows[0].renewalCard, "");
   const [sheetRow] = fulfillmentSpreadsheetRows(data.readyRows);
   assert.match(sheetRow["Mail To"], /^Aubrey Nichols\n/);
-  assert.equal(sheetRow["Series - USE EXACTLY"], "Legends");
-  assert.equal(sheetRow["Letter PDF"], "Legends_Letter_11_PRINT_READY.pdf");
-  assert.equal(sheetRow["PUT INSIDE"], "Printed insert/artifact: Journal Entry (11 Legends_A-4.5 x 6); Gift message: Love from Grammy; Include renewal card");
+  assert.equal(sheetRow["Series - USE EXACTLY"], "Marley");
+  assert.equal(sheetRow["Letter PDF"], "Marley_Letter_05_PRINT_READY.pdf");
+  assert.equal(sheetRow["PUT INSIDE"], "Fold exact letter into Dark pink small inner envelope; leave inner envelope BLANK and UNSEALED; Add item: Leaf charm; Gift message: Love from Grammy");
+  assert.match(sheetRow["ENVELOPE / OUTSIDE"], /KIDS USPS stamp/);
+  assert.match(sheetRow["ENVELOPE / OUTSIDE"], /wax seal on OUTER envelope/);
   assert.equal(sheetRow.Status, "Ready");
+});
+
+test("envelope batches and manifests preserve the PDF page reference", () => {
+  const data = computeFulfillmentData(dataset([mailing({ character: "Marley", letterNumber: "5" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/marley/5");
+  const [batch] = envelopeBatches(data.readyRows);
+  assert.equal(batch.fileName, "2026-11-01_Marley_A7_Envelopes_ALL.pdf");
+  assert.equal(envelopeManifestRows(data.readyRows)[0].Page, 1);
+  const html = fulfillmentEnvelopeBatchHtml(batch);
+  assert.match(html, /top: 55%/);
+  assert.match(html, /Aubrey Nichols/);
+  assert.match(html, /Quicksand/);
+  const [job] = customerJobRows(data.readyRows);
+  assert.equal(job["Cycle ID"], "2026-11-01");
+  assert.equal(job["Envelope Batch PDF"], batch.fileName);
+  assert.equal(job["Envelope Page"], 1);
+  assert.equal(job.Postage, "KIDS USPS stamp");
+});
+
+test("shared artifact production is counted once per grouped item", () => {
+  const second = mailing({ mailingId: "MAIL-2", character: "Marley", letterNumber: "5" });
+  const data = computeFulfillmentData(dataset([mailing({ character: "Marley", letterNumber: "5" }), second]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/marley/5");
+  const [batch] = artifactBatchRows(data.readyRows);
+  assert.equal(batch["Shared Production Item"], "Add item: Leaf charm");
+  assert.equal(batch.Quantity, 2);
+});
+
+test("pending envelope decisions remain visible as STOP", () => {
+  const data = computeFulfillmentData(dataset(), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/legends/11");
+  assert.equal(data.readyRows.length, 0);
+  assert.match(data.heldRows[0].stopReasons.join("; "), /font is pending/);
+  assert.match(data.heldRows[0].stopReasons.join("; "), /inner-envelope color is not confirmed/);
 });
 
 test("high-risk rows are held and excluded from the printer spreadsheet", () => {

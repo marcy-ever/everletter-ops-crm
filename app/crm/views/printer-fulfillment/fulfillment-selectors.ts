@@ -11,6 +11,13 @@ import {
 } from "@/lib/client/selectors";
 import { envelopeStockForCharacter } from "@/lib/domain/characters";
 import { envelopeQuantityForMailing } from "@/lib/domain/plans";
+import {
+  envelopeBatchFileName,
+  productionProfileForSeries,
+  UNIVERSAL_ASSEMBLY_STEPS,
+  type EnvelopeSize,
+  type SeriesProductionProfile,
+} from "./fulfillment-rules";
 
 export interface FulfillmentRow {
   mailing: EffectiveMailing;
@@ -28,6 +35,13 @@ export interface FulfillmentRow {
   insideInstructions: string;
   outsideInstructions: string;
   stopReasons: string[];
+  cycleId: string;
+  jobId: string;
+  productionProfile: SeriesProductionProfile | null;
+  envelopeBatchFileName: string;
+  envelopeBatchPage: number;
+  specialHandling: string;
+  productionItem: string;
 }
 
 export interface FulfillmentData {
@@ -48,6 +62,55 @@ export interface FulfillmentSpreadsheetRow {
   "ENVELOPE / OUTSIDE": string;
   "IMPORTANT NOTES": string;
   Status: "Ready" | "STOP";
+}
+
+export interface EnvelopeManifestRow {
+  "Envelope PDF": string;
+  Page: number;
+  "Order ID": string;
+  Recipient: string;
+  "Series - USE EXACTLY": string;
+  "Letter #": string;
+  Address: string;
+  "Envelope Size": EnvelopeSize | "";
+  Font: string;
+  Status: "Ready" | "STOP";
+}
+
+export interface ArtifactBatchRow {
+  "Shared Production Item": string;
+  Series: string;
+  "Letter #": string;
+  Quantity: number;
+  "Master File": string;
+  Status: "Ready" | "STOP";
+}
+
+export interface EnvelopeBatch {
+  fileName: string;
+  seriesName: string;
+  size: EnvelopeSize;
+  rows: FulfillmentRow[];
+}
+
+export interface CustomerJobRow {
+  "Cycle ID": string;
+  "Customer Job ID": string;
+  "Order ID": string;
+  Recipient: string;
+  Address: string;
+  "Series / Version": string;
+  "Letter #": string;
+  "Master Letter File": string;
+  "Inner Envelope": string;
+  "Outer Envelope": string;
+  "Envelope Batch PDF": string;
+  "Envelope Page": number | "";
+  Postage: string;
+  "Artifacts / Items": string;
+  "Special Handling": string;
+  Status: "Ready" | "STOP";
+  "STOP Reasons": string;
 }
 
 export type SubscriberScheduleRow = Record<string, string>;
@@ -81,6 +144,10 @@ const VERIFIED_INSIDE_RULES: Record<string, string> = {
 };
 
 export function printerSeriesName(mailing: Pick<EffectiveMailing, "character" | "notes">): string {
+  if (mailing.character === "Old Marley") return "Marley - Legacy";
+  if (mailing.character === "Gazette") return "Gazette";
+  if (mailing.character === "New Oliver") return "Oliver - New";
+  if (mailing.character === "Old Oliver") return "Oliver - Legacy";
   if (mailing.character !== "Oliver") return mailing.character;
   return /\bnew oliver\b/i.test(mailing.notes || "") ? "Oliver - New" : "Oliver - Legacy";
 }
@@ -133,6 +200,7 @@ export function computeFulfillmentData(
       const folderUrl = letterFolderUrl(mailing);
       const seriesName = printerSeriesName(mailing);
       const assemblyRule = printerAssemblyRule(seriesName, mailing.letterNumber);
+      const productionProfile = productionProfileForSeries(seriesName);
       const highIssues = exceptionsForMailing(mailing, seed, reviewed).filter((exception) => exception.severity === "High");
       const stopReasons = [
         ...highIssues.map((exception) => exception.reason),
@@ -141,6 +209,9 @@ export function computeFulfillmentData(
         !mailing.shipDate ? "Mailing date is missing" : "",
         !folderUrl ? "Letter file is not attached/confirmed" : "",
         !assemblyRule ? "Printer assembly instructions are not confirmed" : "",
+        !productionProfile ? "Envelope production profile is not confirmed" : "",
+        productionProfile && !productionProfile.fontConfirmed ? `${seriesName} envelope font is pending Marcy selection` : "",
+        productionProfile?.innerEnvelope.startsWith("HOLD / STOP") ? `${seriesName} inner-envelope color is not confirmed` : "",
       ].filter(Boolean);
       return {
         mailing,
@@ -155,11 +226,30 @@ export function computeFulfillmentData(
         orderNumber: orders.get(mailing.orderId)?.sourceOrderNumber || printerOrderId(mailing.orderId),
         seriesName,
         letterFileName: folderUrl ? printerLetterFileName(seriesName, mailing.letterNumber) : "",
-        insideInstructions: [assemblyRule?.inside || "", giftMessageFromNotes(mailing.notes) ? `Gift message: ${giftMessageFromNotes(mailing.notes)}` : "", !isBirthdayPostcard && renewalCardDue(mailing, seed) ? "Include renewal card" : ""].filter(Boolean).join("; "),
+        insideInstructions: [
+          !isBirthdayPostcard && productionProfile ? `Fold exact letter into ${productionProfile.innerEnvelope}; leave inner envelope BLANK and UNSEALED` : "",
+          assemblyRule?.inside || "",
+          giftMessageFromNotes(mailing.notes) ? `Gift message: ${giftMessageFromNotes(mailing.notes)}` : "",
+          !isBirthdayPostcard && renewalCardDue(mailing, seed) ? "Include renewal card" : "",
+        ].filter(Boolean).join("; "),
         outsideInstructions: assemblyRule?.outside || "",
         stopReasons,
+        cycleId: batchDate,
+        jobId: `${batchDate}::${mailing.mailingId}`,
+        productionProfile,
+        envelopeBatchFileName: productionProfile && productionProfile.envelopeSize !== "POSTCARD" ? envelopeBatchFileName(batchDate, productionProfile) : "",
+        envelopeBatchPage: 0,
+        specialHandling: mailing.notes || "",
+        productionItem: assemblyRule?.inside || "",
       };
     });
+  const pageByBatch = new Map<string, number>();
+  for (const row of rows.sort((a, b) => a.envelopeBatchFileName.localeCompare(b.envelopeBatchFileName) || a.mailing.recipientName.localeCompare(b.mailing.recipientName))) {
+    if (!row.envelopeBatchFileName) continue;
+    const page = (pageByBatch.get(row.envelopeBatchFileName) || 0) + 1;
+    pageByBatch.set(row.envelopeBatchFileName, page);
+    row.envelopeBatchPage = page;
+  }
   const readyRows = rows.filter((row) => row.stopReasons.length === 0);
   const heldRows = rows.filter((row) => row.stopReasons.length > 0);
 
@@ -180,10 +270,89 @@ export function fulfillmentSpreadsheetRows(rows: FulfillmentRow[]): FulfillmentS
     "Letter #": row.mailing.character === "Birthday Postcard" ? "Birthday postcard" : String(row.mailing.letterNumber),
     "Letter PDF": row.letterFileName,
     "PUT INSIDE": row.insideInstructions,
-    "ENVELOPE / OUTSIDE": row.outsideInstructions,
+    "ENVELOPE / OUTSIDE": row.productionProfile
+      ? `${row.productionProfile.outerEnvelope}; ${row.productionProfile.postage}; glue/protective sticker + wax seal on OUTER envelope; ${row.envelopeBatchFileName ? `${row.envelopeBatchFileName} page ${row.envelopeBatchPage}` : row.outsideInstructions}`
+      : row.outsideInstructions,
     "IMPORTANT NOTES": [row.mailing.notes || "None", ...row.stopReasons.map((reason) => `STOP: ${reason}.`)].join(" "),
     Status: row.stopReasons.length ? "STOP" : "Ready",
   }));
+}
+
+export function envelopeManifestRows(rows: FulfillmentRow[]): EnvelopeManifestRow[] {
+  return rows.filter((row) => row.envelopeBatchFileName).map((row) => ({
+    "Envelope PDF": row.envelopeBatchFileName,
+    Page: row.envelopeBatchPage,
+    "Order ID": row.orderNumber,
+    Recipient: row.mailing.recipientName,
+    "Series - USE EXACTLY": row.seriesName,
+    "Letter #": String(row.mailing.letterNumber),
+    Address: row.recipientAddress,
+    "Envelope Size": row.productionProfile?.envelopeSize || "",
+    Font: row.productionProfile?.fontFamily || "",
+    Status: row.stopReasons.length ? "STOP" : "Ready",
+  }));
+}
+
+export function envelopeBatches(rows: FulfillmentRow[]): EnvelopeBatch[] {
+  const groups = new Map<string, EnvelopeBatch>();
+  for (const row of rows) {
+    if (!row.envelopeBatchFileName || !row.productionProfile || row.stopReasons.length) continue;
+    const existing = groups.get(row.envelopeBatchFileName);
+    if (existing) existing.rows.push(row);
+    else groups.set(row.envelopeBatchFileName, {
+      fileName: row.envelopeBatchFileName,
+      seriesName: row.seriesName,
+      size: row.productionProfile.envelopeSize,
+      rows: [row],
+    });
+  }
+  return [...groups.values()].sort((a, b) => a.fileName.localeCompare(b.fileName));
+}
+
+export function customerJobRows(rows: FulfillmentRow[]): CustomerJobRow[] {
+  return rows.map((row) => ({
+    "Cycle ID": row.cycleId,
+    "Customer Job ID": row.jobId,
+    "Order ID": row.orderNumber,
+    Recipient: row.mailing.recipientName,
+    Address: row.recipientAddress,
+    "Series / Version": row.seriesName,
+    "Letter #": String(row.mailing.letterNumber),
+    "Master Letter File": row.letterFileName,
+    "Inner Envelope": row.productionProfile?.innerEnvelope || "HOLD / STOP - CONFIRM",
+    "Outer Envelope": row.productionProfile?.outerEnvelope || "HOLD / STOP - CONFIRM",
+    "Envelope Batch PDF": row.envelopeBatchFileName,
+    "Envelope Page": row.envelopeBatchPage || "",
+    Postage: row.productionProfile?.postage || "HOLD / STOP - CONFIRM",
+    "Artifacts / Items": row.productionItem || "None listed",
+    "Special Handling": row.specialHandling,
+    Status: row.stopReasons.length ? "STOP" : "Ready",
+    "STOP Reasons": row.stopReasons.join("; "),
+  }));
+}
+
+export function artifactBatchRows(rows: FulfillmentRow[]): ArtifactBatchRow[] {
+  const groups = new Map<string, ArtifactBatchRow>();
+  for (const row of rows) {
+    const item = row.productionItem.trim();
+    if (!item || item === "No extra item listed") continue;
+    const key = `${row.seriesName}|${row.mailing.letterNumber}|${item}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.Quantity += 1;
+      if (row.stopReasons.length) existing.Status = "STOP";
+      continue;
+    }
+    groups.set(key, {
+      "Shared Production Item": item,
+      Series: row.seriesName,
+      "Letter #": String(row.mailing.letterNumber),
+      Quantity: 1,
+      "Master File": item.startsWith("Printed insert/artifact:") ? item.replace(/^Printed insert\/artifact:\s*/, "") : "Physical inventory item",
+      Status: row.stopReasons.length ? "STOP" : "Ready",
+    });
+  }
+  return [...groups.values()].sort((a, b) => a.Series.localeCompare(b.Series) || Number(a["Letter #"]) - Number(b["Letter #"]));
 }
 
 export function subscriberScheduleRows(seed: Dataset, statusOverrides: Record<string, string>): SubscriberScheduleRow[] {
@@ -248,5 +417,31 @@ export async function downloadFulfillmentWorkbook(data: FulfillmentData): Promis
   sheet["!autofilter"] = { ref: `A5:J${Math.max(allRows.length + 5, 5)}` };
   sheet["!freeze"] = { ySplit: 5 };
   XLSX.utils.book_append_sheet(workbook, sheet, "SEND TO PRINTER");
+
+  const jobs = XLSX.utils.json_to_sheet(customerJobRows(allRows));
+  jobs["!cols"] = [14, 36, 13, 28, 42, 22, 10, 34, 32, 30, 38, 12, 20, 42, 52, 12, 54].map((wch) => ({ wch }));
+  jobs["!autofilter"] = { ref: `A1:Q${Math.max(allRows.length + 1, 1)}` };
+  jobs["!freeze"] = { ySplit: 1 };
+  XLSX.utils.book_append_sheet(workbook, jobs, "CUSTOMER JOBS");
+
+  const manifest = XLSX.utils.json_to_sheet(envelopeManifestRows(allRows));
+  manifest["!cols"] = [38, 8, 13, 28, 22, 10, 42, 14, 22, 12].map((wch) => ({ wch }));
+  manifest["!autofilter"] = { ref: `A1:J${Math.max(allRows.length + 1, 1)}` };
+  manifest["!freeze"] = { ySplit: 1 };
+  XLSX.utils.book_append_sheet(workbook, manifest, "ENVELOPE MANIFEST");
+
+  const artifacts = artifactBatchRows(allRows);
+  const artifactSheet = XLSX.utils.json_to_sheet(artifacts);
+  artifactSheet["!cols"] = [48, 22, 10, 12, 42, 12].map((wch) => ({ wch }));
+  XLSX.utils.book_append_sheet(workbook, artifactSheet, "SHARED ARTIFACT BATCHES");
+
+  const instructions = XLSX.utils.aoa_to_sheet([
+    ["EVERLETTER UNIVERSAL ASSEMBLY INSTRUCTIONS"],
+    ...UNIVERSAL_ASSEMBLY_STEPS.map((step, index) => [`${index + 1}. ${step}`]),
+    [],
+    ["IMPORTANT", "The inner envelope stays blank and unsealed. Postage, glue/protective sticker, and wax seal belong on the OUTER envelope."],
+  ]);
+  instructions["!cols"] = [{ wch: 105 }, { wch: 80 }];
+  XLSX.utils.book_append_sheet(workbook, instructions, "UNIVERSAL INSTRUCTIONS");
   XLSX.writeFile(workbook, `EverLetter_${data.batchDate || "open"}_Printer_Fulfillment.xlsx`);
 }

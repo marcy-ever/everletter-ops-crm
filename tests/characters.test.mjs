@@ -12,6 +12,9 @@ test("normalizeCharacter recognizes a known character embedded in longer spreads
   assert.equal(normalizeCharacter("Marley"), "Marley");
   assert.equal(normalizeCharacter("RINGO kid"), "Ringo");
   assert.equal(normalizeCharacter("Kids Birthday Postcard"), "Birthday Postcard");
+  assert.equal(normalizeCharacter("Gazette subscription"), "Gazette");
+  assert.equal(normalizeCharacter("New Oliver"), "New Oliver");
+  assert.equal(normalizeCharacter("Old Oliver"), "Old Oliver");
 });
 
 test("normalizeCharacter treats 'old marley' as a distinct character identity, not a substring match on 'marley'", () => {
@@ -80,6 +83,10 @@ test("envelopeStockForCharacter groups Old Marley with Marley (via driveCharacte
 
 test("birthday postcards are identified as having no envelope", () => {
   assert.equal(envelopeStockForCharacter("Birthday Postcard"), "Birthday postcard — no envelope");
+});
+
+test("Gazette uses its own A9 stock", () => {
+  assert.equal(envelopeStockForCharacter("Gazette"), "Gazette A9 envelope");
 });
 
 test("birthday postcards are scheduled exactly ten calendar days before the birthday", () => {

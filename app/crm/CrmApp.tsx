@@ -45,6 +45,7 @@ import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./vi
 import MarketingAddresses from "./views/marketing-addresses/MarketingAddresses";
 import PrinterFulfillment from "./views/printer-fulfillment/PrinterFulfillment";
 import { computeFulfillmentData, downloadFulfillmentWorkbook, downloadSubscriberScheduleWorkbook } from "./views/printer-fulfillment/fulfillment-selectors";
+import { openFulfillmentEnvelopeBatch } from "./views/printer-fulfillment/envelope-batch-html";
 
 let driveConfig = emptyDriveConfig;
 const letterFolderUrl = (mailing: { character: string; letterNumber: string | number }) => configuredLetterFolderUrl(mailing, driveConfig);
@@ -175,6 +176,7 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
         data={data}
         onDownload={() => void downloadFulfillmentWorkbook(data)}
         onDownloadSubscriberSchedule={() => void downloadSubscriberScheduleWorkbook(state.seed!, state.statusOverrides)}
+        onOpenEnvelopeBatch={openFulfillmentEnvelopeBatch}
       />
     );
   },

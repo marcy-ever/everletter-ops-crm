@@ -1,14 +1,16 @@
 import { formatDate } from "@/lib/domain/format";
 import { number } from "../../format";
-import type { FulfillmentData } from "./fulfillment-selectors";
+import { envelopeBatches, type EnvelopeBatch, type FulfillmentData } from "./fulfillment-selectors";
 
 export interface PrinterFulfillmentProps {
   data: FulfillmentData;
   onDownload: () => void;
   onDownloadSubscriberSchedule: () => void;
+  onOpenEnvelopeBatch: (batch: EnvelopeBatch) => void;
 }
 
-export default function PrinterFulfillment({ data, onDownload, onDownloadSubscriberSchedule }: PrinterFulfillmentProps) {
+export default function PrinterFulfillment({ data, onDownload, onDownloadSubscriberSchedule, onOpenEnvelopeBatch }: PrinterFulfillmentProps) {
+  const batches = envelopeBatches([...data.readyRows, ...data.heldRows]);
   return (
     <section className="data-panel fulfillment-panel" aria-label="Printer fulfillment">
       <div className="panel-head">
@@ -33,6 +35,16 @@ export default function PrinterFulfillment({ data, onDownload, onDownloadSubscri
         </button>
         <button type="button" onClick={onDownloadSubscriberSchedule}>Download Master Subscriber Schedule</button>
         <small>High-risk rows are held back automatically.</small>
+      </div>
+
+      <div className="batch-actions">
+        <span>Addressed envelope batches:</span>
+        {batches.length ? batches.map((batch) => (
+          <button type="button" key={batch.fileName} onClick={() => onOpenEnvelopeBatch(batch)}>
+            {batch.seriesName} {batch.size} ({batch.rows.length})
+          </button>
+        )) : <small>No printer-ready envelope batches yet.</small>}
+        <small>Open each batch and choose Print → Save as PDF. The spreadsheet includes the matching filename and page manifest.</small>
       </div>
 
       <div className="table-wrap">
@@ -61,7 +73,7 @@ export default function PrinterFulfillment({ data, onDownload, onDownloadSubscri
       {data.heldRows.length > 0 && (
         <div className="fulfillment-held">
           <strong>{data.heldRows.length} row{data.heldRows.length === 1 ? " is" : "s are"} held for Needs Review.</strong>
-          <span>They are included in the printer spreadsheet as red STOP rows so they cannot be missed.</span>
+          <span>They are included in the printer spreadsheet as STOP rows so they cannot be missed.</span>
           <ul>{data.heldRows.map((row) => <li key={row.mailing.mailingId}><strong>{row.mailing.recipientName}</strong>: {row.stopReasons.join("; ")}</li>)}</ul>
         </div>
       )}
