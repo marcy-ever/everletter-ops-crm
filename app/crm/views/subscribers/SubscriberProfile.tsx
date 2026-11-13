@@ -211,7 +211,23 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
       {changeableSubscriptionId ? (() => {
         const selectedChoice = data.subscriptionChoices.find((choice) => choice.subscriptionId === changeableSubscriptionId);
         if (!selectedChoice) return null;
+        const selectedRows = allRows.filter((mailing) => mailing.subscriptionId === selectedChoice.subscriptionId);
         return (
+          <>
+          {selectedChoice.character === "Teacup Series" && selectedRows.length < 6 ? (
+            <button type="button" className="profile-button" onClick={async (event) => {
+              const button = event.currentTarget;
+              button.disabled = true;
+              const response = await fetch("/api/subscriptions/complete-teacup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subscriptionId: selectedChoice.subscriptionId }) });
+              if (!response.ok) {
+                button.disabled = false;
+                const body = await response.json().catch(() => ({}));
+                window.alert(body.error || "Could not complete this Teacup schedule.");
+                return;
+              }
+              window.location.reload();
+            }}>Complete 6-Letter Teacup Schedule</button>
+          ) : null}
           <details className="profile-character-change">
             <summary className="profile-button">Change Character</summary>
             <form onSubmit={async (event) => {
@@ -233,6 +249,7 @@ export default function SubscriberProfile({ data, onPrintAllEnvelopes, onPrintEn
               <div><button type="button" className="profile-button" onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}>Cancel</button><button type="submit" className="profile-button customer-status-confirm-button">Confirm Change</button></div>
             </form>
           </details>
+          </>
         );
       })() : null}
       <section className="profile-progress" aria-label="Current mailing progress">
