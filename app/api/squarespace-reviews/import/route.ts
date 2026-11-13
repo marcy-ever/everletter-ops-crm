@@ -7,7 +7,7 @@ import { buildMailingId, buildRecipientId, buildSubscriberId, buildSubscriptionI
 import { plannedLetterCount } from "@/lib/domain/plans";
 import { birthdayPostcardMailDate, giftMessageForOrder, normalizeBirthdayDate, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
 
-const CHARACTERS = new Set(["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Birthday Postcard"]);
+const CHARACTERS = new Set(["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Teacup Series", "Birthday Postcard"]);
 const PLANS = new Set(["Month-to-month", "6-month", "12-month", "One-time"]);
 
 export async function POST(request: Request) {

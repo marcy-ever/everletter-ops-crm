@@ -15,6 +15,8 @@ test("normalizeCharacter recognizes a known character embedded in longer spreads
   assert.equal(normalizeCharacter("Gazette subscription"), "Gazette");
   assert.equal(normalizeCharacter("New Oliver"), "New Oliver");
   assert.equal(normalizeCharacter("Old Oliver"), "Old Oliver");
+  assert.equal(normalizeCharacter("The Teacup Series"), "Teacup Series");
+  assert.equal(normalizeCharacter("Mother's Day"), "Teacup Series");
 });
 
 test("normalizeCharacter treats 'old marley' as a distinct character identity, not a substring match on 'marley'", () => {

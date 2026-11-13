@@ -62,7 +62,7 @@ export async function GET() {
       if (!customerName) warnings.push("Missing customer name");
       if (!addressText(address)) warnings.push("Missing mailing address");
       if (!products.length) warnings.push("No products found");
-      if (character === "Needs Review" || !["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Birthday Postcard"].includes(character)) warnings.push("Character needs review");
+      if (character === "Needs Review" || !["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Teacup Series", "Birthday Postcard"].includes(character)) warnings.push("Character needs review");
       if (isBirthdayPostcard && !birthdayDate) warnings.push("Birthday date needs review");
       if (birthdayDate && birthdayPostcardMailDate(birthdayDate) < String(order.createdOn || "").slice(0, 10)) warnings.push("Birthday postcard mail date has already passed");
       if (!["Month-to-month", "6-month", "12-month", "One-time"].includes(plan)) warnings.push("Plan needs review");
