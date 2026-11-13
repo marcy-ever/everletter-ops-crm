@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizePlan, plannedLetterCount, printModeForPlan, envelopeQuantityForMailing, numericLetter } from "../lib/domain/plans.ts";
+import { normalizePlan, plannedLetterCount, plannedLetterCountForOrder, printModeForPlan, envelopeQuantityForMailing, numericLetter } from "../lib/domain/plans.ts";
 
 // New coverage from step 3b's extraction (lib/domain/plans.ts didn't exist
 // before this) - not a re-assertion of what the render snapshots already
@@ -52,6 +52,11 @@ test("plannedLetterCount maps each metered plan, defaulting everything else to 1
   assert.equal(plannedLetterCount("One-time"), 1);
   assert.equal(plannedLetterCount("Needs Review"), 1);
   assert.equal(plannedLetterCount("anything else"), 1);
+});
+
+test("Teacup Series keeps a one-time plan while scheduling all six letters", () => {
+  assert.equal(plannedLetterCountForOrder("One-time", "Teacup Series"), 6);
+  assert.equal(plannedLetterCountForOrder("One-time", "Ringo"), 1);
 });
 
 test("printModeForPlan groups 6/12-month as Prepaid bulk, keeps Month-to-month distinct, and defaults everything else to Special", () => {

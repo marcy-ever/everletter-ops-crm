@@ -12,10 +12,11 @@
 
 import { formatDate } from "./format";
 
-// Everletter's cadence is the 1st and 15th of each month, with a roughly
-// 3-day cutoff: an order placed too close to the next batch date rolls to
-// the one after. Starting from orderDate, walks forward one candidate batch
-// date at a time (skipping any less than 3 days out) until `count` dates
+// Everletter's cadence is the 1st and 15th of each month, with a 7-day
+// cutoff: the fulfillment spreadsheet is sent seven days before each batch,
+// so an order placed after that handoff rolls to the following batch.
+// Starting from orderDate, walks forward one candidate batch date at a time
+// (skipping any less than 7 days out) until `count` dates
 // are collected - this is how a 6/12-month order's full mailing schedule
 // gets generated up front.
 export function batchDatesForOrder(orderDate: string, count: number): string[] {
@@ -33,7 +34,7 @@ export function batchDatesForOrder(orderDate: string, count: number): string[] {
       // TypeScript's strict mode rejects arithmetic directly on two Date
       // operands - forced by typing this module for real, not a rewrite.
       const diffDays = Math.ceil((batch.getTime() - start.getTime()) / 86400000);
-      if (diffDays >= 3) {
+      if (diffDays >= 7) {
         dates.push(new Date(batch.getTime() - batch.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
         if (dates.length === count) break;
       }

@@ -35,6 +35,15 @@ export function plannedLetterCount(plan: string): number {
   return 1;
 }
 
+// Teacup Series is sold as one prepaid purchase, but the product itself is a
+// fixed six-letter story delivered twice monthly over three months. Keep the
+// commercial plan as One-time while deriving the fulfillment count from the
+// character.
+export function plannedLetterCountForOrder(plan: string, character: string): number {
+  if (character === "Teacup Series") return 6;
+  return plannedLetterCount(plan);
+}
+
 // Which print workflow a plan uses: Month-to-month prints on demand per
 // batch; 6/12-month ("Prepaid bulk") are usually prepared in advance;
 // anything else ("Special") covers One-time/Needs Review and whatever else

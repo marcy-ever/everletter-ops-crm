@@ -4,7 +4,7 @@ import { getDb } from "@/db";
 import { auditEvents, ingestionEvents, mailings, orders, squarespaceOrderReviews, subscribers, subscriptions } from "@/db/schema";
 import { batchDatesForOrder } from "@/lib/domain/batch-dates";
 import { buildMailingId, buildRecipientId, buildSubscriberId, buildSubscriptionId } from "@/lib/domain/ids";
-import { plannedLetterCount } from "@/lib/domain/plans";
+import { plannedLetterCountForOrder } from "@/lib/domain/plans";
 import { birthdayPostcardMailDate, giftMessageForOrder, normalizeBirthdayDate, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
 
 const CHARACTERS = new Set(["Marley", "Old Marley", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Teacup Series", "Birthday Postcard"]);
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
       const subscriptionMatches = isBirthdayPostcard ? [] : await tx.select().from(subscriptions).where(and(eq(subscriptions.subscriberId, subscriber.id), sql`lower(${subscriptions.recipientName}) = ${input.recipientName.trim().toLowerCase()}`, sql`lower(${subscriptions.character}) = ${input.character.toLowerCase()}`)).limit(2);
       if (subscriptionMatches.length > 1) throw new ImportError(409, "This customer has duplicate matching subscriptions. Please resolve them first.");
-      const count = plannedLetterCount(input.plan);
+      const count = plannedLetterCountForOrder(input.plan, input.character);
       const address = [input.addressLine1, input.addressLine2, input.city, input.addressState, input.postalCode].filter(Boolean).join(" ");
       const recipientId = buildRecipientId({ subscriberId: subscriber.id, recipientName: input.recipientName, address });
       let subscription = subscriptionMatches[0];
