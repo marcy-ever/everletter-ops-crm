@@ -6,6 +6,7 @@ import { mailings } from "./mailings";
 import { mailingComponents } from "./mailing_components";
 import { exceptions } from "./exceptions";
 import { stagingLocations } from "./staging_locations";
+import { fulfillmentControls } from "./fulfillment_controls";
 
 // Kept in one file, separate from the table definitions, rather than
 // alongside each table - relations() calls between entity files would
@@ -28,6 +29,11 @@ export const subscriptionsRelations = relations(subscriptions, ({ one, many }) =
   orders: many(orders),
   mailings: many(mailings),
   exceptions: many(exceptions),
+  fulfillmentControl: one(fulfillmentControls),
+}));
+
+export const fulfillmentControlsRelations = relations(fulfillmentControls, ({ one }) => ({
+  mailing: one(mailings, { fields: [fulfillmentControls.mailingId], references: [mailings.id] }),
 }));
 
 export const ordersRelations = relations(orders, ({ one }) => ({

@@ -43,8 +43,8 @@ import Print from "./views/envelope-print/Print";
 import { computePrintData } from "./views/envelope-print/print-selectors";
 import { allEnvelopePrintRows, envelopePrintRows, openEnvelopePrint } from "./views/envelope-print/envelope-html";
 import MarketingAddresses from "./views/marketing-addresses/MarketingAddresses";
-import PrinterFulfillment from "./views/printer-fulfillment/PrinterFulfillment";
-import { computeFulfillmentData, downloadFulfillmentWorkbook, downloadSubscriberScheduleWorkbook } from "./views/printer-fulfillment/fulfillment-selectors";
+import PrinterFulfillmentContainer from "./views/printer-fulfillment/PrinterFulfillmentContainer";
+import { computeFulfillmentData, downloadSubscriberScheduleWorkbook } from "./views/printer-fulfillment/fulfillment-selectors";
 import { openFulfillmentEnvelopeBatch } from "./views/printer-fulfillment/envelope-batch-html";
 
 let driveConfig = emptyDriveConfig;
@@ -172,9 +172,8 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
       letterFolderUrl,
     );
     return (
-      <PrinterFulfillment
+      <PrinterFulfillmentContainer
         data={data}
-        onDownload={() => void downloadFulfillmentWorkbook(data)}
         onDownloadSubscriberSchedule={() => void downloadSubscriberScheduleWorkbook(state.seed!, state.statusOverrides)}
         onOpenEnvelopeBatch={openFulfillmentEnvelopeBatch}
       />

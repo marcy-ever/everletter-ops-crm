@@ -3013,6 +3013,20 @@ select:focus-visible {
 .fulfillment-table td:nth-child(5) strong { display: block; margin-top: 7px; color: var(--green); }
 .fulfillment-held { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 18px; padding: 14px 16px; border: 1px solid #d59aa0; border-radius: 14px; background: #fff5f5; color: #8b3440; }
 .fulfillment-held span { color: #725e5e; }
+.fulfillment-export-bar,
+.fulfillment-design-groups,
+.fulfillment-history { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.72); }
+.fulfillment-export-bar label { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.fulfillment-export-bar input { min-width: 260px; }
+.fulfillment-design-groups > strong { min-width: 145px; }
+.fulfillment-controls-table { min-width: 1500px; }
+.fulfillment-controls-table select { min-width: 105px; }
+.fulfillment-controls-table input[type="checkbox"] { width: 20px; height: 20px; }
+.fulfillment-controls-table .qc-input { width: 64px; }
+.fulfillment-controls-table td em { display: block; margin-top: 7px; color: #9a2f3e; font-size: 12px; font-style: normal; font-weight: 700; }
+.fulfillment-stop-row { background: #fff5f5; }
+.fulfillment-history { align-items: flex-start; flex-direction: column; }
+.fulfillment-history span { color: var(--muted); }
 
 /* Keep the website-inspired brand shell last so legacy view styles cannot override it. */
 .workspace { padding-top: 22px; }

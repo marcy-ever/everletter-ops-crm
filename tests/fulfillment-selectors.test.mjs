@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactBatchRows, computeFulfillmentData, customerJobRows, envelopeBatches, envelopeManifestRows, fulfillmentSpreadsheetRows, subscriberScheduleRows, subtractCalendarDays } from "../app/crm/views/printer-fulfillment/fulfillment-selectors.ts";
+import { artifactBatchRows, computeFulfillmentData, customerJobRows, envelopeBatches, envelopeManifestRows, fulfillmentProductionRows, fulfillmentSpreadsheetRows, printerAddressRows, printerDesignGroups, subscriberScheduleRows, subtractCalendarDays } from "../app/crm/views/printer-fulfillment/fulfillment-selectors.ts";
 import { fulfillmentEnvelopeBatchHtml } from "../app/crm/views/printer-fulfillment/envelope-batch-html.ts";
 
 function mailing(overrides = {}) {
@@ -48,7 +48,7 @@ test("envelope batches and manifests preserve the PDF page reference", () => {
   const html = fulfillmentEnvelopeBatchHtml(batch);
   assert.match(html, /top: 55%/);
   assert.match(html, /Aubrey Nichols/);
-  assert.match(html, /Quicksand/);
+  assert.match(html, /--address-font:'Arial'/);
   const [job] = customerJobRows(data.readyRows);
   assert.equal(job["Cycle ID"], "2026-11-01");
   assert.equal(job["Envelope Batch PDF"], batch.fileName);
@@ -64,11 +64,30 @@ test("shared artifact production is counted once per grouped item", () => {
   assert.equal(batch.Quantity, 2);
 });
 
-test("pending envelope decisions remain visible as STOP", () => {
+test("Legends uses the standard printer address font and remains exportable", () => {
   const data = computeFulfillmentData(dataset(), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/legends/11");
-  assert.equal(data.readyRows.length, 0);
-  assert.match(data.heldRows[0].stopReasons.join("; "), /font is pending/);
-  assert.match(data.heldRows[0].stopReasons.join("; "), /inner-envelope color is not confirmed/);
+  assert.equal(data.readyRows.length, 1);
+  assert.equal(data.readyRows[0].productionProfile.fontFamily, "Arial");
+});
+
+test("printer exports separate each design and split addresses into required columns", () => {
+  const data = computeFulfillmentData(dataset([mailing({ character: "Marley", letterNumber: "5" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/marley/5");
+  const [group] = printerDesignGroups(data, {}, "Main");
+  assert.equal(group.designGroup, "Marley_A7");
+  const [row] = printerAddressRows(group);
+  assert.deepEqual(row, { "Order ID": "ORDER-1", "Recipient Name": "Aubrey Nichols", "Address Line 1": "887 Lake Road", "Address Line 2": "", City: "Milton", State: "VT", ZIP: "05468", Character: "Marley", Version: "Standard", "Letter Number": "5", "Mail Date": "2026-11-01" });
+});
+
+test("payment, eligibility, owner, exclusion, and late-addendum controls gate exports", () => {
+  const data = computeFulfillmentData(dataset([mailing({ character: "Marley", letterNumber: "5" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/marley/5");
+  const key = "MAIL-1::2";
+  const base = { owner: "Printer", excludeFromPrinter: false, paymentCleared: true, mailingEligible: true, lateAddendumStatus: "Late addendum", fulfillmentStatus: "Pending", qcInitials: "AB", exportedDate: "", batchName: "" };
+  assert.equal(printerDesignGroups(data, { [key]: base }, "Main").length, 0);
+  assert.equal(printerDesignGroups(data, { [key]: base }, "Late addendum").length, 1);
+  assert.equal(printerDesignGroups(data, { [key]: { ...base, excludeFromPrinter: true } }, "Late addendum").length, 0);
+  const [production] = fulfillmentProductionRows(data, { [key]: base }, "2026-11-01_Main");
+  assert.equal(production["QC Initials"], "AB");
+  assert.equal(production["Glue Sticker"], "Required on outer envelope");
 });
 
 test("high-risk rows are held and excluded from the printer spreadsheet", () => {

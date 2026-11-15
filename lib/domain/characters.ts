@@ -10,7 +10,7 @@
 
 import { titleCase } from "./format";
 
-export const EVERLETTER_CHARACTERS = ["Marley", "Old Marley", "Gazette", "Ringo", "Oliver", "New Oliver", "Old Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Teacup Series", "Birthday Postcard"] as const;
+export const EVERLETTER_CHARACTERS = ["Marley", "Old Marley", "Gazette", "North Pole", "Ringo", "Oliver", "New Oliver", "Old Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Teacup Series", "Birthday Postcard"] as const;
 
 // Recognizes loose spreadsheet phrasing (character names embedded in longer
 // strings, e.g. "Marley - Kid") rather than requiring an exact match - real
@@ -22,6 +22,7 @@ export function normalizeCharacter(value: unknown): string {
   if (!raw) return "Needs Review";
   const lower = raw.toLowerCase();
   if (lower.includes("birthday") && lower.includes("postcard")) return "Birthday Postcard";
+  if (lower.includes("north pole")) return "North Pole";
   if (lower.includes("teacup") || lower.includes("mother's day") || lower.includes("mothers day")) return "Teacup Series";
   const known = ["gazette", "marley", "ringo", "oliver", "harper", "penelope", "marigold", "seraphine", "legends"];
   if (lower.includes("old marley")) return "Old Marley";
@@ -58,6 +59,7 @@ export function envelopeStockForCharacter(character: unknown): string {
   const key = driveCharacterKey(character);
   if (key === "birthday postcard") return "Birthday postcard — no envelope";
   if (key === "gazette") return "Gazette A9 envelope";
+  if (key === "north pole") return "North Pole A9 envelope";
   const kidCharacters = new Set(["harper", "legends", "marley", "oliver", "ringo"]);
   if (kidCharacters.has(key)) return `${titleCase(key)} color envelope`;
   return "Adult standard envelope";

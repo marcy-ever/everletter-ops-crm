@@ -11,6 +11,8 @@ import {
 } from "@/lib/client/selectors";
 import { envelopeStockForCharacter } from "@/lib/domain/characters";
 import { envelopeQuantityForMailing } from "@/lib/domain/plans";
+import { DEFAULT_FULFILLMENT_CONTROL, type FulfillmentControl, type LateAddendumStatus } from "@/lib/domain/fulfillment";
+import { fulfillmentControlKey } from "@/lib/client/fulfillment-client";
 import {
   envelopeBatchFileName,
   productionProfileForSeries,
@@ -49,6 +51,32 @@ export interface FulfillmentData {
   printerDueDate: string;
   readyRows: FulfillmentRow[];
   heldRows: FulfillmentRow[];
+}
+
+export interface ControlledFulfillmentRow extends FulfillmentRow {
+  control: FulfillmentControl;
+  exportStopReasons: string[];
+}
+
+export interface PrinterAddressRow {
+  "Order ID": string;
+  "Recipient Name": string;
+  "Address Line 1": string;
+  "Address Line 2": string;
+  City: string;
+  State: string;
+  ZIP: string;
+  Character: string;
+  Version: string;
+  "Letter Number": string;
+  "Mail Date": string;
+}
+
+export interface PrinterDesignGroup {
+  designGroup: string;
+  batchDate: string;
+  exportKind: LateAddendumStatus;
+  rows: ControlledFulfillmentRow[];
 }
 
 export interface FulfillmentSpreadsheetRow {
@@ -110,6 +138,32 @@ export interface CustomerJobRow {
   "Artifacts / Items": string;
   "Special Handling": string;
   Status: "Ready" | "STOP";
+  "STOP Reasons": string;
+}
+
+export interface FulfillmentProductionRow {
+  "Order ID": string;
+  Recipient: string;
+  Character: string;
+  Version: string;
+  "Letter Number": string;
+  "Mail Date": string;
+  "Letter File": string;
+  "Artifact(s)": string;
+  "Artifact Handling": string;
+  "Inner Envelope": string;
+  "Outer Envelope Size": EnvelopeSize | "";
+  "Outer Artwork Filename": string;
+  "USPS Stamp Category": string;
+  "Glue Sticker": string;
+  "Wax Seal": string;
+  "Special Assembly Instructions": string;
+  "Fulfillment Owner": string;
+  "Fulfillment Status": string;
+  "QC Initials": string;
+  "Batch Name": string;
+  "Exported Date": string;
+  "Late Addendum": string;
   "STOP Reasons": string;
 }
 
@@ -261,6 +315,90 @@ export function computeFulfillmentData(
   };
 }
 
+export function fulfillmentControlForRow(row: FulfillmentRow, controls: Record<string, FulfillmentControl>): FulfillmentControl {
+  const saved = controls[fulfillmentControlKey(row.mailing.mailingId, row.mailing.sourceRow)];
+  if (saved) return saved;
+  return {
+    ...DEFAULT_FULFILLMENT_CONTROL,
+    paymentCleared: !row.stopReasons.includes("Payment is not active"),
+    mailingEligible: row.mailing.activeState === "Active" && Boolean(row.mailing.shipDate),
+  };
+}
+
+export function controlledFulfillmentRows(data: FulfillmentData, controls: Record<string, FulfillmentControl>): ControlledFulfillmentRow[] {
+  return [...data.readyRows, ...data.heldRows].map((row) => {
+    const control = fulfillmentControlForRow(row, controls);
+    const exportStopReasons = row.stopReasons.filter((reason) => reason !== "Payment is not active" || !control.paymentCleared);
+    if (control.owner !== "Printer") exportStopReasons.push(`Fulfillment owner is ${control.owner}`);
+    if (control.excludeFromPrinter) exportStopReasons.push("Excluded from printer export");
+    if (!control.paymentCleared) exportStopReasons.push("Payment has not cleared");
+    if (!control.mailingEligible) exportStopReasons.push("Mailing is not eligible");
+    return { ...row, control, exportStopReasons: [...new Set(exportStopReasons)] };
+  });
+}
+
+export function printerDesignGroupForRow(row: FulfillmentRow): string {
+  const profile = row.productionProfile;
+  const series = row.seriesName.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "");
+  return `${series}_${profile?.envelopeSize || "UNKNOWN"}`;
+}
+
+export function printerDesignGroups(data: FulfillmentData, controls: Record<string, FulfillmentControl>, exportKind: LateAddendumStatus): PrinterDesignGroup[] {
+  const groups = new Map<string, ControlledFulfillmentRow[]>();
+  for (const row of controlledFulfillmentRows(data, controls)) {
+    if (row.control.lateAddendumStatus !== exportKind || row.exportStopReasons.length) continue;
+    const key = printerDesignGroupForRow(row);
+    const list = groups.get(key) || [];
+    list.push(row);
+    groups.set(key, list);
+  }
+  return [...groups.entries()].map(([designGroup, rows]) => ({ designGroup, batchDate: data.batchDate, exportKind, rows: rows.sort((a, b) => a.mailing.recipientName.localeCompare(b.mailing.recipientName)) })).sort((a, b) => a.designGroup.localeCompare(b.designGroup));
+}
+
+export function splitPrinterAddress(address: string): { line1: string; line2: string; city: string; state: string; zip: string } {
+  const parts = address.split(/\s*,\s*/).map((part) => part.trim()).filter(Boolean);
+  const stateZip = parts.pop() || "";
+  const city = parts.pop() || "";
+  const stateZipMatch = stateZip.match(/^([A-Za-z]{2})\s+(.+)$/);
+  const line1 = parts.shift() || "";
+  return { line1, line2: parts.join(", "), city, state: stateZipMatch?.[1]?.toUpperCase() || stateZip, zip: stateZipMatch?.[2] || "" };
+}
+
+export function printerAddressRows(group: PrinterDesignGroup): PrinterAddressRow[] {
+  return group.rows.map((row) => {
+    const address = splitPrinterAddress(row.recipientAddress);
+    const [character, version = "Standard"] = row.seriesName.split(/\s+-\s+/, 2);
+    return {
+      "Order ID": row.orderNumber,
+      "Recipient Name": row.mailing.recipientName,
+      "Address Line 1": address.line1,
+      "Address Line 2": address.line2,
+      City: address.city,
+      State: address.state,
+      ZIP: address.zip,
+      Character: character,
+      Version: version,
+      "Letter Number": String(row.mailing.letterNumber),
+      "Mail Date": row.mailing.shipDate,
+    };
+  });
+}
+
+export async function downloadPrinterDesignWorkbook(group: PrinterDesignGroup, batchName: string): Promise<void> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet(printerAddressRows(group));
+  sheet["!cols"] = [14, 28, 34, 24, 22, 10, 12, 18, 16, 14, 14].map((wch) => ({ wch }));
+  sheet["!autofilter"] = { ref: `A1:K${Math.max(group.rows.length + 1, 1)}` };
+  sheet["!freeze"] = { ySplit: 1 };
+  XLSX.utils.book_append_sheet(workbook, sheet, "ADDRESSES");
+  const instructions = XLSX.utils.aoa_to_sheet([["Printer address font", "Arial"], ["Artwork/design", group.designGroup], ["Mail date", group.batchDate], ["Batch type", group.exportKind]]);
+  instructions["!cols"] = [{ wch: 24 }, { wch: 42 }];
+  XLSX.utils.book_append_sheet(workbook, instructions, "INSTRUCTIONS");
+  const kind = group.exportKind === "Late addendum" ? "LATE_ADDENDUM" : "MAIN";
+  XLSX.writeFile(workbook, `${batchName}_${kind}_${group.designGroup}.xlsx`);
+}
+
 export function fulfillmentSpreadsheetRows(rows: FulfillmentRow[]): FulfillmentSpreadsheetRow[] {
   return rows.map((row) => ({
     "Done?": "No",
@@ -329,6 +467,55 @@ export function customerJobRows(rows: FulfillmentRow[]): CustomerJobRow[] {
     Status: row.stopReasons.length ? "STOP" : "Ready",
     "STOP Reasons": row.stopReasons.join("; "),
   }));
+}
+
+function artworkFilename(row: FulfillmentRow): string {
+  const size = row.productionProfile?.envelopeSize || "UNKNOWN";
+  const series = row.seriesName.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "");
+  return `${series}_${size}_OUTER_ARTWORK.pdf`;
+}
+
+export function fulfillmentProductionRows(data: FulfillmentData, controls: Record<string, FulfillmentControl>, batchName: string): FulfillmentProductionRow[] {
+  return controlledFulfillmentRows(data, controls).map((row) => {
+    const [character, version = "Standard"] = row.seriesName.split(/\s+-\s+/, 2);
+    return {
+      "Order ID": row.orderNumber,
+      Recipient: row.mailing.recipientName,
+      Character: character,
+      Version: version,
+      "Letter Number": String(row.mailing.letterNumber),
+      "Mail Date": row.mailing.shipDate,
+      "Letter File": row.letterFileName,
+      "Artifact(s)": row.productionItem || "None listed",
+      "Artifact Handling": row.productionItem.startsWith("Printed") ? "Print once in shared batch; insert one per recipient" : row.productionItem.startsWith("Add item") ? "Pull from inventory; insert one" : "None",
+      "Inner Envelope": row.productionProfile?.innerEnvelope || "HOLD / STOP - CONFIRM",
+      "Outer Envelope Size": row.productionProfile?.envelopeSize || "",
+      "Outer Artwork Filename": artworkFilename(row),
+      "USPS Stamp Category": row.productionProfile?.postage || "HOLD / STOP - CONFIRM",
+      "Glue Sticker": "Required on outer envelope",
+      "Wax Seal": "Required on outer envelope over glue sticker",
+      "Special Assembly Instructions": row.insideInstructions,
+      "Fulfillment Owner": row.control.owner,
+      "Fulfillment Status": row.control.fulfillmentStatus,
+      "QC Initials": row.control.qcInitials,
+      "Batch Name": row.control.batchName || batchName,
+      "Exported Date": row.control.exportedDate,
+      "Late Addendum": row.control.lateAddendumStatus,
+      "STOP Reasons": row.exportStopReasons.join("; "),
+    };
+  });
+}
+
+export async function downloadFulfillmentProductionList(data: FulfillmentData, controls: Record<string, FulfillmentControl>, batchName: string): Promise<void> {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
+  const rows = fulfillmentProductionRows(data, controls, batchName);
+  const sheet = XLSX.utils.json_to_sheet(rows);
+  sheet["!cols"] = [14, 28, 18, 16, 12, 14, 34, 38, 36, 34, 16, 34, 22, 24, 34, 48, 18, 20, 14, 26, 22, 16, 52].map((wch) => ({ wch }));
+  sheet["!autofilter"] = { ref: `A1:W${Math.max(rows.length + 1, 1)}` };
+  sheet["!freeze"] = { ySplit: 1 };
+  XLSX.utils.book_append_sheet(workbook, sheet, "FULFILLMENT PRODUCTION");
+  XLSX.writeFile(workbook, `${batchName}_FULFILLMENT_PRODUCTION.xlsx`);
 }
 
 export function artifactBatchRows(rows: FulfillmentRow[]): ArtifactBatchRow[] {

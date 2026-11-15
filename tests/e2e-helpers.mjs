@@ -38,6 +38,8 @@ import { mailingProofs } from "../db/schema/mailing_proofs";
 import { mailingPhotoReviews } from "../db/schema/mailing_photo_reviews";
 import { squarespaceOrderReviews } from "../db/schema/squarespace_order_reviews";
 import { integrationSyncState } from "../db/schema/integration_sync_state";
+import { fulfillmentControls } from "../db/schema/fulfillment_controls";
+import { fulfillmentExports } from "../db/schema/fulfillment_exports";
 import { exceptions } from "../db/schema/exceptions";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,7 +86,7 @@ export function e2eSkipReason({ requiresFixture = true } = {}) {
 // this module's own import at load time instead of silently truncating
 // nothing for a name that no longer exists.
 export async function truncateAllTables(db) {
-  await db.execute(sql`TRUNCATE TABLE ${integrationSyncState}, ${squarespaceOrderReviews}, ${mailingPhotoReviews}, ${mailingProofs}, ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE ${fulfillmentExports}, ${fulfillmentControls}, ${integrationSyncState}, ${squarespaceOrderReviews}, ${mailingPhotoReviews}, ${mailingProofs}, ${mailingComponents}, ${exceptions}, ${mailings}, ${orders}, ${subscriptions}, ${subscribers} RESTART IDENTITY CASCADE`);
 }
 
 // Parses the real test spreadsheet the same way for every file that needs

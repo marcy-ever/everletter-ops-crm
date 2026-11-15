@@ -22,6 +22,8 @@ export default defineConfig({
     "./db/schema/mailing_photo_reviews.ts",
     "./db/schema/squarespace_order_reviews.ts",
     "./db/schema/integration_sync_state.ts",
+    "./db/schema/fulfillment_controls.ts",
+    "./db/schema/fulfillment_exports.ts",
     "./db/schema/exceptions.ts",
     "./db/schema/ingestion_events.ts",
     "./db/schema/audit_events.ts",

@@ -32,19 +32,21 @@ export interface SeriesProductionProfile {
 
 const KIDS_POSTAGE = "KIDS USPS stamp";
 const ADULT_POSTAGE = "ADULT USPS stamp";
+export const PRINTER_ADDRESS_FONT = "Arial";
 
 const PROFILES: Record<string, SeriesProductionProfile> = {
-  Marley: { series: "Marley", envelopeSize: "A7", innerEnvelope: "Dark pink small inner envelope", outerEnvelope: "Light pink A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Quicksand", fontConfirmed: true },
-  "Marley - Legacy": { series: "Marley - Legacy", envelopeSize: "A7", innerEnvelope: "Dark pink small inner envelope", outerEnvelope: "Light pink A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Quicksand", fontConfirmed: true },
-  Gazette: { series: "Gazette", envelopeSize: "A9", innerEnvelope: "Dark pink small inner envelope", outerEnvelope: "Marley identity A9 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Quicksand", fontConfirmed: false },
-  Ringo: { series: "Ringo", envelopeSize: "A7", innerEnvelope: "Dark blue small inner envelope", outerEnvelope: "White A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Schoolbell", fontConfirmed: true },
-  Harper: { series: "Harper", envelopeSize: "A7", innerEnvelope: "Dark purple small inner envelope", outerEnvelope: "Light purple A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Anonymous Pro", fontConfirmed: true },
-  "Oliver - Legacy": { series: "Oliver - Legacy", envelopeSize: "A7", innerEnvelope: "Dark green small inner envelope", outerEnvelope: "White A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Coming Soon", fontConfirmed: false },
-  "Oliver - New": { series: "Oliver - New", envelopeSize: "A7", innerEnvelope: "Dark green small inner envelope", outerEnvelope: "White A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Coming Soon", fontConfirmed: false },
-  Penelope: { series: "Penelope", envelopeSize: "A7", innerEnvelope: "Ivory small inner envelope", outerEnvelope: "Adult A7 outer envelope", postage: ADULT_POSTAGE, fontFamily: "Caveat", fontConfirmed: true },
-  Seraphine: { series: "Seraphine", envelopeSize: "A7", innerEnvelope: "Ivory small inner envelope", outerEnvelope: "Adult A7 outer envelope", postage: ADULT_POSTAGE, fontFamily: "Dancing Script", fontConfirmed: true },
-  Marigold: { series: "Marigold", envelopeSize: "A7", innerEnvelope: "Ivory small inner envelope", outerEnvelope: "Adult A7 outer envelope", postage: ADULT_POSTAGE, fontFamily: "Gloria Hallelujah", fontConfirmed: true },
-  Legends: { series: "Legends", envelopeSize: "A7", innerEnvelope: "HOLD / STOP - CONFIRM inner-envelope color", outerEnvelope: "Legends A7 outer envelope", postage: KIDS_POSTAGE, fontFamily: "Caveat", fontConfirmed: false },
+  Marley: { series: "Marley", envelopeSize: "A7", innerEnvelope: "Dark pink small inner envelope", outerEnvelope: "Marley A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  "Marley - Legacy": { series: "Marley - Legacy", envelopeSize: "A7", innerEnvelope: "Dark pink small inner envelope", outerEnvelope: "Marley Legacy A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Gazette: { series: "Gazette", envelopeSize: "A9", innerEnvelope: "Dark pink small inner envelope", outerEnvelope: "Gazette A9 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  "North Pole": { series: "North Pole", envelopeSize: "A9", innerEnvelope: "North Pole insert package", outerEnvelope: "North Pole A9 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Ringo: { series: "Ringo", envelopeSize: "A7", innerEnvelope: "Dark blue small inner envelope", outerEnvelope: "Ringo A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Harper: { series: "Harper", envelopeSize: "A7", innerEnvelope: "Dark purple small inner envelope", outerEnvelope: "Harper A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  "Oliver - Legacy": { series: "Oliver - Legacy", envelopeSize: "A7", innerEnvelope: "Dark green small inner envelope", outerEnvelope: "Oliver Legacy A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  "Oliver - New": { series: "Oliver - New", envelopeSize: "A7", innerEnvelope: "Dark green small inner envelope", outerEnvelope: "Oliver New A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Penelope: { series: "Penelope", envelopeSize: "A7", innerEnvelope: "Ivory small inner envelope", outerEnvelope: "Penelope A7 artwork", postage: ADULT_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Seraphine: { series: "Seraphine", envelopeSize: "A7", innerEnvelope: "Ivory small inner envelope", outerEnvelope: "Seraphine A7 artwork", postage: ADULT_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Marigold: { series: "Marigold", envelopeSize: "A7", innerEnvelope: "Ivory small inner envelope", outerEnvelope: "Marigold A7 artwork", postage: ADULT_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
+  Legends: { series: "Legends", envelopeSize: "A7", innerEnvelope: "Legends small inner envelope", outerEnvelope: "Legends A7 artwork", postage: KIDS_POSTAGE, fontFamily: PRINTER_ADDRESS_FONT, fontConfirmed: true },
   "Birthday Postcard": { series: "Birthday Postcard", envelopeSize: "POSTCARD", innerEnvelope: "Not used", outerEnvelope: "Not used", postage: "Postcard postage", fontFamily: "Quicksand", fontConfirmed: true },
 };
 

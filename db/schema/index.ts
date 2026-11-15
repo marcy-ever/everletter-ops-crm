@@ -8,6 +8,8 @@ export * from "./mailing_proofs";
 export * from "./mailing_photo_reviews";
 export * from "./squarespace_order_reviews";
 export * from "./integration_sync_state";
+export * from "./fulfillment_controls";
+export * from "./fulfillment_exports";
 export * from "./exceptions";
 export * from "./ingestion_events";
 export * from "./audit_events";
