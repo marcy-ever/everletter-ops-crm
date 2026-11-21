@@ -28,7 +28,13 @@ export async function syncNewSquarespaceOrders(): Promise<number> {
 }
 
 export async function importSquarespaceReview(reviewId: number, input: SquarespaceImportInput): Promise<void> {
-  const response = await fetch("/api/squarespace-reviews/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reviewId, input }) });
+  let response: Response;
+  try {
+    response = await fetch("/api/squarespace-reviews/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reviewId, input }), signal: AbortSignal.timeout(30_000) });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") throw new Error("The import took too long and was stopped safely. No duplicate was created; please try again.");
+    throw error;
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || "Could not import this order.");
 }

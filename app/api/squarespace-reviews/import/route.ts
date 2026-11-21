@@ -5,7 +5,7 @@ import { auditEvents, ingestionEvents, mailings, orders, squarespaceOrderReviews
 import { batchDatesForOrder } from "@/lib/domain/batch-dates";
 import { buildMailingId, buildRecipientId, buildSubscriberId, buildSubscriptionId } from "@/lib/domain/ids";
 import { plannedLetterCountForOrder } from "@/lib/domain/plans";
-import { birthdayPostcardMailDate, giftMessageForOrder, normalizeBirthdayDate, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
+import { birthdayPostcardMailDate, giftMessageForOrder, normalizeBirthdayDate, normalizeNorthPolePreviewOrder, type SquarespaceImportInput } from "@/lib/domain/squarespace-preview";
 
 const CHARACTERS = new Set(["Marley", "Old Marley", "North Pole", "Ringo", "Oliver", "Harper", "Penelope", "Marigold", "Seraphine", "Legends", "Teacup Series", "Birthday Postcard"]);
 const PLANS = new Set(["Month-to-month", "6-month", "12-month", "One-time"]);
@@ -25,10 +25,15 @@ export async function POST(request: Request) {
     let actorEmail = "no-session@test.invalid";
     try { actorEmail = (await auth())?.user?.email ?? actorEmail; } catch {}
     const result = await getDb().transaction(async (tx) => {
+      await tx.execute(sql`set local lock_timeout = '5s'`);
+      await tx.execute(sql`set local statement_timeout = '20s'`);
       const reviewRows = await tx.select().from(squarespaceOrderReviews).where(and(eq(squarespaceOrderReviews.id, reviewId!), eq(squarespaceOrderReviews.status, "Pending"))).limit(1);
       const review = reviewRows[0];
       if (!review) throw new ImportError(409, "That order was already imported or is no longer pending.");
-      const remote = review.snapshot;
+      const remote = normalizeNorthPolePreviewOrder(review.snapshot);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`squarespace:${remote.orderNumber}`}))`);
+      const claimedReview = await tx.select({ id: squarespaceOrderReviews.id }).from(squarespaceOrderReviews).where(and(eq(squarespaceOrderReviews.id, reviewId!), eq(squarespaceOrderReviews.status, "Pending"))).limit(1);
+      if (!claimedReview.length) throw new ImportError(409, "That order was already imported or is no longer pending.");
       if (remote.paymentState !== "PAID" || remote.fulfillmentStatus === "CANCELED" || remote.testMode || remote.warnings.some((warning) => /payment is|canceled|test order/i.test(warning))) throw new ImportError(400, "Canceled, unpaid, and test orders cannot be imported.");
       if (!/^\d{4}-\d{2}-\d{2}/.test(remote.createdOn) || Number.isNaN(new Date(remote.createdOn).valueOf())) throw new ImportError(400, "This order needs a valid order date before it can be imported.");
       const duplicateOrder = await tx.select({ id: orders.id }).from(orders).where(eq(orders.externalOrderNumber, remote.orderNumber)).limit(1);
@@ -79,9 +84,20 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof ImportError) return Response.json({ error: error.message }, { status: error.status });
+    if (isPostgresTimeout(error)) return Response.json({ error: "The import timed out safely and no customer data was saved. Please try again." }, { status: 503 });
     console.error("Could not import Squarespace order", error);
     return Response.json({ error: "Could not import this Squarespace order." }, { status: 500 });
   }
+}
+
+function isPostgresTimeout(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (candidate.code === "57014" || candidate.code === "55P03") return true;
+    current = candidate.cause;
+  }
+  return false;
 }
 
 class ImportError extends Error {

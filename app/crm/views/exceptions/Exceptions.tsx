@@ -84,9 +84,13 @@ function SquarespaceReviews({ state, onImport, onIgnore, onCustomerClick }: { st
       const form = event.currentTarget;
       const values = Object.fromEntries(new FormData(form)) as Record<string, string>;
       const error = form.querySelector("[data-squarespace-import-error]");
+      const submit = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
       if (!window.confirm(`Import order #${order.orderNumber} and create its mailings?`)) return;
+      if (submit) { submit.disabled = true; submit.textContent = "Importing…"; }
+      if (error) error.textContent = "Creating the customer and one mailing…";
       try { await onImport(id, values as unknown as SquarespaceImportInput); }
       catch (caught) { if (error) error.textContent = caught instanceof Error ? caught.message : "Could not import this order."; }
+      finally { if (submit) { submit.disabled = false; submit.textContent = "Review & Import"; } }
     }}>
       <div className="squarespace-order-head"><strong>Order #{order.orderNumber}</strong><span className="pill status-to-prepare">Review before import</span></div>
       <label>Customer name{order.subscriberId && <button type="button" className="link-button recipient-profile-link" onClick={() => onCustomerClick(order.subscriberId!)}>Open existing customer profile</button>}<input name="customerName" defaultValue={order.customerName === "Missing name" ? "" : order.customerName} required /></label>

@@ -36,8 +36,9 @@ test("a confirmed Squarespace review creates the customer, subscription, order, 
   const staged = await stage(new Request("http://localhost/api/squarespace-reviews", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ order }) }));
   const reviewId = (await staged.json()).reviewId;
   const input = { email: "taylor@example.test", customerName: "Taylor Customer", recipientName: "Jamie", addressLine1: "10 Pine St", addressLine2: "", city: "Denver", addressState: "CO", postalCode: "80202", character: "Ringo", plan: "6-month" };
-  const imported = await importReview(new Request("http://localhost/api/squarespace-reviews/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewId, input }) }));
-  assert.equal(imported.status, 200);
+  const importRequest = () => new Request("http://localhost/api/squarespace-reviews/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewId, input }) });
+  const attempts = await Promise.all([importReview(importRequest()), importReview(importRequest())]);
+  assert.deepEqual(attempts.map((response) => response.status).sort(), [200, 409]);
   assert.equal((await db.select().from(subscribers)).length, 1);
   assert.equal((await db.select().from(subscriptions)).length, 1);
   const importedOrders = await db.select().from(orders);
@@ -117,13 +118,12 @@ test("North Pole product mapping preserves personalization and imports exactly o
   const importedMailings = await db.select().from(mailings);
   assert.equal(importedMailings.length, 1);
   assert.equal(importedMailings[0].letterNumber, 1);
+  assert.equal(importedMailings[0].scheduledDate, "2026-12-01");
   assert.equal(importedMailings[0].recipientName, "Joseph Howell");
   assert.match(importedMailings[0].notes, /NORTH POLE CHILD FIRST NAME: Joe/);
   assert.match(importedMailings[0].notes, /PREFERRED WOODLAND CHARACTER: Ringo/);
   assert.match(importedMailings[0].notes, /NORTH POLE PERSONALIZATION:/);
   assert.doesNotMatch(importedMailings[0].notes, /GIFT MESSAGE/);
-  const duplicate = await importReview(new Request("http://localhost/api/squarespace-reviews/import", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reviewId, input }) }));
-  assert.equal(duplicate.status, 409);
   assert.equal((await db.select().from(mailings)).length, 1);
   assert.equal((await db.select().from(squarespaceOrderReviews))[0].status, "Imported");
 });
