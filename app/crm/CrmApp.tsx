@@ -19,8 +19,6 @@ import { initCrmApp } from "./shell/init-crm-app";
 import { emptyDriveConfig, letterFolderUrl as configuredLetterFolderUrl, openDriveLink, type DriveConfig } from "./shell/drive-links";
 import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
-import LaunchPlan from "./views/launch-plan/LaunchPlan";
-import { computeLaunchPlanData } from "./views/launch-plan/launch-selectors";
 import Sync from "./views/sync/Sync";
 import { computeSyncPreview, defaultSyncSubscriberId, defaultSyncSubscriptionId } from "./views/sync/sync-selectors";
 import Samples from "./views/samples/Samples";
@@ -190,20 +188,6 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   automation: () => {
     const automationRules = (state.seed?.automationRules as AutomationRule[] | undefined) ?? [];
     return <Automation automationRules={automationRules} />;
-  },
-  launch: () => {
-    if (!state.seed) return null;
-    const data = computeLaunchPlanData(
-      state.seed,
-      effectiveMailings(state.seed, state.statusOverrides),
-      state.reviewed,
-      state.componentOverrides,
-      state.batchFilter,
-      state.packetScope,
-      state.query,
-      todayIso(new Date()),
-    );
-    return <LaunchPlan data={data} />;
   },
   // The first interactive migrated view - see this file's own header on
   // getViewSnapshot() for why that's what forced the render-generation

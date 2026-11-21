@@ -34,7 +34,6 @@ const EXPECTED_ORDER = [
   "qa",
   "packet",
   "bins",
-  "launch",
   "sync",
   "marketing",
   "automation",
