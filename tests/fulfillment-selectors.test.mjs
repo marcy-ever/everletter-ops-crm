@@ -78,6 +78,20 @@ test("printer exports separate each design and split addresses into required col
   assert.deepEqual(row, { "Order ID": "ORDER-1", "Recipient Name": "Aubrey Nichols", "Address Line 1": "887 Lake Road", "Address Line 2": "", City: "Milton", State: "VT", ZIP: "05468", Character: "Marley", Version: "Standard", "Letter Number": "5", "Mail Date": "2026-11-01" });
 });
 
+test("North Pole is an exportable separate A9 design and keeps the woodland choice as its version", () => {
+  const northPole = mailing({ character: "North Pole", plan: "One-time", letterNumber: "1", notes: "NORTH POLE CHILD FIRST NAME: Joe; PREFERRED WOODLAND CHARACTER: Ringo; NORTH POLE PERSONALIZATION: Helped when I was in the hospital" });
+  const data = computeFulfillmentData(dataset([northPole]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/north-pole/1");
+  assert.equal(data.readyRows.length, 1);
+  const [group] = printerDesignGroups(data, {}, "Main");
+  assert.equal(group.designGroup, "North_Pole_A9");
+  const [row] = printerAddressRows(group);
+  assert.equal(row.Character, "North Pole");
+  assert.equal(row.Version, "Ringo");
+  assert.equal(row["Recipient Name"], "Aubrey Nichols");
+  assert.match(data.readyRows[0].insideInstructions, /Personalized North Pole letter/);
+  assert.match(data.readyRows[0].specialHandling, /NORTH POLE PERSONALIZATION/);
+});
+
 test("payment, eligibility, owner, exclusion, and late-addendum controls gate exports", () => {
   const data = computeFulfillmentData(dataset([mailing({ character: "Marley", letterNumber: "5" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/marley/5");
   const key = "MAIL-1::2";

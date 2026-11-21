@@ -21,4 +21,7 @@ export const orders = pgTable("orders", {
   billingState: text("billing_state"),
   billingZip: text("billing_zip"),
   billingCountry: text("billing_country"),
+  childFirstName: text("child_first_name"),
+  preferredWoodlandCharacter: text("preferred_woodland_character"),
+  northPolePersonalization: text("north_pole_personalization"),
 });

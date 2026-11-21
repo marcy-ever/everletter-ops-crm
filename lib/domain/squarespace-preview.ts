@@ -7,6 +7,9 @@ export interface SquarespacePreviewOrder {
   fulfillmentStatus?: string; testMode?: boolean;
   giftMessage?: string;
   birthdayDate?: string;
+  childFirstName?: string;
+  preferredWoodlandCharacter?: string;
+  northPolePersonalization?: string;
   recipientName: string; character: string; plan: string;
   existing: boolean; staged?: boolean; reviewStatus?: "Pending" | "Imported" | "Ignored"; warnings: string[];
   subscriberId?: string;
@@ -18,6 +21,9 @@ export interface SquarespaceImportInput {
   character: string; plan: string;
   giftMessage?: string;
   birthdayDate?: string;
+  childFirstName?: string;
+  preferredWoodlandCharacter?: string;
+  northPolePersonalization?: string;
 }
 
 export function normalizeBirthdayDate(value: unknown): string {
@@ -53,4 +59,20 @@ export function giftMessageForOrder(order: Pick<SquarespacePreviewOrder, "giftMe
   if (order.giftMessage?.trim()) return order.giftMessage.trim();
   const detail = order.details.find((item) => /^gift message|^special instructions?/i.test(item.trim()));
   return detail?.replace(/^[^:]*:\s*/, "").trim() || "";
+}
+
+function detailValue(details: string[], label: RegExp): string {
+  const detail = details.find((item) => label.test(item.slice(0, Math.max(0, item.indexOf(":")))));
+  return detail?.replace(/^[^:]*:\s*/, "").trim() || "";
+}
+
+export function normalizeNorthPolePreviewOrder(order: SquarespacePreviewOrder): SquarespacePreviewOrder {
+  if (!/personalized christmas letter from the north pole/i.test(order.products.join(" "))) return order;
+  const childFirstName = order.childFirstName?.trim() || detailValue(order.details, /child(?:'|’)?s first name|child first name/i);
+  const preferredWoodlandCharacter = order.preferredWoodlandCharacter?.trim() || detailValue(order.details, /preferred woodland character/i);
+  const northPolePersonalization = order.northPolePersonalization?.trim() || detailValue(order.details, /tell us something wonderful/i);
+  const warnings = order.warnings.filter((warning) => !/^(character|plan) needs review$/i.test(warning));
+  if (!childFirstName && !warnings.includes("Child's first name needs review")) warnings.push("Child's first name needs review");
+  if (!preferredWoodlandCharacter && !warnings.includes("Preferred woodland character needs review")) warnings.push("Preferred woodland character needs review");
+  return { ...order, character: "North Pole", plan: "One-time", childFirstName, preferredWoodlandCharacter, northPolePersonalization, warnings };
 }

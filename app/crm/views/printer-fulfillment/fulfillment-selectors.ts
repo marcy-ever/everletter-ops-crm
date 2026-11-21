@@ -209,6 +209,7 @@ export function printerSeriesName(mailing: Pick<EffectiveMailing, "character" | 
 export function printerAssemblyRule(seriesName: string, letterNumber: string | number): { inside: string; outside: string } | null {
   const letter = String(letterNumber);
   if (seriesName === "Legends") return { inside: `Printed insert/artifact: Journal Entry (${letter} Legends_A-4.5 x 6)`, outside: "No special envelope instruction listed" };
+  if (seriesName === "North Pole") return { inside: "Personalized North Pole letter using the child name, woodland-character version, and North Pole personalization in IMPORTANT NOTES", outside: "Use North Pole A9 artwork" };
   if (seriesName === "Birthday Postcard") return { inside: "Birthday postcard", outside: "Postcard — no envelope" };
   const inside = VERIFIED_INSIDE_RULES[`${seriesName}|${letter}`];
   if (!inside) return null;
@@ -367,7 +368,9 @@ export function splitPrinterAddress(address: string): { line1: string; line2: st
 export function printerAddressRows(group: PrinterDesignGroup): PrinterAddressRow[] {
   return group.rows.map((row) => {
     const address = splitPrinterAddress(row.recipientAddress);
-    const [character, version = "Standard"] = row.seriesName.split(/\s+-\s+/, 2);
+    const [character, defaultVersion = "Standard"] = row.seriesName.split(/\s+-\s+/, 2);
+    const northPoleVersion = row.mailing.notes.match(/PREFERRED WOODLAND CHARACTER:\s*([^;]+)/i)?.[1]?.trim();
+    const version = row.seriesName === "North Pole" && northPoleVersion ? northPoleVersion : defaultVersion;
     return {
       "Order ID": row.orderNumber,
       "Recipient Name": row.mailing.recipientName,

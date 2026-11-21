@@ -144,3 +144,22 @@ test("the key format is exactly mailingId::subscriberId::reason::shipDate - a ch
   assert.equal(key, [row.mailingId, row.subscriberId, row.reason, row.shipDate || "no-ship-date"].join("::"));
   assert.equal(key.split("::").length, 4);
 });
+
+test("North Pole reviews show editable dedicated personalization fields without treating them as a gift message", () => {
+  const order = {
+    id: "sq-03085", orderNumber: "03085", createdOn: "2026-11-21T12:00:00Z", customerName: "Amy Farkas", customerEmail: "amy@example.test",
+    shippingAddress: "120 Springbird Court · Wilmington, OH, 45177", products: ["A Personalized Christmas Letter from the North Pole"], details: [], paymentState: "PAID",
+    recipientName: "Joseph Howell", character: "North Pole", plan: "One-time", childFirstName: "Joe", preferredWoodlandCharacter: "Ringo",
+    northPolePersonalization: "Helped when I was in the hospital", giftMessage: "", existing: false, warnings: [],
+  };
+  const html = renderToStaticMarkup(React.createElement(Exceptions, {
+    rows: [], onReview: () => {}, onCustomerClick: () => {},
+    squarespaceReviews: { loading: false, failed: false, message: "", reviews: [{ id: 85, order, createdAt: "2026-11-21T12:00:00Z" }] },
+  }));
+  assert.match(html, /North Pole personalization/);
+  assert.match(html, /name="childFirstName" value="Joe"/);
+  assert.match(html, /name="preferredWoodlandCharacter" value="Ringo"/);
+  assert.match(html, /name="northPolePersonalization"/);
+  assert.match(html, /not a handwritten gift message/);
+  assert.doesNotMatch(html, /Handwrite this in Letter 1/);
+});

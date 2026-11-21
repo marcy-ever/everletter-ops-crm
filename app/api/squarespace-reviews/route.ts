@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDb } from "@/db";
 import { auditEvents, squarespaceOrderReviews, subscribers } from "@/db/schema";
-import type { SquarespacePreviewOrder } from "@/lib/domain/squarespace-preview";
+import { normalizeNorthPolePreviewOrder, type SquarespacePreviewOrder } from "@/lib/domain/squarespace-preview";
 
 export async function GET() {
   const db = getDb();
@@ -16,15 +16,16 @@ export async function GET() {
     byEmail.set(email, byEmail.has(email) ? null : customer.id);
   }
   return Response.json({ reviews: rows.map((row) => {
-    const order = row.order as SquarespacePreviewOrder;
+    const order = normalizeNorthPolePreviewOrder(row.order as SquarespacePreviewOrder);
     return { ...row, order: { ...order, subscriberId: byEmail.get(order.customerEmail.trim().toLowerCase()) || undefined } };
   }) });
 }
 
 export async function POST(request: Request) {
   try {
-    const { order } = await request.json() as { order?: SquarespacePreviewOrder };
-    if (!order?.id || !order.orderNumber || !Array.isArray(order.warnings)) return Response.json({ error: "That Squarespace order is incomplete." }, { status: 400 });
+    const body = await request.json() as { order?: SquarespacePreviewOrder };
+    if (!body.order?.id || !body.order.orderNumber || !Array.isArray(body.order.warnings)) return Response.json({ error: "That Squarespace order is incomplete." }, { status: 400 });
+    const order = normalizeNorthPolePreviewOrder(body.order);
     let actorEmail = "no-session@test.invalid";
     try { actorEmail = (await auth())?.user?.email ?? actorEmail; } catch {}
     const db = getDb();
