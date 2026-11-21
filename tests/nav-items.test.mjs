@@ -30,13 +30,8 @@ const EXPECTED_ORDER = [
   "subscribers",
   "samples",
   "import",
-  "print",
-  "qa",
-  "packet",
-  "bins",
   "sync",
   "marketing",
-  "automation",
 ];
 
 test("NAV_ITEMS contains every CRM view in the expected order", () => {
@@ -80,6 +75,6 @@ test("the operational batch views show the batch filter, and only queue shows th
     .filter(([, entry]) => entry.showStatusFilter)
     .map(([id]) => id)
     .sort();
-  assert.deepEqual(batchFilterViews, ["bins", "fulfillment", "packet", "print", "qa", "queue"]);
+  assert.deepEqual(batchFilterViews, ["fulfillment", "queue"]);
   assert.deepEqual(statusFilterViews, ["queue"]);
 });

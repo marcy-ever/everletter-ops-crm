@@ -1,6 +1,6 @@
-export const FULFILLMENT_OWNERS = ["Printer", "EverLetter", "Hold"] as const;
+export const FULFILLMENT_OWNERS = ["Printer", "Ashley / Prepacked", "EverLetter", "Hold"] as const;
 export const LATE_ADDENDUM_STATUSES = ["Main", "Late addendum"] as const;
-export const FULFILLMENT_STATUSES = ["Pending", "Exported", "In production", "Completed", "Hold"] as const;
+export const FULFILLMENT_STATUSES = ["Pending", "Ready to mail", "Exported", "In production", "Completed", "Hold"] as const;
 
 export type FulfillmentOwner = (typeof FULFILLMENT_OWNERS)[number];
 export type LateAddendumStatus = (typeof LATE_ADDENDUM_STATUSES)[number];

@@ -28,16 +28,11 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: "queue", badge: "Q", label: "Production Queue" },
-  { id: "fulfillment", badge: "F", label: "Printer Fulfillment" },
+  { id: "fulfillment", badge: "F", label: "Mailing Fulfillment" },
   { id: "exceptions", badge: "!", label: "Needs Review" },
   { id: "subscribers", badge: "S", label: "Subscribers" },
   { id: "samples", badge: "@", label: "Sample Requests" },
   { id: "import", badge: "U", label: "Import Sheet" },
-  { id: "print", badge: "P", label: "Batch Print" },
-  { id: "qa", badge: "QA", label: "Mailing QA" },
-  { id: "packet", badge: "B", label: "Batch Packet" },
-  { id: "bins", badge: "N", label: "Ashley Bins" },
   { id: "sync", badge: "Y", label: "Squarespace Orders" },
   { id: "marketing", badge: "M", label: "Marketing Addresses" },
-  { id: "automation", badge: "A", label: "Automation Map" },
 ];

@@ -11,10 +11,12 @@ function data() {
   return computeFulfillmentData(seed, {}, new Set(), {}, "2026-11-15", "", "2026-11-01", () => "https://drive.test/marley/5");
 }
 
-test("Printer Fulfillment shows design exports and every operational control", () => {
+test("Mailing Fulfillment shows design exports and every operational control", () => {
   const fulfillment = data();
   const html = renderToStaticMarkup(React.createElement(PrinterFulfillment, { data: fulfillment, controls: {}, history: [], loading: false, message: "", mainGroups: printerDesignGroups(fulfillment, {}, "Main"), lateGroups: [], onControlChange() {}, onExportGroup() {}, onDownloadProductionList() {}, onDownloadSubscriberSchedule() {}, onOpenEnvelopeBatch() {} }));
   assert.match(html, /Main printer batch/);
+  assert.match(html, /Ashley \/ Prepacked/);
+  assert.match(html, /Ready to mail/);
   assert.match(html, /Marley_A7 \(1\)/);
   assert.match(html, /Payment/);
   assert.match(html, /Eligible/);

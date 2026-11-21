@@ -28,8 +28,8 @@ export default function PrinterFulfillment(props: PrinterFulfillmentProps) {
   const patch = (row: ControlledFulfillmentRow, change: Partial<FulfillmentControl>) => onControlChange(row, { ...row.control, ...change });
 
   return (
-    <section className="data-panel fulfillment-panel" aria-label="Printer fulfillment">
-      <div className="panel-head"><div><h3>{data.batchDate ? `${formatDate(data.batchDate)} Printer Fulfillment` : "Printer Fulfillment"}</h3><p>Export one address spreadsheet per envelope design, plus one combined production list.</p></div><span className="panel-count">{number(mainGroups.reduce((sum, group) => sum + group.rows.length, 0))} main batch</span></div>
+    <section className="data-panel fulfillment-panel" aria-label="Mailing fulfillment">
+      <div className="panel-head"><div><h3>{data.batchDate ? `${formatDate(data.batchDate)} Mailing Fulfillment` : "Mailing Fulfillment"}</h3><p>Send printer mailings to fulfillment and track Ashley's remaining prepacked mailings by their scheduled date.</p></div><span className="panel-count">{number(mainGroups.reduce((sum, group) => sum + group.rows.length, 0))} main batch</span></div>
       <div className="print-summary fulfillment-summary">
         <div><span>Mailing date</span><strong>{data.batchDate ? formatDate(data.batchDate) : "Choose one batch"}</strong></div>
         <div><span>Send by</span><strong>{data.printerDueDate ? formatDate(data.printerDueDate) : "—"}</strong></div>

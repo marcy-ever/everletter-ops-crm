@@ -30,11 +30,6 @@ export const VIEW_REGISTRY: Record<string, ViewRegistryEntry> = {
   subscribers: { showStatusFilter: false, showBatchFilter: false },
   samples: { showStatusFilter: false, showBatchFilter: false },
   import: { showStatusFilter: false, showBatchFilter: false },
-  print: { showStatusFilter: false, showBatchFilter: true },
-  qa: { showStatusFilter: false, showBatchFilter: true },
-  packet: { showStatusFilter: false, showBatchFilter: true },
-  bins: { showStatusFilter: false, showBatchFilter: true },
   sync: { showStatusFilter: false, showBatchFilter: false },
   marketing: { showStatusFilter: false, showBatchFilter: false },
-  automation: { showStatusFilter: false, showBatchFilter: false },
 };
