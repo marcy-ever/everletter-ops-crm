@@ -19,8 +19,9 @@
 // existing failure reporting is unchanged: onPublish's promise rejecting
 // (including the catastrophic-deletion guard's 409, whose message is the
 // only safety net this path has - there's deliberately no UI for the
-// server-side-only confirmLargeDelete override) surfaces through
-// data.importStatus exactly as it did in renderImport().
+// confirmLargeDelete override) first surfaces through data.importStatus.
+// The app then requires a separate, explicit confirmation click before
+// sending that override; an ordinary publish can never bypass the guard.
 //
 // publishImport stays disabled while data.importBusy is true - the same,
 // and only, guard legacy had against a second click firing mid-publish
@@ -33,7 +34,7 @@ import type { ImportData } from "./import-selectors";
 export interface ImportProps {
   data: ImportData;
   onFileSelect: (file: File) => void;
-  onPublish: () => void;
+  onPublish: (confirmLargeDelete?: boolean) => void;
 }
 
 export default function Import({ data, onFileSelect, onPublish }: ImportProps) {
@@ -99,9 +100,15 @@ export default function Import({ data, onFileSelect, onPublish }: ImportProps) {
                 {preview.fileName} - {preview.sheetName}
               </p>
             </div>
-            <button type="button" id="publishImport" disabled={data.importBusy} onClick={onPublish}>
-              {data.importBusy ? "Publishing..." : "Publish to shared CRM"}
-            </button>
+            {data.importNeedsLargeDeleteConfirmation ? (
+              <button type="button" id="confirmLargeImport" disabled={data.importBusy} onClick={() => onPublish(true)}>
+                {data.importBusy ? "Replacing..." : "Confirm full replacement"}
+              </button>
+            ) : (
+              <button type="button" id="publishImport" disabled={data.importBusy} onClick={() => onPublish(false)}>
+                {data.importBusy ? "Publishing..." : "Publish to shared CRM"}
+              </button>
+            )}
           </div>
           <div className="print-summary">
             <div>

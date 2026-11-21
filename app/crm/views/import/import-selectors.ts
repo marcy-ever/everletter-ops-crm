@@ -60,6 +60,7 @@ export interface ImportData {
   importStatus: string;
   preview: ImportPreview | null;
   importBusy: boolean;
+  importNeedsLargeDeleteConfirmation: boolean;
   // Set only once this session's own publish has actually returned a
   // server response - see computeImportData's own comment below for why
   // this can't be reconstructed from anything else state holds.
@@ -84,7 +85,7 @@ export interface ImportData {
 // for activeSource/uploadedAt above. The durable record of what a past
 // import skipped lives in ingestion_events.skipped
 // (db/schema/ingestion_events.ts), not here.
-export function computeImportData(seed: Dataset, reviewed: Set<string>, importInfo: SharedDatasetPayload | null, importPreview: ImportPreview | null, importStatus: string, importBusy: boolean): ImportData {
+export function computeImportData(seed: Dataset, reviewed: Set<string>, importInfo: SharedDatasetPayload | null, importPreview: ImportPreview | null, importStatus: string, importBusy: boolean, importNeedsLargeDeleteConfirmation = false): ImportData {
   return {
     activeSource: importInfo?.sourceName || seed.summary.sourceFile || "Built-in starter data",
     uploadedAt: importInfo?.uploadedAt ? formatDate(importInfo.uploadedAt.slice(0, 10)) : "Not uploaded yet",
@@ -93,6 +94,7 @@ export function computeImportData(seed: Dataset, reviewed: Set<string>, importIn
     importStatus,
     preview: importPreview,
     importBusy,
+    importNeedsLargeDeleteConfirmation,
     importSummary: importInfo?.importSummary ?? null,
   };
 }

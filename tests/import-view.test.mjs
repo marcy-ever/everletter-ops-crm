@@ -199,15 +199,29 @@ test("the file input's real onChange calls onFileSelect with the chosen file (co
   assert.equal(calls.length, 1, "an empty file list must not trigger a second call");
 });
 
-test("the publish button's real onClick calls onPublish with no arguments (component-level, not just static output)", () => {
+test("the publish button's real onClick calls onPublish without the large-delete override", () => {
   const seed = loadSeed();
   const preview = { seed, sheetName: "Sheet1", rowCount: 1, fileName: "test.xlsx" };
   const data = computeImportData(seed, new Set(), null, preview, "", false);
-  let calls = 0;
-  const element = Import({ data, onFileSelect: () => {}, onPublish: () => (calls += 1) });
+  const calls = [];
+  const element = Import({ data, onFileSelect: () => {}, onPublish: (confirm) => calls.push(confirm) });
 
   const button = findFirst(element, (node) => node.type === "button" && node.props.id === "publishImport");
   assert.ok(button, "publishImport button not found in the rendered tree");
   button.props.onClick();
-  assert.equal(calls, 1);
+  assert.deepEqual(calls, [false]);
+});
+
+test("a guarded replacement requires a separate explicit confirmation click", () => {
+  const seed = loadSeed();
+  const preview = { seed, sheetName: "Sheet1", rowCount: 1, fileName: "test.xlsx" };
+  const data = computeImportData(seed, new Set(), null, preview, "Review before replacing.", false, true);
+  const calls = [];
+  const element = Import({ data, onFileSelect: () => {}, onPublish: (confirm) => calls.push(confirm) });
+
+  assert.equal(findFirst(element, (node) => node.type === "button" && node.props.id === "publishImport"), null);
+  const button = findFirst(element, (node) => node.type === "button" && node.props.id === "confirmLargeImport");
+  assert.ok(button, "confirmLargeImport button not found in the rendered tree");
+  button.props.onClick();
+  assert.deepEqual(calls, [true]);
 });

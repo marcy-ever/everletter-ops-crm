@@ -357,13 +357,14 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
   //    legacy's own render() call in that one branch.
   import: () => {
     if (!state.seed) return null;
-    const data = computeImportData(state.seed, state.reviewed, state.importInfo, state.importPreview, state.importStatus, state.importBusy);
+    const data = computeImportData(state.seed, state.reviewed, state.importInfo, state.importPreview, state.importStatus, state.importBusy, state.importNeedsLargeDeleteConfirmation);
     return (
       <Import
         data={data}
         onFileSelect={async (file) => {
           state.importStatus = "Reading spreadsheet...";
           state.importPreview = null;
+          state.importNeedsLargeDeleteConfirmation = false;
           notifyViewChanged();
           try {
             const automationRules = defaultAutomationRules(state.seed);
@@ -374,21 +375,26 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
           }
           notifyViewChanged();
         }}
-        onPublish={async () => {
+        onPublish={async (confirmLargeDelete = false) => {
           if (!state.importPreview) return;
           state.importBusy = true;
           state.importStatus = "Publishing spreadsheet to the shared CRM...";
           notifyViewChanged();
           try {
-            state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName, staleness);
+            state.importInfo = await saveSharedDataset(state.importPreview.seed, state.importPreview.fileName, staleness, confirmLargeDelete);
             state.seed = state.importPreview.seed;
             state.importPreview = null;
             state.importBusy = false;
+            state.importNeedsLargeDeleteConfirmation = false;
             state.importStatus = "Imported. This is now the shared CRM data.";
             render(state, notifyViewChanged);
           } catch (error) {
             state.importBusy = false;
-            state.importStatus = error instanceof Error ? error.message : "Could not publish that spreadsheet.";
+            const message = error instanceof Error ? error.message : "Could not publish that spreadsheet.";
+            state.importNeedsLargeDeleteConfirmation = message.includes("confirmLargeDelete");
+            state.importStatus = state.importNeedsLargeDeleteConfirmation
+              ? "This full spreadsheet replaces the current partial CRM dataset. Review the counts above, then use Confirm full replacement."
+              : message;
             notifyViewChanged();
           }
         }}

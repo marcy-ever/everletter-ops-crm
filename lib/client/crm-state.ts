@@ -111,6 +111,7 @@ export interface CrmState {
   importPreview: ImportPreview | null;
   importStatus: string;
   importBusy: boolean;
+  importNeedsLargeDeleteConfirmation: boolean;
   importInfo: SharedDatasetPayload | null;
   reviewed: Set<string>;
   statusOverrides: Record<string, string>;
@@ -178,6 +179,7 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     importPreview: null,
     importStatus: "",
     importBusy: false,
+    importNeedsLargeDeleteConfirmation: false,
     importInfo: null,
     reviewed: new Set(),
     statusOverrides: {},

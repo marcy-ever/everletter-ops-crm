@@ -134,7 +134,7 @@ export interface SharedDatasetPayload {
   importSummary?: DatasetImportSummary;
 }
 
-export async function saveSharedDataset(seed: Dataset, sourceName: string, stalenessStore: StalenessStore): Promise<SharedDatasetPayload> {
+export async function saveSharedDataset(seed: Dataset, sourceName: string, stalenessStore: StalenessStore, confirmLargeDelete = false): Promise<SharedDatasetPayload> {
   const payload: SharedDatasetPayload = {
     seed,
     sourceName,
@@ -144,7 +144,7 @@ export async function saveSharedDataset(seed: Dataset, sourceName: string, stale
   const response = await fetch("/api/shared-state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "crmDataset", key: "current", value: JSON.stringify(payload) }),
+    body: JSON.stringify({ kind: "crmDataset", key: "current", value: JSON.stringify(payload), confirmLargeDelete }),
   });
   const body: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
