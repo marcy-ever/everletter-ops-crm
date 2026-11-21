@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { ingestionEvents } from "@/db/schema/ingestion_events";
 import { auditEvents } from "@/db/schema/audit_events";
 import { currentChangeMarker } from "@/lib/change-marker";
+import { NO_SESSION_ACTOR } from "@/lib/domain/audit";
 import {
   writeComponentStatus,
   writeImport,
@@ -43,11 +44,9 @@ type StateKind = "mailingStatus" | "componentStatus" | "reviewedException" | "su
 // different things: "the capture broke" and "there genuinely was no
 // session." This sentinel is written instead of null specifically so a
 // later reader of audit_events sees an unmistakable, honest value rather
-// than a blank cell that could be either. Exported only for
-// tests/audit-events.e2e.test.mjs, which asserts audit rows written by this
-// repo's own (proxy.ts-bypassing) e2e harness record exactly this sentinel
-// - not consumed by any runtime caller.
-export const NO_SESSION_ACTOR = "unauthenticated";
+// than a blank cell that could be either. The sentinel lives outside this
+// route module because Next route files may export only HTTP handlers and
+// supported route configuration.
 
 const allowedKinds = new Set<StateKind>([
   "mailingStatus",

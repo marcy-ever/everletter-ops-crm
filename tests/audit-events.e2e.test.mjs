@@ -19,6 +19,7 @@ import { e2eSkipReason, loadSpreadsheetRows, truncateAllTables } from "./e2e-hel
 import { buildSeedFromSpreadsheet } from "../lib/domain/spreadsheet/build-seed.ts";
 import { countRows } from "./db-test-helpers.mjs";
 import { exceptionReviewKey, mailingKey, componentKey } from "../lib/domain/keys.ts";
+import { NO_SESSION_ACTOR } from "../lib/domain/audit.ts";
 
 const skip = e2eSkipReason({ requiresFixture: false });
 const skipRequiresFixture = e2eSkipReason();
@@ -123,7 +124,7 @@ async function importSeed(POST, seed, sourceName) {
 
 test("a mailingStatus change writes exactly one audit row with the prior and new status", { skip }, async () => {
   const db = await freshDb();
-  const { POST, NO_SESSION_ACTOR } = await loadRoute();
+  const { POST } = await loadRoute();
   const { auditEvents } = await import("../db/schema/audit_events");
 
   const spec = buildMailing(1);
