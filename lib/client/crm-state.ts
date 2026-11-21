@@ -105,7 +105,6 @@ export interface CrmState {
   syncSubscriptionId: string;
   syncPlan: string;
   syncOrderDate: string;
-  sampleType: string;
   selectedSubscriberId: string;
   subscriberProfileOpen: boolean;
   profileSubscriptionFilter: string;
@@ -173,7 +172,6 @@ export function createCrmState(failureStore: SaveFailureStore, stalenessStore: S
     syncSubscriptionId: "",
     syncPlan: "Month-to-month",
     syncOrderDate: "2026-07-12",
-    sampleType: "Kid",
     selectedSubscriberId: "",
     subscriberProfileOpen: false,
     profileSubscriptionFilter: "all",

@@ -28,7 +28,6 @@ export const VIEW_REGISTRY: Record<string, ViewRegistryEntry> = {
   fulfillment: { showStatusFilter: false, showBatchFilter: true },
   exceptions: { showStatusFilter: false, showBatchFilter: false },
   subscribers: { showStatusFilter: false, showBatchFilter: false },
-  samples: { showStatusFilter: false, showBatchFilter: false },
   import: { showStatusFilter: false, showBatchFilter: false },
   sync: { showStatusFilter: false, showBatchFilter: false },
   marketing: { showStatusFilter: false, showBatchFilter: false },

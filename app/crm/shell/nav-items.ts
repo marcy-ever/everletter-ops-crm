@@ -2,7 +2,7 @@
  * The single source of truth for the sidebar: every view's id, badge, and
  * label, in the order they appear. Step 5 of the app.js decomposition (see
  * CLAUDE.md) - before this, seven of these were declared in app/page.tsx's
- * JSX and the other five (qa/packet/bins/launch/samples) were injected at
+ * JSX and the other views were injected at
  * runtime by app/crm/legacy-app.js via insertAdjacentHTML, each positioned
  * relative to an existing button. Nobody reading page.tsx alone could tell
  * what the sidebar actually contained.
@@ -31,7 +31,6 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "fulfillment", badge: "F", label: "Mailing Fulfillment" },
   { id: "exceptions", badge: "!", label: "Needs Review" },
   { id: "subscribers", badge: "S", label: "Subscribers" },
-  { id: "samples", badge: "@", label: "Sample Requests" },
   { id: "import", badge: "U", label: "Import Sheet" },
   { id: "sync", badge: "Y", label: "Squarespace Orders" },
   { id: "marketing", badge: "M", label: "Marketing Addresses" },

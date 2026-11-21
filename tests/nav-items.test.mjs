@@ -28,7 +28,6 @@ const EXPECTED_ORDER = [
   "fulfillment",
   "exceptions",
   "subscribers",
-  "samples",
   "import",
   "sync",
   "marketing",

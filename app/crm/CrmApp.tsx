@@ -21,8 +21,6 @@ import Automation from "./views/Automation";
 import type { AutomationRule } from "./views/Automation";
 import Sync from "./views/sync/Sync";
 import { computeSyncPreview, defaultSyncSubscriberId, defaultSyncSubscriptionId } from "./views/sync/sync-selectors";
-import Samples from "./views/samples/Samples";
-import { computeSamplesData } from "./views/samples/samples-selectors";
 import Exceptions from "./views/exceptions/Exceptions";
 import { computeExceptionRows } from "./views/exceptions/exceptions-selectors";
 import Import from "./views/import/Import";
@@ -250,36 +248,10 @@ const REACT_VIEWS: Record<string, () => ReactNode> = {
       />
     );
   },
-  // No state.seed guard - unlike Launch Plan/Sync, nothing here reads the
-  // dataset at all (sampleRows/sampleAssets/flows are all either static
-  // or derived from state.sampleType alone), so this view can render
-  // before the dataset loads, the same way Automation degrades gracefully.
-  //
-  // onOpenSample is the new shape this view introduces: a callback that
-  // performs a browser action (window.open) instead of mutating `state` -
-  // deliberately no notifyViewChanged() call here, since nothing rendered
-  // depends on whether a sample was opened. onSampleTypeChange is the
-  // familiar mutate-then-notify shape every other callback in this file
-  // uses.
-  samples: () => {
-    const data = computeSamplesData(state.sampleType);
-    return (
-      <Samples
-        data={data}
-        onSampleTypeChange={(type) => {
-          state.sampleType = type;
-          notifyViewChanged();
-        }}
-        onOpenSample={(file) => {
-          window.open(file, "_blank", "noopener,noreferrer");
-        }}
-      />
-    );
-  },
   // The first migrated view that writes to the server, and the first
   // callback in this file to call render() instead of notifyViewChanged()
   // - a real, reported finding, not a stylistic choice. Every earlier
-  // interactive view's state (state.syncXxx, state.sampleType) is read
+  // interactive view's state (state.syncXxx) is read
   // ONLY by that view's own React component, so notifyViewChanged() alone
   // (which renderView() already calls, and which this component observes
   // via getViewSnapshot() below) was sufficient. Reviewing an exception is
