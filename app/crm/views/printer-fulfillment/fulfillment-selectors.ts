@@ -193,7 +193,7 @@ const VERIFIED_INSIDE_RULES: Record<string, string> = {
   "Ringo|2": "Add item: Arrow charm",
   "Ringo|10": "Add item: Key wood charm",
   "Ringo|11": "Add item: Pawprint charm",
-  "Seraphine|1": "Add printed artifact: Charcoal feather sketch",
+  "Seraphine|2": "Add printed artifact: Charcoal feather sketch (4.25 x 5.5 finished)",
   "Seraphine|10": "No extra item listed",
   "Seraphine|18": "No extra item listed",
 };
@@ -256,7 +256,6 @@ export function computeFulfillmentData(
       const folderUrl = letterFolderUrl(mailing);
       const seriesName = printerSeriesName(mailing);
       const assemblyRule = printerAssemblyRule(seriesName, mailing.letterNumber);
-      const artifactSourcePending = seriesName === "Seraphine" && String(mailing.letterNumber) === "1";
       const productionProfile = productionProfileForSeries(seriesName);
       const highIssues = exceptionsForMailing(mailing, seed, reviewed).filter((exception) => exception.severity === "High");
       const stopReasons = [
@@ -266,7 +265,6 @@ export function computeFulfillmentData(
         !mailing.shipDate ? "Mailing date is missing" : "",
         !folderUrl ? "Letter file is not attached/confirmed" : "",
         !assemblyRule ? "Printer assembly instructions are not confirmed" : "",
-        artifactSourcePending ? "Seraphine Letter 1 feather-sketch print file is not attached/confirmed" : "",
         !productionProfile ? "Envelope production profile is not confirmed" : "",
         productionProfile && !productionProfile.fontConfirmed ? `${seriesName} envelope font is pending Marcy selection` : "",
         productionProfile?.innerEnvelope.startsWith("HOLD / STOP") ? `${seriesName} inner-envelope color is not confirmed` : "",

@@ -64,15 +64,14 @@ test("shared artifact production is counted once per grouped item", () => {
   assert.equal(batch.Quantity, 2);
 });
 
-test("Seraphine Letter 1 requires the charcoal feather sketch", () => {
-  const data = computeFulfillmentData(dataset([mailing({ character: "Seraphine", letterNumber: "1" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/seraphine/1");
-  assert.equal(data.readyRows.length, 0);
-  assert.equal(data.heldRows.length, 1);
-  assert.match(data.heldRows[0].insideInstructions, /Charcoal feather sketch/);
-  assert.ok(data.heldRows[0].stopReasons.includes("Seraphine Letter 1 feather-sketch print file is not attached/confirmed"));
-  const [sheetRow] = fulfillmentSpreadsheetRows(data.heldRows);
+test("Seraphine Letter 2 requires the charcoal feather sketch", () => {
+  const data = computeFulfillmentData(dataset([mailing({ character: "Seraphine", letterNumber: "2" })]), {}, new Set(), {}, "2026-11-01", "", "2026-10-17", () => "https://drive.test/seraphine/2");
+  assert.equal(data.readyRows.length, 1);
+  assert.equal(data.heldRows.length, 0);
+  assert.match(data.readyRows[0].insideInstructions, /Charcoal feather sketch/);
+  const [sheetRow] = fulfillmentSpreadsheetRows(data.readyRows);
   assert.match(sheetRow["PUT INSIDE"], /Charcoal feather sketch/);
-  assert.equal(sheetRow.Status, "STOP");
+  assert.equal(sheetRow.Status, "Ready");
 });
 
 test("Legends uses the standard printer address font and remains exportable", () => {
